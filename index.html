@@ -584,7 +584,7 @@ function fireAt(p,f){p.cd=p.weapon.cd;
   const d=DIST(p.px,p.py,f.px,f.py);
   beam(p.px,p.py,f.px,f.py,"#7df9ff");SFX.shoot();gainXp(p,"sht");
   if(Math.random()<accOf(p,d))damageFoe(f,RI(p.weapon.dmg[0],p.weapon.dmg[1]))}
-function damagePawn(p,d){p.hp-=d;p.hurtT=ST.tick;SFX.hit();
+function damagePawn(p,d){p.hp-=d;p.hurtT=ST.tick;SFX.hit();applyDrift(p,{cau:3});
   addMod(p,"pain","In pain",-8,TPD*.4);
   if(!p.drafted&&p.flee<ST.tick){clearJob(p);p.flee=ST.tick+90}
   if(p.hp<=0)killPawn(p,"was killed in the fighting")}
@@ -592,7 +592,7 @@ function killPawn(p,why){const i=ST.pawns.indexOf(p);if(i<0)return;
   clearJob(p);ST.pawns.splice(i,1);ST.stats.deaths++;SFX.die();
   for(const s of ST.structs.values())if(s.owner===p.id)s.owner=0;
   log(p.name+" "+why+".","bad");banner("RUNNER DOWN","bad");
-  for(const o of ST.pawns)addMod(o,"loss","Lost a crewmate",-16,TPD*2.5);
+  for(const o of ST.pawns){addMod(o,"loss","Lost a crewmate",-16,TPD*2.5);applyDrift(o,{cau:6,soc:-3})}
   ST.sel=ST.sel.filter(e=>e!==p);renderInspect();
   if(ST.pawns.length===0&&ST.phase==="run")gameOver()}
 function homeCell(){return nearestZoneCell(MW/2,MH/2)||{x:MW/2|0,y:MH/2|0}}
@@ -607,7 +607,7 @@ function pawnTick(p){
     if(p.needs.food>40&&p.hp<100)p.hp=Math.min(100,p.hp+0.03)}
   else p.needs.rest=Math.max(0,p.needs.rest-rd);
   if(p.needs.food<=0){
-    if(ST.tick%30===0){p.hp-=1;addMod(p,"starv","Starving",-12,80)}
+    if(ST.tick%30===0){p.hp-=1;addMod(p,"starv","Starving",-12,80);applyDrift(p,{cau:4})}
     if(p.hp<=0){killPawn(p,"starved to death");return}}
   if(p.cd>0)p.cd--;
   if(!p.sleeping&&p.hp<100&&p.needs.food>30&&ST.tick%10===0&&!foeNear(p,10))
@@ -618,6 +618,7 @@ function pawnTick(p){
   if(!p.drafted&&p.dazed<ST.tick&&p.mood<brk&&Math.random()<0.0018){
     clearJob(p);p.dazed=ST.tick+260;p.dz=null;
     log(p.name+" snapped — wandering dazed.","warn")}
+  if(p.dazed>ST.tick&&p.dazed-ST.tick===1){applyDrift(p,{cau:2,soc:-1})}
   if(p.dazed>ST.tick){p.sleeping=false;
     if(!p.dz||((p.px|0)===p.dz.x&&(p.py|0)===p.dz.y))p.dz=randNear(p,4);
     if(p.dz&&gotoCell(p,p.dz.x,p.dz.y,0)==="fail")p.dz=null;
@@ -652,6 +653,8 @@ function pawnTick(p){
           if(ST.res.meal>0){ST.res.meal--;p.needs.food=100;addMod(p,"meal","Hot synth-meal",5,TPD*.5)}
           else if(ST.res.raw>0){ST.res.raw--;p.needs.food=Math.min(100,p.needs.food+55);
             addMod(p,"raw","Ate raw protein",-6,TPD*.4)}
+          const other=ST.pawns.find(q=>q.id!==p.id);
+          if(other&&Math.hypot(p.px-other.px,p.py-other.py)<6){ST.bond=clamp(ST.bond+3,0,100);applyDrift(p,{soc:2})}
           p.job=null;syncHUD()}}
       break}
     case "sleep":{
@@ -682,7 +685,7 @@ function pawnTick(p){
           if(j.prog>=50){deconFinish(s);p.job=null}}
         else{s.prog+=workSpd(p,p.sk.bld);
           if(ST.tick%25===0)gainXp(p,"bld");
-          if(s.prog>=s.need){finishBuild(s);s.res=0;p.job=null}}}
+          if(s.prog>=s.need){finishBuild(s);s.res=0;applyDrift(p,{ind:1});p.job=null}}}
       break}
     case "salvage":{const s=j.s;
       if(structAt(s.x,s.y)!==s||!s.desig){p.job=null;break}
@@ -690,7 +693,7 @@ function pawnTick(p){
       if(r==="fail"){markUnre(p,s.x,s.y);s.res=0;p.job=null;break}
       if(r==="arr"){s.prog+=workSpd(p,p.sk.sal);
         if(ST.tick%25===0)gainXp(p,"sal");
-        if(s.prog>=DEF[s.type].work){const sx=s.x,sy=s.y;salvageFinish(s);p.job=null;
+        if(s.prog>=DEF[s.type].work){const sx=s.x,sy=s.y;salvageFinish(s);applyDrift(p,{ind:1,cur:1});p.job=null;
           if(ST.zone.size){const it=ST.items.find(i=>!i.resv&&!i.gone&&
             Math.abs(i.x-sx)<=2&&Math.abs(i.y-sy)<=2);
             if(it){it.resv=p.id;p.job={t:"haul",it,phase:0,x:0,y:0}}}}}
@@ -1403,6 +1406,13 @@ function expireRequests(){
     ST.bond=clamp((ST.bond||50)-1,0,100);
     log((agent?agent.name:"Agent")+" got tired of waiting — acted on instinct.","warn")}}
 
+function applyDrift(p,deltas){
+  const today=Math.floor(ST.tick/2400);
+  if(p.drift.day!==today){p.drift.day=today;p.drift.used=0}
+  if(p.drift.used>=10)return;
+  for(const[k,v]of Object.entries(deltas)){
+    if(k in p.pers){p.pers[k]=clamp(p.pers[k]+v,0,100)}}
+  p.drift.used++}
 function canGenRequest(p){
   return !ST.requests.some(r=>r.agentId===p.id&&r.status==="pending")}
 
