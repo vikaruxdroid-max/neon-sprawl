@@ -58,6 +58,19 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 #banner.good{color:var(--gn);text-shadow:0 0 18px rgba(57,255,136,.8)}
 #banner.warn{color:var(--yl);text-shadow:0 0 18px rgba(255,216,74,.8)}
 #banner.show{opacity:1}
+#requests{position:fixed;right:8px;top:calc(54px + 34vh + 8px);width:262px;max-height:28vh;
+  overflow-y:auto;padding:4px 6px;display:none;z-index:11}
+#requests .rq-hdr{color:var(--cy);font-size:10px;letter-spacing:.15em;margin-bottom:4px;
+  padding-bottom:3px;border-bottom:1px solid var(--bd)}
+.rq-card{background:#080d18;border:1px solid var(--bd);border-radius:3px;
+  padding:7px 9px;margin-bottom:5px;font-size:11px;line-height:1.45}
+.rq-card.rq-warn{border-color:var(--or)}
+.rq-card.rq-urgent{border-color:var(--rd)}
+.rq-name{font-size:10px;letter-spacing:.08em;margin-bottom:3px}
+.rq-text{color:#c8d8f0;margin-bottom:6px}
+.rq-opts{display:flex;gap:5px;flex-wrap:wrap}
+.rq-opts .tb{padding:4px 8px;font-size:10px}
+@keyframes rq-expire{0%{border-color:var(--or)}100%{border-color:var(--rd)}}
 #cancelTool{position:fixed;bottom:104px;right:12px;display:none;z-index:20;padding:10px 14px;font-size:12px}
 #modal{position:fixed;inset:0;background:rgba(2,4,9,.86);display:none;align-items:center;
   justify-content:center;z-index:50}
@@ -105,6 +118,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 <div id="checklist" class="panel"><b>PRIORITY DIRECTIVES</b><ul id="ck"></ul></div>
 <div id="log" class="panel"></div>
 <div id="inspect" class="panel"></div>
+<div id="requests" class="panel"></div>
 <div id="submenu" class="panel"></div>
 <div id="toolbar" class="panel">
   <button class="tb" id="t-build">BUILD</button>
@@ -906,9 +920,9 @@ function tick(){ST.tick++;
         float(it.x+.5,it.y+.5,"+"+it.qty+" "+RESNAME[it.res].toUpperCase(),RESCOL[it.res]);
         it.gone=true;ST.items.splice(i,1);syncHUD()}}}
   if(ST.tick>=ST.nextEv)fireEvent();
-  if(ST.tick%30===0)updateFlags();
+  if(ST.tick%30===0){updateFlags();genRequests();expireRequests()}
   if(ST.tick%10===0)syncHUD();
-  if(ST.tick%25===0)renderInspect()}
+  if(ST.tick%25===0){renderInspect();renderRequests()}}
 
 /* ============================================================
    RENDERING
@@ -1338,6 +1352,89 @@ function banner(txt,cls){const b=$("banner");
   b.textContent=txt;b.className=cls||"";b.classList.add("show");
   clearTimeout(banT);banT=setTimeout(()=>b.classList.remove("show"),2400)}
 function flashMsg(m){log(m,"warn")}
+
+/* ---------- requests (phase 2) ---------- */
+function renderRequests(){
+  const el=$("requests");
+  const pending=ST.requests?ST.requests.filter(r=>r.status==="pending"):[];
+  if(!pending.length){el.style.display="none";return}
+  el.style.display="block";
+  let h='<div class="rq-hdr">AGENT REQUESTS</div>';
+  const now=ST.tick;
+  for(const r of pending){
+    const frac=(r.expires-now)/(r.expires-r.created);
+    const cls=frac<0.25?"rq-urgent":frac<0.5?"rq-warn":"";
+    const agent=ST.pawns.find(p=>p.id===r.agentId);
+    const col=agent?agent.accent:"var(--cy)";
+    h+="<div class='rq-card "+cls+"' data-rid='"+r.id+"'>";
+    h+="<div class='rq-name' style='color:"+col+"'>"+r.agentName+"</div>";
+    h+="<div class='rq-text'>"+r.text+"</div>";
+    h+="<div class='rq-opts'>";
+    r.options.forEach((opt,i)=>{
+      h+="<button class='tb' data-rid='"+r.id+"' data-oi='"+i+"'>"+opt.label+"</button>"});
+    h+="</div></div>"}
+  el.innerHTML=h}
+
+function applyRequest(rid,oi){
+  const r=ST.requests.find(x=>x.id===rid);
+  if(!r||r.status!=="pending")return;
+  const agent=ST.pawns.find(p=>p.id===r.agentId);
+  const opt=r.options[oi];
+  if(agent&&opt&&opt.apply){
+    for(const[k,v]of Object.entries(opt.apply)){
+      if(k in agent.bias)agent.bias[k]=clamp(agent.bias[k]+v,0.6,1.5);
+      else if(k in agent.pers)agent.pers[k]=clamp(agent.pers[k]+v,0,100)}}
+  r.status="answered";
+  if(agent)log(agent.name+": "+opt.label,"info");
+  renderRequests()}
+
+$("requests").addEventListener("click",e=>{
+  const rid=e.target.dataset.rid;
+  const oi=e.target.dataset.oi;
+  if(rid&&oi!==undefined){SFX.ui();applyRequest(rid,parseInt(oi))}});
+
+function expireRequests(){
+  if(!ST.requests)return;
+  for(const r of ST.requests){
+    if(r.status!=="pending"||ST.tick<r.expires)continue;
+    r.status="expired";
+    const agent=ST.pawns.find(p=>p.id===r.agentId);
+    if(agent)agent.pers.soc=clamp(agent.pers.soc-1,0,100);
+    ST.bond=clamp((ST.bond||50)-1,0,100);
+    log((agent?agent.name:"Agent")+" got tired of waiting — acted on instinct.","warn")}}
+
+function canGenRequest(p){
+  return !ST.requests.some(r=>r.agentId===p.id&&r.status==="pending")}
+
+function genRequests(){
+  if(ST.phase!=="run"||!ST.requests)return;
+  const gap=600;
+  for(const p of ST.pawns){
+    if(!canGenRequest(p))continue;
+    if(p.lastReqT&&ST.tick-p.lastReqT<gap)continue;
+    const r=tryBuildRequest(p);
+    if(r){ST.requests.push(r);p.lastReqT=ST.tick;renderRequests()}}}
+
+function tryBuildRequest(p){
+  const id=uid();
+  const exp=ST.tick+Math.floor(2400*0.4);
+  const base={id,agentId:p.id,agentName:p.name,created:ST.tick,expires:exp,status:"pending"};
+  if(p.pers.cau>60&&p.pers.cur>55&&Math.random()<0.35)
+    return{...base,kind:"safety",text:p.name+" wants to know if it's safe past the eastern barricade.",
+      options:[{label:"Go ahead",apply:{explore:+0.15}},{label:"Hold back",apply:{explore:-0.15,cau:+3}}]};
+  if(p.needs.food<55&&ST.res.meal===0&&ST.res.raw>0&&Math.random()<0.4)
+    return{...base,kind:"food",text:p.name+" is hungry — eat raw or wait for cooked protein?",
+      options:[{label:"Eat raw",apply:{eat:+0.2,cau:-2}},{label:"Wait",apply:{eat:-0.1,cau:+2}}]};
+  const bps=[...ST.structs.values()].filter(s=>s.bp);
+  if(bps.length>=2&&p.pers.ind>55&&Math.random()<0.3)
+    return{...base,kind:"build",text:p.name+" asks: raise the "+DEF[bps[0].type].name+" or the "+DEF[bps[1].type].name+" first?",
+      options:[{label:DEF[bps[0].type].name,apply:{build:+0.2}},{label:DEF[bps[1].type].name,apply:{build:+0.1}}]};
+  const synth=[...ST.structs.values()].find(s=>s.type==="synth"&&!s.bp&&s.powered);
+  const other=ST.pawns.find(q=>q.id!==p.id);
+  if(synth&&other&&p.job&&p.job.t==="cook"&&other.job&&other.job.t==="cook"&&Math.random()<0.5)
+    return{...base,kind:"conflict",text:p.name+" and "+other.name+" both want the synth station.",
+      options:[{label:p.name+" first",apply:{cook:+0.15}},{label:other.name+" first",apply:{cook:-0.1}}]};
+  return null}
 function showModal(html){$("modal").innerHTML="<div class='mbox'>"+html+"</div>";
   $("modal").classList.add("open")}
 function hideModal(){$("modal").classList.remove("open")}
@@ -1521,7 +1618,7 @@ function newGame(){
   ST.pawns.push(sta);
   cam.z=clamp(Math.min(VW/(MW*T),VH/(MH*T))*1.9,1,2.2);
   cam.x=cx*T-VW/cam.z/2;cam.y=cy*T-VH/cam.z/2;clampCam();
-  ST.lastRaid=0;ST.nextEv=Math.floor(TPD*1.25);
+  ST.lastRaid=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.bond=50;
   $("log").innerHTML="";
   log("Vex and Static holed up in the dead district. Daylight won't last.","info");
   log("Zone a stockpile, mark scrap for salvage, and get walls up before the gangs notice.","info");
