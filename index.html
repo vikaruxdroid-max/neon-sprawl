@@ -1,0 +1,1472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="color-scheme" content="dark">
+<title>NEON SPRAWL — Colony Protocol</title>
+<style>
+:root{
+  --cy:#00e5ff; --mg:#ff2d95; --yl:#ffd84a; --gn:#39ff88; --rd:#ff4757; --or:#ff9f2d;
+  --bg:#04050a; --panel:rgba(9,13,23,.93); --bd:#1c2a44; --tx:#b8c7e0; --dim:#5d6c85;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
+  font-family:"Cascadia Mono","Consolas","Lucida Console",monospace;color:var(--tx);
+  -webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+#c{position:fixed;inset:0;display:block;touch-action:none;cursor:crosshair}
+.panel{background:var(--panel);border:1px solid var(--bd);border-radius:4px;z-index:10}
+.tb{background:#0b1322;border:1px solid var(--bd);color:var(--tx);padding:7px 10px;
+  font:inherit;font-size:11px;letter-spacing:.08em;cursor:pointer;border-radius:3px;white-space:nowrap}
+.tb:hover{border-color:var(--cy);color:#e8f6ff;box-shadow:0 0 8px rgba(0,229,255,.25)}
+.tb.on{border-color:var(--cy);color:var(--cy);background:#0a1c28;box-shadow:0 0 10px rgba(0,229,255,.3)}
+.tb.warnb{border-color:#5a2233}
+#hud{position:fixed;top:8px;left:8px;right:8px;display:flex;align-items:center;gap:10px;
+  padding:6px 10px;flex-wrap:wrap;font-size:12px}
+#hud b{color:#e8f6ff;font-weight:600}
+.res{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.sw{display:inline-block;width:8px;height:8px;border-radius:2px}
+.gap{flex:1}
+#h-pwr.bad{color:var(--rd)}
+#h-extract{color:var(--cy);letter-spacing:.1em}
+#checklist{position:fixed;left:8px;top:54px;width:236px;padding:8px 10px;font-size:11px;line-height:1.5}
+#checklist b{color:var(--cy);letter-spacing:.15em;font-size:10px}
+#checklist ul{margin:6px 0 0;padding:0 0 0 14px}
+#checklist li{color:var(--dim)}
+#checklist li.done{color:var(--gn);text-decoration:line-through;opacity:.65}
+#log{position:fixed;right:8px;top:54px;width:262px;max-height:34vh;overflow:hidden;
+  padding:6px 9px;font-size:11px;line-height:1.45}
+#log div{margin:1px 0;opacity:.92}
+#log .info{color:#9fb4d8}#log .warn{color:var(--yl)}#log .bad{color:var(--rd)}#log .good{color:var(--gn)}
+#inspect{position:fixed;left:8px;bottom:64px;width:288px;padding:9px 11px;font-size:11px;display:none;line-height:1.5}
+#inspect h3{margin:0 0 2px;font-size:12px;color:#e8f6ff;letter-spacing:.06em}
+#inspect .sub{color:var(--dim);font-size:10px;margin-bottom:5px}
+.bar{height:6px;background:#10182b;border:1px solid #1c2a44;border-radius:2px;margin:2px 0 5px;overflow:hidden}
+.bar i{display:block;height:100%}
+.blab{display:flex;justify-content:space-between;font-size:10px;color:var(--dim)}
+#inspect .tb{margin-top:6px;margin-right:5px;padding:5px 9px}
+#toolbar{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);display:flex;gap:6px;
+  padding:6px;max-width:96vw;overflow-x:auto}
+#submenu{position:fixed;bottom:52px;left:50%;transform:translateX(-50%);display:none;gap:6px;
+  padding:6px;max-width:96vw;overflow-x:auto}
+#submenu.open{display:flex}
+#submenu .cost{color:var(--or);font-size:10px;margin-left:4px}
+#banner{position:fixed;top:16%;left:50%;transform:translateX(-50%);font-size:21px;letter-spacing:.4em;
+  color:var(--cy);text-shadow:0 0 18px rgba(0,229,255,.8);opacity:0;transition:opacity .35s;
+  pointer-events:none;z-index:40;white-space:nowrap}
+#banner.bad{color:var(--rd);text-shadow:0 0 18px rgba(255,71,87,.8)}
+#banner.good{color:var(--gn);text-shadow:0 0 18px rgba(57,255,136,.8)}
+#banner.warn{color:var(--yl);text-shadow:0 0 18px rgba(255,216,74,.8)}
+#banner.show{opacity:1}
+#cancelTool{position:fixed;bottom:104px;right:12px;display:none;z-index:20;padding:10px 14px;font-size:12px}
+#modal{position:fixed;inset:0;background:rgba(2,4,9,.86);display:none;align-items:center;
+  justify-content:center;z-index:50}
+#modal.open{display:flex}
+.mbox{width:min(580px,92vw);max-height:88vh;overflow-y:auto;padding:24px 28px;border:1px solid var(--bd);
+  background:#070b14;box-shadow:0 0 40px rgba(0,229,255,.12);border-radius:6px}
+.mbox h1{margin:0;font-size:30px;letter-spacing:.3em;color:var(--cy);text-shadow:0 0 22px rgba(0,229,255,.7)}
+.mbox .mh-sub{color:var(--mg);letter-spacing:.45em;font-size:11px;margin:4px 0 16px}
+.mbox p{font-size:12px;line-height:1.65;color:#9fb4d8}
+.mbox table{font-size:11px;border-collapse:collapse;width:100%;margin:8px 0}
+.mbox td{padding:3px 6px;border-bottom:1px solid #131c30}
+.mbox td:first-child{color:var(--cy);white-space:nowrap}
+.mbox .big{padding:12px 22px;font-size:13px;letter-spacing:.2em;border-color:var(--cy);color:var(--cy);margin-top:12px}
+.mbox .stat{color:#e8f6ff}
+@media (max-width:700px){
+  #hud{font-size:11px;gap:7px;padding:5px 7px}
+  #checklist{width:188px;font-size:10px}
+  #log{width:188px;font-size:10px;max-height:24vh}
+  #inspect{width:236px;bottom:96px}
+  #toolbar{bottom:6px}
+  #submenu{bottom:48px}
+  .mbox h1{font-size:22px}
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud" class="panel">
+  <b id="h-day">DAY 1 06:00</b>
+  <span class="res"><i class="sw" style="background:#ff9f2d"></i>SCR <b id="h-scrap">0</b></span>
+  <span class="res"><i class="sw" style="background:#39ff88"></i>CMP <b id="h-comp">0</b></span>
+  <span class="res"><i class="sw" style="background:#b8ff5e"></i>PRO <b id="h-raw">0</b></span>
+  <span class="res"><i class="sw" style="background:#00e5ff"></i>MEAL <b id="h-meal">0</b></span>
+  <span class="res"><i class="sw" style="background:#ffd84a"></i><span id="h-pwr">PWR 0/0</span></span>
+  <span id="h-extract" style="display:none">EXTRACT <b id="h-exv">0%</b></span>
+  <span class="gap"></span>
+  <button class="tb spd" id="sp-p">II</button>
+  <button class="tb spd on" id="sp-1">1×</button>
+  <button class="tb spd" id="sp-2">2×</button>
+  <button class="tb spd" id="sp-3">3×</button>
+  <button class="tb" id="b-all">SQUAD</button>
+  <button class="tb" id="b-mute">SND</button>
+  <button class="tb" id="b-help">?</button>
+</div>
+<div id="checklist" class="panel"><b>PRIORITY DIRECTIVES</b><ul id="ck"></ul></div>
+<div id="log" class="panel"></div>
+<div id="inspect" class="panel"></div>
+<div id="submenu" class="panel"></div>
+<div id="toolbar" class="panel">
+  <button class="tb" id="t-build">BUILD</button>
+  <button class="tb" id="t-orders">ORDERS</button>
+  <button class="tb" id="t-zones">ZONES</button>
+  <button class="tb" id="t-draft" style="display:none">DRAFT [R]</button>
+</div>
+<button id="cancelTool" class="tb warnb">✕ CANCEL TOOL</button>
+<div id="banner"></div>
+<div id="modal"></div>
+<script>
+"use strict";
+/* ============================================================
+   NEON SPRAWL — Colony Protocol  v0.1
+   Single-file cyberpunk colony sim (RimWorld-style vertical slice)
+   ============================================================ */
+
+/* ---------- helpers ---------- */
+const T=16, MW=56, MH=40, TPD=2400, TPS=10;     // tile px, map w/h, ticks/day, ticks/sec
+function R(a,b){return a+Math.random()*(b-a)}
+function RI(a,b){return Math.floor(R(a,b+1))}
+function CH(a){return a[Math.floor(Math.random()*a.length)]}
+function clamp(v,a,b){return v<a?a:v>b?b:v}
+function K(x,y){return x+","+y}
+function INB(x,y){return x>=0&&y>=0&&x<MW&&y<MH}
+function DIST(ax,ay,bx,by){return Math.hypot(bx-ax,by-ay)}
+function CHEB(ax,ay,bx,by){return Math.max(Math.abs(bx-ax),Math.abs(by-ay))}
+function hash2(x,y){let h=(x*374761393+y*668265263)|0;h=(h^(h>>13))*1274126177;return ((h^(h>>16))>>>0)/4294967295}
+let _uid=1; function uid(){return _uid++}
+function $(id){return document.getElementById(id)}
+
+/* ---------- audio ---------- */
+const SFX=(()=>{let ac=null,mut=false;
+  function ctx(){if(!ac){try{ac=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}
+    if(ac&&ac.state==="suspended")ac.resume(); return ac}
+  function tone(f,d,type,v,slide){const a=ctx();if(!a||mut)return;
+    const o=a.createOscillator(),g=a.createGain();o.type=type||"square";o.frequency.value=f;
+    if(slide)o.frequency.exponentialRampToValueAtTime(slide,a.currentTime+d);
+    g.gain.value=v||.04;g.gain.exponentialRampToValueAtTime(.0001,a.currentTime+d);
+    o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+d)}
+  return{
+    wake(){ctx()},
+    shoot(){tone(880,.07,"square",.025,220)},
+    foeshoot(){tone(300,.09,"sawtooth",.03,90)},
+    hit(){tone(160,.06,"triangle",.045)},
+    build(){tone(520,.09,"square",.03,820)},
+    ui(){tone(660,.04,"square",.018)},
+    alert(){tone(220,.28,"sawtooth",.05,110)},
+    good(){tone(540,.14,"sine",.05,1080)},
+    die(){tone(140,.4,"sawtooth",.055,40)},
+    toggleMute(){mut=!mut;return mut}
+  }})();
+
+/* ---------- data definitions ---------- */
+const DEF={
+  ruin:  {name:"Derelict Wall", nat:1, blocks:1, hp:140, col:"#332f23"},
+  scrap: {name:"Scrap Heap",    nat:1, blocks:1, hp:1, work:140},
+  cache: {name:"Supply Cache",  nat:1, blocks:1, hp:1, work:60},
+  wall:  {name:"Plasteel Wall", cost:{scrap:4},          hp:220, blocks:1, work:60,  cat:"b", desc:"Cheap, sturdy barrier."},
+  door:  {name:"Blast Door",    cost:{scrap:7},          hp:170, blocks:2, work:90,  cat:"b", desc:"Runners pass. Raiders breach."},
+  pod:   {name:"Sleep Pod",     cost:{scrap:14},         hp:80,  blocks:0, work:120, cat:"b", desc:"Fast, comfortable rest."},
+  synth: {name:"Synth Station", cost:{scrap:20,comp:2},  hp:100, blocks:1, work:160, pw:2, cat:"b", desc:"Cooks meals from synth-protein."},
+  vat:   {name:"Algae Vat",     cost:{scrap:25,comp:2},  hp:100, blocks:1, work:180, pw:3, cat:"b", desc:"Grows synth-protein over time."},
+  gen:   {name:"Fusion Cell",   cost:{scrap:30,comp:3},  hp:120, blocks:1, work:200, pwGen:12, cat:"b", desc:"Generates 12 power."},
+  lamp:  {name:"Neon Lamp",     cost:{scrap:5,comp:1},   hp:40,  blocks:0, work:30,  pw:1, cat:"b", desc:"Light + small mood aura at night."},
+  turret:{name:"Auto-Turret",   cost:{scrap:30,comp:4},  hp:180, blocks:1, work:220, pw:4, cat:"b", desc:"Fires on hostiles in range."},
+  beacon:{name:"Extraction Beacon", cost:{scrap:80,comp:12}, hp:240, blocks:1, work:420, pw:8, cat:"b", desc:"Keep powered one full day to escape the sprawl."}
+};
+const BUILD_ORDER=["wall","door","pod","synth","vat","gen","lamp","turret","beacon"];
+const RESCOL={scrap:"#ff9f2d",comp:"#39ff88",raw:"#b8ff5e",meal:"#00e5ff"};
+const RESNAME={scrap:"scrap",comp:"components",raw:"protein",meal:"meals"};
+
+const WEAP={
+  pistol:{name:"Slug Pistol", dmg:[8,13], rng:8.5, cd:9, acc:0},
+  smg:   {name:"Skorpid SMG", dmg:[5,8],  rng:7,   cd:4, acc:-0.06}
+};
+const FOED={
+  ganger: {name:"Ganger",        hp:65,  dmg:[6,9],   rng:1.5, cd:11, spd:0.30, col:"#ff2d95"},
+  gunner: {name:"Gun Punk",      hp:55,  dmg:[5,9],   rng:7.5, cd:13, spd:0.27, col:"#ff4757"},
+  bruiser:{name:"Chrome Bruiser",hp:150, dmg:[13,19], rng:1.5, cd:12, spd:0.22, col:"#ff7a1a"}
+};
+const TRAITS=[
+  {id:"chromed", n:"Chromed Arm", d:"+15% work speed", work:1.15},
+  {id:"jittery", n:"Jittery",     d:"+10% move, −8% aim", move:1.10, acc:-0.08},
+  {id:"deadeye", n:"Deadeye",     d:"+10% aim", acc:0.10},
+  {id:"stoic",   n:"Stoic",       d:"Breaks only at very low mood", brk:-8},
+  {id:"nightowl",n:"Night Owl",   d:"−15% rest drain", rest:0.85},
+  {id:"glutton", n:"Glutton",     d:"+20% hunger drain", hung:1.2},
+  {id:"lazy",    n:"Burned Out",  d:"−12% work speed", work:0.88},
+  {id:"wired",   n:"Wired",       d:"−25% rest drain, −4 mood", rest:0.75, mood:-4},
+  {id:"sunny",   n:"Optimist",    d:"+6 mood", mood:6}
+];
+const NF=["Vex","Nyx","Rezz","Mara","Kade","Echo","Juno","Sable","Riko","Dash","Onna","Pike","Zee","Iris","Cole","Yuri","Tash","Bram"];
+const NH=["Static","Socket","Drift","Ghost","Patch","Vandal","Cinder","Hex","Mute","Bit","Razor","Loop","Null","Flux","Wirez","Crash"];
+const ACC=["#00e5ff","#39ff88","#ffd84a","#ff9ff3","#7aa2ff","#ff9f2d"];
+
+/* ---------- game state ---------- */
+const ST={
+  phase:"menu", tick:0, speed:1, paused:false,
+  res:{scrap:0,comp:0,raw:0,meal:0},
+  ter:new Uint8Array(MW*MH),
+  structs:new Map(),
+  items:[], pawns:[], foes:[], beams:[], floats:[],
+  zone:new Set(),
+  grp:{}, lastRaid:0, nextEv:1e9, storm:0, black:0,
+  pwG:0, pwU:0, pwOk:true,
+  sel:[],
+  stats:{kills:0,built:0,deaths:0,salv:0,hauled:0,raids:0},
+  flags:{}
+};
+function dayN(){return Math.floor(ST.tick/TPD)+1}
+function hourN(){return ((ST.tick%TPD)/100+6)%24}   // day starts 06:00
+
+/* ---------- structures / passability ---------- */
+function structAt(x,y){return ST.structs.get(K(x,y))||null}
+function addStruct(s){ST.structs.set(K(s.x,s.y),s)}
+function removeStruct(s){if(ST.structs.get(K(s.x,s.y))===s)ST.structs.delete(K(s.x,s.y))}
+function terCost(x,y){return ST.ter[x+y*MW]===3?1.2:1}
+function colCost(x,y){const s=structAt(x,y);if(!s||s.bp)return terCost(x,y);
+  const b=DEF[s.type].blocks;if(b===0)return terCost(x,y);if(b===2)return 1.7;return -1}
+function foeCost(x,y){const s=structAt(x,y);if(!s||s.bp)return 1;const d=DEF[s.type];
+  if(d.nat&&d.blocks)return -1;if(d.blocks===0)return 1;if(d.blocks===2)return 15;return 28}
+
+/* ---------- A* pathfinding ---------- */
+class Heap{constructor(){this.a=[]}
+  push(n){const a=this.a;a.push(n);let i=a.length-1;
+    while(i>0){const p=(i-1)>>1;if(a[p].f<=a[i].f)break;const t=a[p];a[p]=a[i];a[i]=t;i=p}}
+  pop(){const a=this.a;const top=a[0];const l=a.pop();
+    if(a.length){a[0]=l;let i=0;for(;;){let c=i*2+1;if(c>=a.length)break;
+      if(c+1<a.length&&a[c+1].f<a[c].f)c++;if(a[i].f<=a[c].f)break;
+      const t=a[i];a[i]=a[c];a[c]=t;i=c}}return top}
+  get size(){return this.a.length}}
+
+const DIRS=[[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,1.45],[1,-1,1.45],[-1,1,1.45],[-1,-1,1.45]];
+function astar(sx,sy,gx,gy,opt){opt=opt||{};const adj=opt.adj?1:0;const cf=opt.foe?foeCost:colCost;
+  if(!INB(gx,gy)||!INB(sx,sy))return null;
+  if(adj?CHEB(sx,sy,gx,gy)<=1:(sx===gx&&sy===gy))return [];
+  const open=new Heap();const gS=new Float32Array(MW*MH).fill(Infinity);
+  const par=new Int32Array(MW*MH).fill(-1);
+  const si=sx+sy*MW;gS[si]=0;open.push({i:si,g:0,f:CHEB(sx,sy,gx,gy)});
+  let found=-1,iter=0;
+  while(open.size&&iter++<5000){const n=open.pop();const ni=n.i;
+    if(n.g>gS[ni]+1e-4)continue;
+    const nx=ni%MW,ny=(ni/MW)|0;
+    if(adj?CHEB(nx,ny,gx,gy)<=1:(nx===gx&&ny===gy)){found=ni;break}
+    for(let k=0;k<8;k++){const dx=DIRS[k][0],dy=DIRS[k][1],m=DIRS[k][2];
+      const X=nx+dx,Y=ny+dy;if(!INB(X,Y))continue;
+      if(dx!==0&&dy!==0){if(cf(nx+dx,ny)<0||cf(nx,ny+dy)<0)continue}
+      const c=cf(X,Y);if(c<0)continue;
+      const ng=gS[ni]+c*m;const ii=X+Y*MW;
+      if(ng<gS[ii]-1e-3){gS[ii]=ng;par[ii]=ni;open.push({i:ii,g:ng,f:ng+CHEB(X,Y,gx,gy)})}}}
+  if(found<0)return null;
+  const path=[];let cur=found;
+  while(cur!==si&&cur>=0){path.push({x:cur%MW,y:(cur/MW)|0});cur=par[cur]}
+  path.reverse();return path}
+
+function los(x0,y0,x1,y1){const dx=x1-x0,dy=y1-y0;
+  const n=Math.ceil(Math.max(Math.abs(dx),Math.abs(dy))*2)+1;
+  const c0x=Math.floor(x0),c0y=Math.floor(y0),c1x=Math.floor(x1),c1y=Math.floor(y1);
+  for(let i=1;i<n;i++){const t=i/n;
+    const cx=Math.floor(x0+dx*t),cy=Math.floor(y0+dy*t);
+    if((cx===c0x&&cy===c0y)||(cx===c1x&&cy===c1y))continue;
+    const s=structAt(cx,cy);
+    if(s&&!s.bp){const b=DEF[s.type].blocks;if(b===1||b===2)return false}}
+  return true}
+
+/* ---------- items ---------- */
+function dropItem(x,y,res,qty){if(qty<=0)return;
+  let cx=x,cy=y;
+  if(colCost(cx,cy)<0){let best=null,bd=99;             // spiral to nearest open cell
+    for(let r=1;r<5&&!best;r++)for(let oy=-r;oy<=r;oy++)for(let ox=-r;ox<=r;ox++){
+      const X=x+ox,Y=y+oy;if(!INB(X,Y)||colCost(X,Y)<0)continue;
+      const d=Math.abs(ox)+Math.abs(oy);if(d<bd){bd=d;best={x:X,y:Y}}}
+    if(best){cx=best.x;cy=best.y}}
+  for(const it of ST.items)if(it.x===cx&&it.y===cy&&it.res===res){it.qty+=qty;return}
+  ST.items.push({id:uid(),x:cx,y:cy,res,qty,resv:0})}
+function removeItem(it){const i=ST.items.indexOf(it);if(i>=0)ST.items.splice(i,1);it.gone=true}
+
+/* ---------- zones ---------- */
+function nearestZoneCell(px,py){let best=null,bd=1e9;
+  for(const k of ST.zone){const c=k.split(",");const x=+c[0],y=+c[1];
+    if(colCost(x,y)<0)continue;
+    const d=DIST(px,py,x+.5,y+.5);if(d<bd){bd=d;best={x,y}}}
+  return best}
+
+/* ---------- economy ---------- */
+function afford(cost){for(const k in cost)if(ST.res[k]<cost[k])return false;return true}
+function pay(cost){for(const k in cost)ST.res[k]-=cost[k]}
+function refund(cost,frac){for(const k in cost){const v=Math.floor(cost[k]*frac);if(v>0)ST.res[k]+=v}}
+function wealth(){let w=ST.res.scrap+ST.res.comp*6+ST.res.raw+ST.res.meal*2;
+  for(const s of ST.structs.values()){if(s.bp||DEF[s.type].nat)continue;
+    const c=DEF[s.type].cost||{};w+=(c.scrap||0)+(c.comp||0)*6}
+  return w}
+
+/* ---------- placement / construction ---------- */
+function entityOn(x,y){for(const p of ST.pawns)if((p.px|0)===x&&(p.py|0)===y)return true;
+  for(const f of ST.foes)if((f.px|0)===x&&(f.py|0)===y)return true;return false}
+function canPlace(type,x,y){if(!INB(x,y))return false;if(structAt(x,y))return false;
+  if(DEF[type].blocks!==0&&entityOn(x,y))return false;return true}
+function placeBp(type,x,y){const d=DEF[type];
+  if(!canPlace(type,x,y))return false;
+  if(!afford(d.cost)){flashMsg("Insufficient resources for "+d.name);return false}
+  pay(d.cost);
+  addStruct({id:uid(),kind:"s",type,x,y,hp:1,maxHp:d.hp,bp:true,prog:0,need:d.work,
+    res:0,desig:false,decon:false,owner:0,cd:0,charge:0,vt:0,aim:0,powered:false});
+  syncHUD();return true}
+function cancelBp(s){refund(DEF[s.type].cost||{},1);removeStruct(s);syncHUD()}
+function finishBuild(s){s.bp=false;s.hp=s.maxHp;s.prog=0;ST.stats.built++;
+  SFX.build();powerRecalc();
+  if(DEF[s.type].blocks!==0)nudgeOff(s.x,s.y);
+  if(s.type==="beacon"){log("Extraction Beacon online. Keep it powered for one full day.","good");banner("BEACON CONSTRUCTED","good")}}
+function nudgeOff(x,y){const all=ST.pawns.concat(ST.foes);
+  for(const e of all){if((e.px|0)!==x||(e.py|0)!==y)continue;
+    for(let k=0;k<8;k++){const X=x+DIRS[k][0],Y=y+DIRS[k][1];
+      if(INB(X,Y)&&colCost(X,Y)>=0){e.px=X+.5;e.py=Y+.5;e.path=null;break}}}}
+function deconFinish(s){
+  if(DEF[s.type].nat){dropItem(s.x,s.y,"scrap",RI(2,5))}
+  else{refund(DEF[s.type].cost||{},.5)}
+  removeStruct(s);powerRecalc();syncHUD()}
+function salvageFinish(s){ST.stats.salv++;
+  if(s.type==="scrap"){dropItem(s.x,s.y,"scrap",RI(8,13));
+    if(Math.random()<.32)dropItem(s.x,s.y,"comp",RI(1,2))}
+  else{const r=Math.random();
+    if(r<.4)dropItem(s.x,s.y,"raw",RI(6,10));
+    else if(r<.7)dropItem(s.x,s.y,"comp",RI(2,4));
+    else dropItem(s.x,s.y,"scrap",RI(6,10))}
+  removeStruct(s)}
+function damageStruct(s,d){if(s.bp){cancelBp(s);return}
+  s.hp-=d;
+  if(s.hp<=0){removeStruct(s);powerRecalc();
+    if(!DEF[s.type].nat){log(DEF[s.type].name+" destroyed.","bad");
+      if(s.type==="beacon")banner("BEACON DESTROYED","bad")}}}
+
+/* ---------- power ---------- */
+function powerRecalc(){let g=0,u=0;const blackout=ST.black>ST.tick;
+  for(const s of ST.structs.values()){if(s.bp)continue;const d=DEF[s.type];
+    if(d.pwGen)g+=blackout?0:d.pwGen;if(d.pw)u+=d.pw}
+  ST.pwG=g;ST.pwU=u;ST.pwOk=g>=u;
+  for(const s of ST.structs.values()){const d=DEF[s.type];
+    s.powered=!s.bp&&(!d.pw||ST.pwOk)&&!(d.pwGen&&blackout)}}
+
+/* ---------- map generation ---------- */
+function genMap(){
+  ST.ter=new Uint8Array(MW*MH);ST.structs.clear();ST.items.length=0;ST.zone.clear();
+  const cx=MW/2,cy=MH/2;
+  for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){
+    const h=hash2(x,y);ST.ter[x+y*MW]=h<.62?0:(h<.88?1:2)}
+  for(let b=0;b<6;b++){const bx=RI(4,MW-5),by=RI(4,MH-5),r=RI(3,6);   // ash patches
+    for(let y=-r;y<=r;y++)for(let x=-r;x<=r;x++){const X=bx+x,Y=by+y;
+      if(INB(X,Y)&&x*x+y*y<=r*r&&hash2(X,Y+99)<.8)ST.ter[X+Y*MW]=3}}
+  // ruin shells
+  for(let r=0;r<5;r++){const w=RI(5,9),h=RI(4,8);
+    const rx=RI(2,MW-w-3),ry=RI(2,MH-h-3);
+    if(DIST(rx+w/2,ry+h/2,cx,cy)<10)continue;
+    for(let x=rx;x<rx+w;x++)for(let y=ry;y<ry+h;y++){
+      const edge=(x===rx||x===rx+w-1||y===ry||y===ry+h-1);
+      if(!edge||structAt(x,y)||Math.random()<.28)continue;
+      if(DIST(x,y,cx,cy)<7)continue;
+      addStruct({id:uid(),kind:"s",type:"ruin",x,y,hp:140,maxHp:140,bp:false,prog:0,need:0,
+        res:0,desig:false,decon:false,owner:0,cd:0,charge:0,vt:0,aim:0,powered:false})}}
+  // scrap clusters
+  let placed=0,guard=0;
+  while(placed<26&&guard++<600){const sx=RI(2,MW-3),sy=RI(2,MH-3);
+    if(DIST(sx,sy,cx,cy)<7||structAt(sx,sy))continue;
+    const n=RI(2,4);
+    for(let i=0;i<n&&placed<26;i++){const X=clamp(sx+RI(-2,2),1,MW-2),Y=clamp(sy+RI(-2,2),1,MH-2);
+      if(structAt(X,Y)||DIST(X,Y,cx,cy)<7)continue;
+      addStruct({id:uid(),kind:"s",type:"scrap",x:X,y:Y,hp:1,maxHp:1,bp:false,prog:0,need:0,
+        res:0,desig:false,decon:false,owner:0,cd:0,charge:0,vt:0,aim:0,powered:false});placed++}}
+  // supply caches
+  placed=0;guard=0;
+  while(placed<8&&guard++<400){const X=RI(2,MW-3),Y=RI(2,MH-3);
+    if(structAt(X,Y)||DIST(X,Y,cx,cy)<6)continue;
+    addStruct({id:uid(),kind:"s",type:"cache",x:X,y:Y,hp:1,maxHp:1,bp:false,prog:0,need:0,
+      res:0,desig:false,decon:false,owner:0,cd:0,charge:0,vt:0,aim:0,powered:false});placed++}
+  // starting supplies
+  dropItem(cx-2|0,cy|0,"scrap",16);dropItem(cx+2|0,cy-1|0,"scrap",14);
+  dropItem(cx|0,(cy+2)|0,"raw",10);dropItem((cx+1)|0,(cy+2)|0,"meal",6);
+  dropItem((cx-1)|0,(cy-2)|0,"comp",4)}
+
+/* ---------- pawns ---------- */
+function mkPawn(x,y,spec){const t1=CH(TRAITS);let t2=CH(TRAITS);while(t2===t1)t2=CH(TRAITS);
+  const sk={sal:RI(0,5),bld:RI(0,5),cook:RI(0,5),sht:RI(1,6)};
+  if(spec)sk[spec]=clamp(sk[spec]+4,0,10);
+  return{id:uid(),kind:"pawn",name:CH(NF)+' "'+CH(NH)+'"',
+    accent:ACC[(ST.pawns.length)%ACC.length],tr:[t1,t2],sk,xp:{sal:0,bld:0,cook:0,sht:0},
+    px:x+.5,py:y+.5,hp:100,drafted:false,needs:{food:R(80,95),rest:R(70,90)},
+    mood:60,mods:[],weapon:WEAP[CH(["pistol","pistol","smg"])],cd:0,
+    job:null,path:null,pi:0,pTx:-1,pTy:-1,claim:0,dazed:0,dz:null,sleeping:false,
+    carry:null,forced:0,order:null,unre:new Map(),flee:0,hurtT:-999}}
+function trMul(p,k){let m=1;for(const t of p.tr)if(t[k]!==undefined)m*=t[k];return m}
+function trAdd(p,k){let v=0;for(const t of p.tr)if(t[k]!==undefined)v+=t[k];return v}
+function workSpd(p,sk){return (0.6+sk*0.09)*trMul(p,"work")}
+function moveSpd(p){let s=0.32*trMul(p,"move");if(p.dazed>ST.tick)s*=.55;return s}
+function accOf(p,d){return clamp((0.92-d*0.034)*(0.66+p.sk.sht*0.035)+trAdd(p,"acc")+(p.weapon.acc||0),0.05,0.97)}
+function gainXp(p,k){p.xp[k]=(p.xp[k]||0)+1;const need=60*(p.sk[k]+1);
+  if(p.xp[k]>=need&&p.sk[k]<10){p.xp[k]=0;p.sk[k]++;
+    log(p.name+" advanced: "+({sal:"Salvage",bld:"Construction",cook:"Synthcraft",sht:"Shooting"})[k]+" "+p.sk[k],"good")}}
+
+/* mood */
+function addMod(p,id,label,val,dur){
+  for(let i=p.mods.length-1;i>=0;i--)if(p.mods[i].id===id)p.mods.splice(i,1);
+  p.mods.push({id,l:label,v:val,until:ST.tick+dur})}
+function moodCalc(p){
+  p.mods=p.mods.filter(m=>m.until>ST.tick);
+  let m=42+trAdd(p,"mood");
+  for(const md of p.mods)m+=md.v;
+  if(p.needs.food<25)m-=8;
+  if(p.needs.rest<25)m-=8;
+  if(ST.storm>ST.tick)m-=15;
+  if(lightLevel(hourN())>.3){                       // neon lamp aura at night
+    for(const s of ST.structs.values())
+      if(s.type==="lamp"&&s.powered&&DIST(p.px,p.py,s.x+.5,s.y+.5)<4.5){m+=3;break}}
+  p.mood=clamp(m,0,100)}
+
+/* movement */
+function gotoCell(p,x,y,adj){
+  const cx=p.px|0,cy=p.py|0;
+  if(adj?CHEB(cx,cy,x,y)<=1:(cx===x&&cy===y)){p.path=null;return "arr"}
+  if(!p.path||p.pTx!==x||p.pTy!==y||p.pi>=p.path.length){
+    const pa=astar(cx,cy,x,y,{adj:adj});
+    if(!pa)return "fail";
+    p.path=pa;p.pi=0;p.pTx=x;p.pTy=y;
+    if(pa.length===0){p.path=null;return "arr"}}
+  const node=p.path[p.pi];
+  if(colCost(node.x,node.y)<0){p.path=null;return "mov"}   // blocked mid-route → repath next tick
+  const tx=node.x+.5,ty=node.y+.5,sp=moveSpd(p);
+  const dx=tx-p.px,dy=ty-p.py,d=Math.hypot(dx,dy);
+  if(d<=sp){p.px=tx;p.py=ty;p.pi++;
+    if(p.pi>=p.path.length){p.path=null;
+      const a=adj?CHEB(node.x,node.y,x,y)<=1:(node.x===x&&node.y===y);
+      return a?"arr":"mov"}}
+  else{p.px+=dx/d*sp;p.py+=dy/d*sp}
+  return "mov"}
+function unre(p,x,y){const u=p.unre.get(K(x,y));return u!==undefined&&u>ST.tick}
+function markUnre(p,x,y){p.unre.set(K(x,y),ST.tick+300)}
+function randNear(p,r){for(let i=0;i<10;i++){
+  const X=clamp((p.px|0)+RI(-r,r),0,MW-1),Y=clamp((p.py|0)+RI(-r,r),0,MH-1);
+  if(colCost(X,Y)>=0)return{x:X,y:Y}}return null}
+
+/* job search */
+function nearestStruct(p,fn){let best=null,bd=1e9;
+  for(const s of ST.structs.values()){if(!fn(s))continue;
+    if(unre(p,s.x,s.y))continue;
+    const d=DIST(p.px,p.py,s.x+.5,s.y+.5);if(d<bd){bd=d;best=s}}
+  return best}
+function nearestItem(p){let best=null,bd=1e9;
+  for(const it of ST.items){if(it.resv)continue;if(unre(p,it.x,it.y))continue;
+    if(ST.zone.has(K(it.x,it.y)))continue;                 // already in stockpile
+    const d=DIST(p.px,p.py,it.x+.5,it.y+.5);if(d<bd){bd=d;best=it}}
+  return best}
+function mkEat(p){if(ST.res.meal<=0&&ST.res.raw<=0)return null;
+  let c=nearestZoneCell(p.px,p.py),adj=0;
+  if(!c){const stn=nearestStruct(p,s=>s.type==="synth"&&!s.bp);
+    if(stn){c={x:stn.x,y:stn.y};adj=1}}
+  if(!c)c={x:p.px|0,y:p.py|0};
+  return{t:"eat",x:c.x,y:c.y,adj,prog:0}}
+function mkSleep(p){let pod=null;
+  for(const s of ST.structs.values()){
+    if(s.type!=="pod"||s.bp||unre(p,s.x,s.y))continue;
+    if(s.owner===p.id){pod=s;break}
+    if(!s.owner&&!pod)pod=s}
+  if(pod){pod.owner=p.id;return{t:"sleep",s:pod,x:pod.x,y:pod.y}}
+  return{t:"sleep",s:null,x:p.px|0,y:p.py|0}}
+function findJob(p){
+  if(p.needs.food<=22){const j=mkEat(p);if(j)return j}
+  if(p.needs.rest<=18)return mkSleep(p);
+  if(ST.res.raw>=2&&ST.res.meal<10){
+    const stn=nearestStruct(p,s=>s.type==="synth"&&!s.bp&&s.powered&&!s.res);
+    if(stn){stn.res=p.id;return{t:"cook",s:stn,prog:0}}}
+  const b=nearestStruct(p,s=>(s.bp||s.decon)&&!s.res);
+  if(b){b.res=p.id;return{t:"build",s:b,prog:0}}
+  const m=nearestStruct(p,s=>s.desig&&!s.res&&(s.type==="scrap"||s.type==="cache"));
+  if(m){m.res=p.id;return{t:"salvage",s:m}}
+  if(ST.zone.size>0){const it=nearestItem(p);
+    if(it){it.resv=p.id;return{t:"haul",it,phase:0,x:0,y:0}}}
+  if(p.needs.food<=45){const j=mkEat(p);if(j)return j}
+  if(p.needs.rest<=35)return mkSleep(p);
+  const w=randNear(p,5)||{x:p.px|0,y:p.py|0};
+  return{t:"idle",until:ST.tick+RI(25,70),x:w.x,y:w.y}}
+function clearJob(p){const j=p.job;
+  if(j){if(j.s&&j.s.res===p.id)j.s.res=0;
+    if(j.it&&j.it.resv===p.id)j.it.resv=0;
+    if(p.carry){dropItem(p.px|0,p.py|0,p.carry.res,p.carry.qty);p.carry=null}}
+  p.job=null;p.path=null;p.sleeping=false}
+function jobLabel(p){if(p.drafted)return p.order?"Moving (drafted)":"Standing guard";
+  if(p.dazed>ST.tick)return "Dazed — wandering";
+  if(p.flee>ST.tick)return "Fleeing!";
+  const j=p.job;if(!j)return "Thinking…";
+  switch(j.t){case "eat":return "Getting food";case "sleep":return p.sleeping?"Sleeping":"Heading to rest";
+    case "cook":return "Synthesizing meals";case "build":return j.s&&j.s.decon?"Deconstructing":"Constructing";
+    case "salvage":return "Salvaging";case "haul":return p.carry?"Hauling to stockpile":"Collecting salvage";
+    default:return "Idling"}}
+
+/* combat helpers (pawn side) */
+function foeById(id){for(const f of ST.foes)if(f.id===id)return f;return null}
+function nearestFoeInRange(p){let best=null,bd=1e9;
+  for(const f of ST.foes){if(f.hp<=0)continue;
+    const d=DIST(p.px,p.py,f.px,f.py);
+    if(d<=p.weapon.rng&&d<bd&&los(p.px,p.py,f.px,f.py)){bd=d;best=f}}
+  return best}
+function foeNear(p,r){for(const f of ST.foes){if(f.hp<=0)continue;
+  if(DIST(p.px,p.py,f.px,f.py)<r)return true}return false}
+function fireAt(p,f){p.cd=p.weapon.cd;
+  const d=DIST(p.px,p.py,f.px,f.py);
+  beam(p.px,p.py,f.px,f.py,"#7df9ff");SFX.shoot();gainXp(p,"sht");
+  if(Math.random()<accOf(p,d))damageFoe(f,RI(p.weapon.dmg[0],p.weapon.dmg[1]))}
+function damagePawn(p,d){p.hp-=d;p.hurtT=ST.tick;SFX.hit();
+  addMod(p,"pain","In pain",-8,TPD*.4);
+  if(!p.drafted&&p.flee<ST.tick){clearJob(p);p.flee=ST.tick+90}
+  if(p.hp<=0)killPawn(p,"was killed in the fighting")}
+function killPawn(p,why){const i=ST.pawns.indexOf(p);if(i<0)return;
+  clearJob(p);ST.pawns.splice(i,1);ST.stats.deaths++;SFX.die();
+  for(const s of ST.structs.values())if(s.owner===p.id)s.owner=0;
+  log(p.name+" "+why+".","bad");banner("RUNNER DOWN","bad");
+  for(const o of ST.pawns)addMod(o,"loss","Lost a crewmate",-16,TPD*2.5);
+  ST.sel=ST.sel.filter(e=>e!==p);renderInspect();
+  if(ST.pawns.length===0&&ST.phase==="run")gameOver()}
+function homeCell(){return nearestZoneCell(MW/2,MH/2)||{x:MW/2|0,y:MH/2|0}}
+
+/* per-tick pawn logic */
+function pawnTick(p){
+  const hd=100/(TPD*0.95)*trMul(p,"hung");
+  const rd=100/(TPD*1.5)*trMul(p,"rest");
+  p.needs.food=Math.max(0,p.needs.food-hd);
+  if(p.sleeping){const rate=(p.job&&p.job.s)?0.10:0.065;
+    p.needs.rest=Math.min(100,p.needs.rest+rate);
+    if(p.needs.food>40&&p.hp<100)p.hp=Math.min(100,p.hp+0.03)}
+  else p.needs.rest=Math.max(0,p.needs.rest-rd);
+  if(p.needs.food<=0){
+    if(ST.tick%30===0){p.hp-=1;addMod(p,"starv","Starving",-12,80)}
+    if(p.hp<=0){killPawn(p,"starved to death");return}}
+  if(p.cd>0)p.cd--;
+  if(!p.sleeping&&p.hp<100&&p.needs.food>30&&ST.tick%10===0&&!foeNear(p,10))
+    p.hp=Math.min(100,p.hp+0.1);
+  if((ST.tick+p.id)%40===0)moodCalc(p);
+  // mental break
+  const brk=22+trAdd(p,"brk");
+  if(!p.drafted&&p.dazed<ST.tick&&p.mood<brk&&Math.random()<0.0018){
+    clearJob(p);p.dazed=ST.tick+260;p.dz=null;
+    log(p.name+" snapped — wandering dazed.","warn")}
+  if(p.dazed>ST.tick){p.sleeping=false;
+    if(!p.dz||((p.px|0)===p.dz.x&&(p.py|0)===p.dz.y))p.dz=randNear(p,4);
+    if(p.dz&&gotoCell(p,p.dz.x,p.dz.y,0)==="fail")p.dz=null;
+    return}
+  // drafted: manual control + auto-engage
+  if(p.drafted){p.sleeping=false;
+    if(p.order){const r=gotoCell(p,p.order.x,p.order.y,0);
+      if(r!=="mov")p.order=null;return}
+    let tgt=p.forced?foeById(p.forced):null;
+    if(tgt&&tgt.hp<=0){tgt=null;p.forced=0}
+    if(tgt){const d=DIST(p.px,p.py,tgt.px,tgt.py);
+      if(d<=p.weapon.rng&&los(p.px,p.py,tgt.px,tgt.py)){if(p.cd<=0)fireAt(p,tgt)}
+      else if(gotoCell(p,tgt.px|0,tgt.py|0,1)==="fail"){p.forced=0}
+      return}
+    tgt=nearestFoeInRange(p);
+    if(tgt&&p.cd<=0)fireAt(p,tgt);
+    return}
+  // fleeing
+  if(p.flee>ST.tick){const c=homeCell();gotoCell(p,c.x,c.y,1);return}
+  // sleeping wake conditions
+  if(p.sleeping&&ST.tick%20===0&&foeNear(p,7)){
+    p.sleeping=false;clearJob(p);addMod(p,"rude","Combat woke me",-4,TPD*.3)}
+  if(!p.job)p.job=findJob(p);
+  const j=p.job;if(!j)return;
+  switch(j.t){
+    case "idle":{if(ST.tick>j.until){p.job=null;break}
+      gotoCell(p,j.x,j.y,0);break}
+    case "eat":{const r=gotoCell(p,j.x,j.y,j.adj);
+      if(r==="fail"){markUnre(p,j.x,j.y);p.job=null;break}
+      if(r==="arr"){j.prog++;
+        if(j.prog>=22){
+          if(ST.res.meal>0){ST.res.meal--;p.needs.food=100;addMod(p,"meal","Hot synth-meal",5,TPD*.5)}
+          else if(ST.res.raw>0){ST.res.raw--;p.needs.food=Math.min(100,p.needs.food+55);
+            addMod(p,"raw","Ate raw protein",-6,TPD*.4)}
+          p.job=null;syncHUD()}}
+      break}
+    case "sleep":{
+      if(j.s&&(structAt(j.s.x,j.s.y)!==j.s||j.s.bp)){clearJob(p);break}
+      const r=gotoCell(p,j.x,j.y,0);
+      if(r==="fail"){if(j.s)markUnre(p,j.x,j.y);clearJob(p);break}
+      if(r==="arr"){p.sleeping=true;
+        if(p.needs.rest>=99||p.needs.food<12){
+          addMod(p,j.s?"pod":"floor",j.s?"Slept in a pod":"Slept on concrete",j.s?4:-7,TPD*.6);
+          clearJob(p)}}
+      break}
+    case "cook":{const s=j.s;
+      if(structAt(s.x,s.y)!==s||s.bp||!s.powered||ST.res.raw<2||ST.res.meal>=10){
+        if(s.res===p.id)s.res=0;p.job=null;break}
+      const r=gotoCell(p,s.x,s.y,1);
+      if(r==="fail"){markUnre(p,s.x,s.y);s.res=0;p.job=null;break}
+      if(r==="arr"){j.prog+=workSpd(p,p.sk.cook);
+        if(ST.tick%25===0)gainXp(p,"cook");
+        if(j.prog>=90){ST.res.raw-=2;ST.res.meal++;
+          float(s.x+.5,s.y+.5,"+1 MEAL","#00e5ff");s.res=0;p.job=null;syncHUD()}}
+      break}
+    case "build":{const s=j.s;
+      if(structAt(s.x,s.y)!==s||(!s.bp&&!s.decon)){p.job=null;break}
+      const r=gotoCell(p,s.x,s.y,1);
+      if(r==="fail"){markUnre(p,s.x,s.y);s.res=0;p.job=null;break}
+      if(r==="arr"){
+        if(s.decon){j.prog+=workSpd(p,p.sk.bld);
+          if(j.prog>=50){deconFinish(s);p.job=null}}
+        else{s.prog+=workSpd(p,p.sk.bld);
+          if(ST.tick%25===0)gainXp(p,"bld");
+          if(s.prog>=s.need){finishBuild(s);s.res=0;p.job=null}}}
+      break}
+    case "salvage":{const s=j.s;
+      if(structAt(s.x,s.y)!==s||!s.desig){p.job=null;break}
+      const r=gotoCell(p,s.x,s.y,1);
+      if(r==="fail"){markUnre(p,s.x,s.y);s.res=0;p.job=null;break}
+      if(r==="arr"){s.prog+=workSpd(p,p.sk.sal);
+        if(ST.tick%25===0)gainXp(p,"sal");
+        if(s.prog>=DEF[s.type].work){const sx=s.x,sy=s.y;salvageFinish(s);p.job=null;
+          if(ST.zone.size){const it=ST.items.find(i=>!i.resv&&!i.gone&&
+            Math.abs(i.x-sx)<=2&&Math.abs(i.y-sy)<=2);
+            if(it){it.resv=p.id;p.job={t:"haul",it,phase:0,x:0,y:0}}}}}
+      break}
+    case "haul":{
+      if(j.phase===0){const it=j.it;
+        if(!it||it.gone||it.resv!==p.id){p.job=null;break}
+        const r=gotoCell(p,it.x,it.y,0);
+        if(r==="fail"){markUnre(p,it.x,it.y);it.resv=0;p.job=null;break}
+        if(r==="arr"){p.carry={res:it.res,qty:it.qty};removeItem(it);
+          const c=nearestZoneCell(p.px,p.py);
+          if(!c){dropItem(p.px|0,p.py|0,p.carry.res,p.carry.qty);p.carry=null;p.job=null;break}
+          j.phase=1;j.x=c.x;j.y=c.y}}
+      else{const r=gotoCell(p,j.x,j.y,0);
+        if(r==="fail"){const c=nearestZoneCell(p.px,p.py);
+          if(c&&(c.x!==j.x||c.y!==j.y)){j.x=c.x;j.y=c.y}
+          else{dropItem(p.px|0,p.py|0,p.carry.res,p.carry.qty);p.carry=null;p.job=null}
+          break}
+        if(r==="arr"){ST.res[p.carry.res]+=p.carry.qty;ST.stats.hauled++;
+          float(p.px,p.py,"+"+p.carry.qty+" "+RESNAME[p.carry.res].toUpperCase(),RESCOL[p.carry.res]);
+          p.carry=null;p.job=null;syncHUD()}}
+      break}
+  }
+}
+
+/* ---------- foes ---------- */
+function damageFoe(f,d){f.hp-=d;
+  if(f.hp<=0&&!f.gone){f.gone=true;ST.stats.kills++;
+    if(Math.random()<.3)dropItem(f.px|0,f.py|0,"scrap",RI(2,4));
+    const g=ST.grp[f.group];if(g){g.alive--;
+      if(!g.ret&&g.alive>0&&g.alive/g.n0<=.34){g.ret=true;
+        log("The raiders are breaking off!","good")}}
+    ST.sel=ST.sel.filter(e=>e!==f)}}
+function spawnFoeAt(kind,x,y,group){const d=FOED[kind];
+  ST.foes.push({id:uid(),kind:"foe",fk:kind,name:d.name,px:x+.5,py:y+.5,
+    hp:d.hp,maxHp:d.hp,dmg:d.dmg,rng:d.rng,cd:d.cd,cdLeft:RI(0,d.cd),spd:d.spd,col:d.col,
+    path:null,pi:0,pTx:-1,pTy:-1,tgt:null,rp:0,group,hx:x,hy:y,gone:false})}
+function edgeCell(){for(let i=0;i<60;i++){const side=RI(0,3);let x,y;
+  if(side===0){x=RI(1,MW-2);y=1}else if(side===1){x=RI(1,MW-2);y=MH-2}
+  else if(side===2){x=1;y=RI(1,MH-2)}else{x=MW-2;y=RI(1,MH-2)}
+  if(foeCost(x,y)>=0&&foeCost(x,y)<5)return{x,y}}
+  return{x:1,y:1}}
+function spawnRaid(){const day=dayN();
+  const pts=0.9+day*0.75+wealth()/550;
+  let n=clamp(Math.round(pts),2,14);
+  if(ST.stats.raids===0)n=Math.min(n,3);
+  const gid=uid();ST.grp[gid]={n0:n,alive:n,ret:false,t0:ST.tick};
+  const e=edgeCell();
+  for(let i=0;i<n;i++){
+    const r=Math.random();
+    const kind=day<4?(r<.65?"ganger":"gunner"):(r<.5?"ganger":(r<.85?"gunner":"bruiser"));
+    const x=clamp(e.x+RI(-3,3),1,MW-2),y=clamp(e.y+RI(-3,3),1,MH-2);
+    spawnFoeAt(kind,foeCost(x,y)>=0?x:e.x,foeCost(x,y)>=0?y:e.y,gid)}
+  ST.stats.raids++;ST.lastRaid=ST.tick;
+  log("Raid inbound — "+n+" hostiles approaching from the sprawl.","bad");
+  banner("RAID INBOUND","bad");SFX.alert()}
+function acquire(f){let best=null,bd=1e9;
+  for(const p of ST.pawns){const d=DIST(f.px,f.py,p.px,p.py);
+    if(d<bd){bd=d;best={kind:"pawn",e:p}}}
+  for(const s of ST.structs.values()){
+    if(s.type!=="turret"||s.bp)continue;
+    const d=DIST(f.px,f.py,s.x+.5,s.y+.5)*1.15;
+    if(d<bd){bd=d;best={kind:"s",e:s}}}
+  return best}
+function foeGoto(f,x,y,adj){
+  const cx=f.px|0,cy=f.py|0;
+  if(adj?CHEB(cx,cy,x,y)<=1:(cx===x&&cy===y)){f.path=null;return "arr"}
+  if(!f.path||f.pTx!==x||f.pTy!==y||f.pi>=f.path.length){
+    const pa=astar(cx,cy,x,y,{foe:1,adj:adj});
+    if(!pa){f.path=null;return "fail"}
+    f.path=pa;f.pi=0;f.pTx=x;f.pTy=y;
+    if(pa.length===0){f.path=null;return "arr"}}
+  const node=f.path[f.pi];
+  const s=structAt(node.x,node.y);
+  if(s&&!s.bp&&DEF[s.type].blocks!==0&&!DEF[s.type].nat){   // breach what blocks the route
+    if(f.cdLeft<=0){f.cdLeft=f.cd;
+      damageStruct(s,RI(f.dmg[0],f.dmg[1]));SFX.hit();
+      beam(f.px,f.py,node.x+.5,node.y+.5,"#ff5560")}
+    if(structAt(node.x,node.y)===s)return "mov"}
+  else if(s&&!s.bp&&DEF[s.type].blocks!==0&&DEF[s.type].nat){f.path=null;return "mov"}
+  const tx=node.x+.5,ty=node.y+.5;
+  const dx=tx-f.px,dy=ty-f.py,d=Math.hypot(dx,dy);
+  if(d<=f.spd){f.px=tx;f.py=ty;f.pi++;
+    if(f.pi>=f.path.length)f.path=null}
+  else{f.px+=dx/d*f.spd;f.py+=dy/d*f.spd}
+  return "mov"}
+function foeTick(f){
+  if(f.cdLeft>0)f.cdLeft--;
+  const g=ST.grp[f.group];
+  if(g&&!g.ret&&ST.tick-g.t0>TPD*1.2){g.ret=true;
+    log("The raiders lose interest and pull back.","good")}
+  if(g&&g.ret){const r=foeGoto(f,f.hx,f.hy,0);
+    if(r==="arr"||r==="fail"){f.gone=true;g.alive--}
+    return}
+  if(!f.tgt||ST.tick>f.rp||
+     (f.tgt.kind==="pawn"&&ST.pawns.indexOf(f.tgt.e)<0)||
+     (f.tgt.kind==="s"&&structAt(f.tgt.e.x,f.tgt.e.y)!==f.tgt.e)){
+    f.rp=ST.tick+25;f.tgt=acquire(f)}
+  const t=f.tgt;if(!t)return;
+  const tx=t.kind==="pawn"?t.e.px:t.e.x+.5;
+  const ty=t.kind==="pawn"?t.e.py:t.e.y+.5;
+  const d=DIST(f.px,f.py,tx,ty);
+  if(d<=f.rng&&(f.rng<2||los(f.px,f.py,tx,ty))){
+    if(f.cdLeft<=0){f.cdLeft=f.cd;
+      const dmg=RI(f.dmg[0],f.dmg[1]);
+      if(f.rng>=2){beam(f.px,f.py,tx,ty,"#ff5560");SFX.foeshoot();
+        const acc=clamp(.78-d*.045,.15,.78);
+        if(Math.random()<acc){
+          if(t.kind==="pawn")damagePawn(t.e,dmg);else damageStruct(t.e,dmg)}}
+      else{SFX.hit();beam(f.px,f.py,tx,ty,"#ff2d95");
+        if(t.kind==="pawn")damagePawn(t.e,dmg);else damageStruct(t.e,dmg)}}
+    return}
+  foeGoto(f,Math.floor(tx),Math.floor(ty),t.kind==="s"?1:0)}
+
+/* ---------- turrets ---------- */
+function turretTick(s){if(s.bp||!s.powered)return;
+  if(s.cd>0){s.cd--;return}
+  let best=null,bd=1e9;
+  for(const f of ST.foes){if(f.hp<=0)continue;
+    const d=DIST(s.x+.5,s.y+.5,f.px,f.py);
+    if(d<=9.5&&d<bd&&los(s.x+.5,s.y+.5,f.px,f.py)){bd=d;best=f}}
+  if(!best)return;
+  s.cd=6;s.aim=Math.atan2(best.py-(s.y+.5),best.px-(s.x+.5));
+  beam(s.x+.5,s.y+.5,best.px,best.py,"#ffd84a");SFX.shoot();
+  if(Math.random()<clamp(.85-bd*.03,.3,.85))
+    damageFoe(best,RI(6,10))}
+
+/* ---------- effects ---------- */
+function beam(x0,y0,x1,y1,col){ST.beams.push({x0,y0,x1,y1,col,ttl:6,t0:6})}
+function float(x,y,txt,col){ST.floats.push({x,y,txt,col,ttl:46,t0:46})}
+
+/* ---------- events ---------- */
+function anyGen(){for(const s of ST.structs.values())if(s.type==="gen"&&!s.bp)return true;return false}
+function scheduleEv(){ST.nextEv=ST.tick+Math.floor(R(.55,1.05)*TPD)}
+function fireEvent(){
+  const forceRaid=ST.tick-ST.lastRaid>TPD*2.2;
+  const r=Math.random();
+  let ev=forceRaid?"raid":(r<.38?"raid":r<.58?"pod":r<.70?"wander":r<.85?"storm":"blackout");
+  if(ev==="raid"&&!forceRaid&&ST.tick-ST.lastRaid<TPD*0.9)ev=Math.random()<.5?"pod":"storm";
+  if(ev==="wander"&&ST.pawns.length>=6)ev="pod";
+  if(ev==="blackout"&&!anyGen())ev="pod";
+  if(ev==="raid"&&dayN()<2)ev="pod";
+  switch(ev){
+    case "raid":spawnRaid();break;
+    case "pod":{const cx=clamp((MW/2|0)+RI(-9,9),2,MW-3),cy=clamp((MH/2|0)+RI(-7,7),2,MH-3);
+      const picks=["scrap","comp","raw"];
+      for(let i=0;i<RI(2,3);i++){const res=CH(picks);
+        const qty=res==="comp"?RI(2,5):RI(7,14);
+        dropItem(clamp(cx+RI(-1,1),1,MW-2),clamp(cy+RI(-1,1),1,MH-2),res,qty)}
+      float(cx+.5,cy+.5,"SUPPLY DROP","#39ff88");
+      log("A smuggler drop pod streaks in — salvage near the center of the map.","good");
+      banner("SUPPLY DROP","good");SFX.good();break}
+    case "wander":{const e=edgeCell();
+      const p=mkPawn(e.x,e.y,CH(["sal","bld","cook","sht"]));
+      ST.pawns.push(p);
+      log(p.name+" wandered out of the sprawl and joined the crew.","good");
+      banner("WANDERER JOINS","good");SFX.good();break}
+    case "storm":{ST.storm=ST.tick+Math.floor(TPD*.5);
+      log("A net storm rolls over the district. Everyone is on edge. (mood −15)","warn");
+      banner("NET STORM","warn");SFX.alert();break}
+    case "blackout":{ST.black=ST.tick+Math.floor(TPD*.3);powerRecalc();
+      log("Grid blackout — fusion cells offline for a few hours.","warn");
+      banner("BLACKOUT","warn");SFX.alert();break}}
+  scheduleEv()}
+
+/* ---------- win / lose ---------- */
+function statRows(){return "<table>"+
+  "<tr><td>Days survived</td><td class='stat'>"+dayN()+"</td></tr>"+
+  "<tr><td>Hostiles neutralized</td><td class='stat'>"+ST.stats.kills+"</td></tr>"+
+  "<tr><td>Raids weathered</td><td class='stat'>"+ST.stats.raids+"</td></tr>"+
+  "<tr><td>Structures built</td><td class='stat'>"+ST.stats.built+"</td></tr>"+
+  "<tr><td>Nodes salvaged</td><td class='stat'>"+ST.stats.salv+"</td></tr>"+
+  "<tr><td>Runners lost</td><td class='stat'>"+ST.stats.deaths+"</td></tr></table>"}
+function gameOver(){ST.phase="over";
+  showModal("<h1>SIGNAL LOST</h1><div class='mh-sub'>COLONY TERMINATED</div>"+
+    "<p>The last runner is down. The sprawl reclaims the block — neon flickering over empty barricades.</p>"+
+    statRows()+"<button class='tb big' id='m-restart'>REINITIALIZE</button>")}
+function win(){if(ST.phase!=="run")return;ST.phase="win";SFX.good();
+  showModal("<h1>EXTRACTION</h1><div class='mh-sub'>BEACON LOCK CONFIRMED</div>"+
+    "<p>A black VTOL drops through the smog and your crew climbs aboard. Behind you, the colony's neon keeps burning — somebody else's problem now.</p>"+
+    statRows()+"<button class='tb big' id='m-restart'>RUN IT AGAIN</button>")}
+
+/* ---------- master tick ---------- */
+function updateFlags(){const F=ST.flags;
+  if(!F.zone&&ST.zone.size>=4)F.zone=true;
+  let walls=0,doors=0,pods=0,synth=false,vat=false,gen=false,tur=false,bea=false;
+  for(const s of ST.structs.values()){if(s.bp)continue;
+    if(s.type==="wall")walls++;if(s.type==="door")doors++;if(s.type==="pod")pods++;
+    if(s.type==="synth")synth=true;if(s.type==="vat")vat=true;
+    if(s.type==="gen")gen=true;if(s.type==="turret")tur=true;if(s.type==="beacon")bea=true}
+  if(!F.haul&&ST.stats.hauled>=3)F.haul=true;
+  if(!F.wall&&walls>=8&&doors>=1)F.wall=true;
+  if(!F.pod&&pods>=2)F.pod=true;
+  if(!F.food&&synth&&vat)F.food=true;
+  if(!F.pwr&&gen)F.pwr=true;
+  if(!F.def&&tur)F.def=true;
+  if(!F.beacon&&bea)F.beacon=true;
+  renderChecklist()}
+function tick(){ST.tick++;
+  if(ST.tick%10===0)powerRecalc();
+  if(ST.tick%20===0){
+    for(const s of ST.structs.values()){if(s.bp)continue;
+      if(s.type==="vat"&&s.powered){s.vt+=20;
+        if(s.vt>=600){s.vt=0;ST.res.raw+=3;
+          float(s.x+.5,s.y+.5,"+3 PROTEIN","#b8ff5e");syncHUD()}}
+      if(s.type==="beacon"&&s.powered){s.charge+=20;
+        if(s.charge>=TPD)win()}}}
+  for(let i=ST.pawns.length-1;i>=0;i--)pawnTick(ST.pawns[i]);
+  for(const f of ST.foes)if(!f.gone&&f.hp>0)foeTick(f);
+  for(const s of ST.structs.values())if(s.type==="turret")turretTick(s);
+  if(ST.foes.length)ST.foes=ST.foes.filter(f=>!f.gone&&f.hp>0);
+  for(let i=ST.beams.length-1;i>=0;i--)if(--ST.beams[i].ttl<=0)ST.beams.splice(i,1);
+  for(let i=ST.floats.length-1;i>=0;i--)if(--ST.floats[i].ttl<=0)ST.floats.splice(i,1);
+  if(ST.tick%25===0&&ST.items.length&&ST.zone.size){
+    for(let i=ST.items.length-1;i>=0;i--){const it=ST.items[i];
+      if(it.resv)continue;
+      if(ST.zone.has(K(it.x,it.y))){ST.res[it.res]+=it.qty;ST.stats.hauled++;
+        float(it.x+.5,it.y+.5,"+"+it.qty+" "+RESNAME[it.res].toUpperCase(),RESCOL[it.res]);
+        it.gone=true;ST.items.splice(i,1);syncHUD()}}}
+  if(ST.tick>=ST.nextEv)fireEvent();
+  if(ST.tick%30===0)updateFlags();
+  if(ST.tick%10===0)syncHUD();
+  if(ST.tick%25===0)renderInspect()}
+
+/* ============================================================
+   RENDERING
+   ============================================================ */
+const cv=$("c"),ctx=cv.getContext("2d");
+const oc=document.createElement("canvas"),octx=oc.getContext("2d");
+const tc=document.createElement("canvas");tc.width=MW*T;tc.height=MH*T;
+const tctx=tc.getContext("2d");
+let VW=0,VH=0,dpr=1;
+const cam={x:0,y:0,z:1.6};
+function resize(){dpr=window.devicePixelRatio||1;
+  VW=window.innerWidth;VH=window.innerHeight;
+  cv.width=Math.floor(VW*dpr);cv.height=Math.floor(VH*dpr);
+  cv.style.width=VW+"px";cv.style.height=VH+"px";
+  oc.width=cv.width;oc.height=cv.height;clampCam()}
+function clampCam(){const vw=VW/cam.z,vh=VH/cam.z;
+  cam.x=clamp(cam.x,-60,Math.max(-60,MW*T-vw+60));
+  cam.y=clamp(cam.y,-60,Math.max(-60,MH*T-vh+60))}
+function lightLevel(h){
+  if(h>=6.5&&h<18.5)return 0;
+  if(h>=18.5&&h<21)return (h-18.5)/2.5*.78;
+  if(h>=21||h<4.5)return .78;
+  return (1-(h-4.5)/2)*.78}
+
+function drawTerrain(){const g=tctx;
+  g.fillStyle="#0b0d15";g.fillRect(0,0,MW*T,MH*T);
+  for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){
+    const t=ST.ter[x+y*MW],X=x*T,Y=y*T,h=hash2(x*3,y*7);
+    g.fillStyle=t===3?"#0b0d11":t===1?"#0d1019":"#10131d";
+    g.fillRect(X,Y,T,T);
+    if(t===2){g.strokeStyle="#1b2030";g.beginPath();
+      g.moveTo(X+3,Y+12);g.lineTo(X+9,Y+6);g.lineTo(X+13,Y+9);g.stroke()}
+    if(t===3&&h<.5){g.fillStyle="#15171c";
+      g.fillRect(X+((h*12)|0)+2,Y+(((h*97)%1*12)|0)+2,2,2)}
+    if(t<2&&h>.93){g.strokeStyle="#141a2a";g.strokeRect(X+3.5,Y+3.5,9,9)}
+    if((x+y)%2===0){g.fillStyle="rgba(0,0,0,.12)";g.fillRect(X,Y,T,1)}}
+  g.strokeStyle="rgba(0,229,255,.15)";g.strokeRect(.5,.5,MW*T-1,MH*T-1)}
+
+function rr(x,y,w,h,col){ctx.fillStyle=col;ctx.fillRect(x,y,w,h)}
+function drawStruct(s){const X=s.x*T,Y=s.y*T,d=DEF[s.type];
+  if(s.bp){ctx.fillStyle="rgba(0,229,255,.08)";ctx.fillRect(X+1,Y+1,T-2,T-2);
+    ctx.strokeStyle="rgba(0,229,255,.55)";ctx.setLineDash([3,3]);
+    ctx.strokeRect(X+1.5,Y+1.5,T-3,T-3);ctx.setLineDash([]);
+    if(s.prog>0){ctx.fillStyle="#00e5ff";
+      ctx.fillRect(X+2,Y+T-4,(T-4)*clamp(s.prog/s.need,0,1),2)}}
+  else switch(s.type){
+    case "ruin":rr(X,Y,T,T,"#2c281d");rr(X+1,Y+1,T-2,3,"#3a3527");
+      rr(X+2,Y+6,4,2,"#221f16");rr(X+9,Y+10,5,2,"#221f16");break;
+    case "scrap":rr(X+2,Y+6,12,8,"#3c4350");rr(X+1,Y+9,9,6,"#4a5160");
+      rr(X+7,Y+4,7,7,"#333a46");rr(X+5,Y+7,2,2,"#ff9f2d");rr(X+11,Y+11,2,2,"#ff9f2d");break;
+    case "cache":rr(X+2,Y+3,12,11,"#5d5330");rr(X+2,Y+8,12,2,"#3e3720");rr(X+7,Y+3,2,11,"#3e3720");break;
+    case "wall":rr(X,Y,T,T,"#222a3d");rr(X,Y,T,3,"#39496e");rr(X+1,Y+T-2,T-2,1,"#161c2c");break;
+    case "door":rr(X,Y,T,T,"#1b2233");rr(X+2,Y+2,T-4,T-4,"#10141f");
+      rr(X+T/2-1,Y+2,2,T-4,"#00e5ff");break;
+    case "pod":rr(X+1,Y+3,T-2,T-6,"#15202f");rr(X+2,Y+4,T-4,T-8,"#0d1521");
+      rr(X+3,Y+5,4,T-10,"#27405c");
+      ctx.strokeStyle=s.owner?"#39ff88":"#23364f";ctx.strokeRect(X+1.5,Y+3.5,T-3,T-7);break;
+    case "synth":rr(X+1,Y+2,T-2,T-4,"#1b2233");
+      rr(X+3,Y+4,T-6,5,s.powered?"#ff2d95":"#3a2030");
+      rr(X+3,Y+11,3,2,"#0a0e16");rr(X+8,Y+11,5,2,"#0a0e16");break;
+    case "vat":{rr(X+2,Y+1,T-4,T-2,"#1b2a26");
+      const lvl=(T-6)*clamp(s.vt/600,0,1);
+      rr(X+4,Y+T-3-lvl,T-8,lvl,s.powered?"#39ff88":"#1d4b34");
+      ctx.strokeStyle="#2f4a40";ctx.strokeRect(X+2.5,Y+1.5,T-5,T-3);break}
+    case "gen":{rr(X+1,Y+1,T-2,T-2,"#262d3f");
+      const pulse=s.powered?(.6+.4*Math.sin(ST.tick*.2)):.15;
+      ctx.fillStyle="rgba(255,216,74,"+pulse.toFixed(2)+")";
+      ctx.fillRect(X+5,Y+5,T-10,T-10);break}
+    case "lamp":rr(X+T/2-1,Y+4,2,T-6,"#3a4763");
+      ctx.fillStyle=s.powered?"#00e5ff":"#1c3a44";ctx.fillRect(X+T/2-3,Y+2,6,4);break;
+    case "turret":{rr(X+2,Y+2,T-4,T-4,"#262d3f");
+      ctx.save();ctx.translate(X+T/2,Y+T/2);ctx.rotate(s.aim||0);
+      ctx.fillStyle="#9fb4d8";ctx.fillRect(0,-1.5,9,3);ctx.restore();
+      ctx.fillStyle=s.powered?"#ffd84a":"#5a4a1c";
+      ctx.fillRect(X+T/2-2,Y+T/2-2,4,4);break}
+    case "beacon":{rr(X+5,Y+1,6,T-2,"#27314a");
+      const a=.4+.4*Math.sin(ST.tick*.15);
+      ctx.fillStyle=s.powered?"rgba(0,229,255,"+a.toFixed(2)+")":"#1c3a44";
+      ctx.fillRect(X+6,Y+2,4,4);
+      if(s.charge>0){ctx.fillStyle="#00e5ff";
+        ctx.fillRect(X+2,Y+T-3,(T-4)*clamp(s.charge/TPD,0,1),2)}break}}
+  if(s.desig){ctx.strokeStyle="#ff9f2d";ctx.strokeRect(X+.5,Y+.5,T-1,T-1)}
+  if(s.decon){ctx.strokeStyle="#ff4757";ctx.beginPath();
+    ctx.moveTo(X+2,Y+2);ctx.lineTo(X+T-2,Y+T-2);
+    ctx.moveTo(X+T-2,Y+2);ctx.lineTo(X+2,Y+T-2);ctx.stroke()}
+  if(!s.bp&&s.hp<s.maxHp&&DEF[s.type].hp>1){
+    ctx.fillStyle="#101626";ctx.fillRect(X+1,Y-3,T-2,2);
+    ctx.fillStyle="#ff4757";ctx.fillRect(X+1,Y-3,(T-2)*clamp(s.hp/s.maxHp,0,1),2)}}
+
+function drawBody(p,X,Y){
+  ctx.fillStyle="#1a2130";ctx.fillRect(X-3.5,Y-3,7,9);
+  ctx.fillStyle=p.accent;ctx.fillRect(X-3.5,Y-3,7,2);
+  ctx.fillStyle="#0e1420";ctx.fillRect(X-3,Y-9,6,6);
+  ctx.fillStyle=p.accent;ctx.fillRect(X-3,Y-7,6,1.5);
+  if(p.drafted||ST.foes.length){ctx.fillStyle="#8fa3c4";ctx.fillRect(X+3,Y-1,5,2)}}
+function drawPawn(p){const X=p.px*T,Y=p.py*T;
+  ctx.fillStyle="rgba(0,0,0,.4)";ctx.beginPath();ctx.ellipse(X,Y+5,5,2,0,0,7);ctx.fill();
+  const sel=ST.sel.includes(p);
+  if(sel){ctx.strokeStyle="#00e5ff";ctx.beginPath();ctx.arc(X,Y,8,0,7);ctx.stroke()}
+  if(p.sleeping){ctx.save();ctx.translate(X,Y);ctx.rotate(Math.PI/2);drawBody(p,0,0);ctx.restore();
+    ctx.fillStyle="#7df9ff";ctx.font="7px monospace";ctx.fillText("z",X+5,Y-6)}
+  else drawBody(p,X,Y);
+  if(p.carry){ctx.fillStyle=RESCOL[p.carry.res];ctx.fillRect(X-2,Y-13,4,4)}
+  if(p.drafted){ctx.fillStyle="#ff4757";ctx.beginPath();
+    ctx.moveTo(X,Y-12);ctx.lineTo(X-3,Y-16);ctx.lineTo(X+3,Y-16);ctx.fill()}
+  if(p.dazed>ST.tick){ctx.fillStyle="#ffd84a";ctx.font="8px monospace";ctx.fillText("?",X+5,Y-8)}
+  if(sel||ST.tick-p.hurtT<60){ctx.fillStyle="#101626";ctx.fillRect(X-7,Y+8,14,2);
+    ctx.fillStyle="#39ff88";ctx.fillRect(X-7,Y+8,14*clamp(p.hp/100,0,1),2)}
+  if(sel){ctx.fillStyle=p.accent;ctx.font="7px monospace";ctx.textAlign="center";
+    ctx.fillText(p.name.split(" ")[0],X,Y-18);ctx.textAlign="left"}}
+function drawFoe(f){const X=f.px*T,Y=f.py*T;
+  ctx.fillStyle="rgba(0,0,0,.4)";ctx.beginPath();ctx.ellipse(X,Y+5,5,2,0,0,7);ctx.fill();
+  const big=f.fk==="bruiser",w=big?9:7,h=big?11:9;
+  ctx.fillStyle="#241723";ctx.fillRect(X-w/2,Y-3,w,h);
+  ctx.fillStyle=f.col;ctx.fillRect(X-w/2,Y-3,w,2);
+  ctx.fillStyle="#120a12";ctx.fillRect(X-3,Y-9,6,6);
+  ctx.fillStyle=f.col;ctx.fillRect(X-3,Y-7,6,1.5);
+  if(f.fk==="gunner"){ctx.fillStyle="#c47b8f";ctx.fillRect(X+3,Y-1,5,2)}
+  if(ST.sel.includes(f)){ctx.strokeStyle="#ff4757";ctx.beginPath();ctx.arc(X,Y,8,0,7);ctx.stroke()}
+  if(f.hp<f.maxHp){ctx.fillStyle="#101626";ctx.fillRect(X-7,Y+8,14,2);
+    ctx.fillStyle="#ff4757";ctx.fillRect(X-7,Y+8,14*clamp(f.hp/f.maxHp,0,1),2)}}
+
+function toolColor(){if(!TOOL)return "#00e5ff";
+  return TOOL.k==="salv"?"#ff9f2d":(TOOL.k==="decon"||TOOL.k==="cancel")?"#ff4757":
+    (TOOL.k==="zadd"||TOOL.k==="zdel")?"#39ff88":"#00e5ff"}
+function drawToolOverlay(){
+  if(PT.marq){const m=PT.marq;
+    ctx.strokeStyle=m.rect?toolColor():"#00e5ff";ctx.setLineDash([4,3]);
+    ctx.strokeRect(Math.min(m.x0,m.x1),Math.min(m.y0,m.y1),
+      Math.abs(m.x1-m.x0),Math.abs(m.y1-m.y0));ctx.setLineDash([])}
+  if(TOOL&&TOOL.k==="build"&&INB(PT.hoverX,PT.hoverY)){
+    const x=PT.hoverX*T,y=PT.hoverY*T;
+    const ok=canPlace(TOOL.type,PT.hoverX,PT.hoverY)&&afford(DEF[TOOL.type].cost);
+    ctx.fillStyle=ok?"rgba(0,229,255,.22)":"rgba(255,71,87,.22)";ctx.fillRect(x,y,T,T);
+    ctx.strokeStyle=ok?"#00e5ff":"#ff4757";ctx.strokeRect(x+.5,y+.5,T-1,T-1)}
+  else if(TOOL&&INB(PT.hoverX,PT.hoverY)){ctx.strokeStyle=toolColor();
+    ctx.strokeRect(PT.hoverX*T+.5,PT.hoverY*T+.5,T-1,T-1)}}
+
+function nightPass(){const la=lightLevel(hourN());if(la<=.02)return;
+  const z=cam.z;
+  octx.setTransform(1,0,0,1,0,0);octx.clearRect(0,0,oc.width,oc.height);
+  octx.globalCompositeOperation="source-over";
+  octx.fillStyle="rgba(7,11,32,"+la.toFixed(2)+")";octx.fillRect(0,0,oc.width,oc.height);
+  octx.globalCompositeOperation="destination-out";
+  function light(wx,wy,r,a){
+    const sx=(wx*T-cam.x)*z*dpr,sy=(wy*T-cam.y)*z*dpr,sr=r*T*z*dpr;
+    if(sx<-sr||sy<-sr||sx>oc.width+sr||sy>oc.height+sr)return;
+    const g=octx.createRadialGradient(sx,sy,0,sx,sy,sr);
+    g.addColorStop(0,"rgba(255,255,255,"+a+")");g.addColorStop(1,"rgba(255,255,255,0)");
+    octx.fillStyle=g;octx.beginPath();octx.arc(sx,sy,sr,0,7);octx.fill()}
+  for(const s of ST.structs.values()){if(s.bp)continue;
+    if(s.type==="lamp"&&s.powered)light(s.x+.5,s.y+.5,5,.95);
+    else if((s.type==="gen"||s.type==="synth"||s.type==="vat")&&s.powered)light(s.x+.5,s.y+.5,2.2,.6);
+    else if(s.type==="beacon"&&s.powered)light(s.x+.5,s.y+.5,5+Math.sin(ST.tick*.1),.8)}
+  for(const p of ST.pawns)light(p.px,p.py,1.7,.55);
+  for(const b of ST.beams)light(b.x0,b.y0,2,.5*b.ttl/b.t0);
+  ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(oc,0,0)}
+
+function menuBg(){ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle="#04050a";ctx.fillRect(0,0,VW,VH);
+  ctx.strokeStyle="rgba(0,229,255,.06)";
+  const o=(performance.now()/60)%40;
+  for(let x=-140+o;x<VW+40;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x-100,VH);ctx.stroke()}}
+
+function render(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle="#04050a";ctx.fillRect(0,0,VW,VH);
+  if(ST.phase==="menu"){menuBg();return}
+  const z=cam.z;
+  ctx.setTransform(dpr*z,0,0,dpr*z,-cam.x*dpr*z,-cam.y*dpr*z);
+  ctx.imageSmoothingEnabled=false;
+  ctx.drawImage(tc,0,0);
+  const x0=clamp(Math.floor(cam.x/T)-1,0,MW-1),y0=clamp(Math.floor(cam.y/T)-1,0,MH-1);
+  const x1=clamp(Math.ceil((cam.x+VW/z)/T)+1,0,MW),y1=clamp(Math.ceil((cam.y+VH/z)/T)+1,0,MH);
+  // stockpile zone
+  ctx.fillStyle="rgba(0,229,255,.05)";ctx.strokeStyle="rgba(0,229,255,.18)";
+  for(const k of ST.zone){const c=k.split(",");const x=+c[0],y=+c[1];
+    if(x<x0||x>=x1||y<y0||y>=y1)continue;
+    ctx.fillRect(x*T,y*T,T,T);ctx.strokeRect(x*T+.5,y*T+.5,T-1,T-1)}
+  // items
+  for(const it of ST.items){if(it.x<x0||it.x>=x1||it.y<y0||it.y>=y1)continue;
+    const X=it.x*T+T/2,Y=it.y*T+T/2;
+    ctx.fillStyle="#0c1018";ctx.fillRect(X-4,Y-3,8,7);
+    ctx.fillStyle=RESCOL[it.res];ctx.fillRect(X-3,Y-2,6,5);
+    if(z>1.05){ctx.fillStyle="#dfe9f7";ctx.font="6px monospace";ctx.textAlign="center";
+      ctx.fillText(it.qty,X,Y+10);ctx.textAlign="left"}}
+  // structures
+  for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){const s=structAt(x,y);if(s)drawStruct(s)}
+  // move-order markers
+  for(const p of ST.pawns)if(p.drafted&&p.order){
+    ctx.strokeStyle="rgba(0,229,255,.5)";
+    ctx.strokeRect(p.order.x*T+5.5,p.order.y*T+5.5,5,5)}
+  for(const p of ST.pawns)drawPawn(p);
+  for(const f of ST.foes)drawFoe(f);
+  // beams
+  for(const b of ST.beams){const a=b.ttl/b.t0;
+    ctx.globalAlpha=a;ctx.strokeStyle=b.col;ctx.lineWidth=1.4;
+    ctx.beginPath();ctx.moveTo(b.x0*T,b.y0*T);ctx.lineTo(b.x1*T,b.y1*T);ctx.stroke()}
+  ctx.globalAlpha=1;ctx.lineWidth=1;
+  // floating text
+  ctx.font="7px monospace";ctx.textAlign="center";
+  for(const f of ST.floats){const a=f.ttl/f.t0;ctx.globalAlpha=a;
+    ctx.fillStyle=f.col;ctx.fillText(f.txt,f.x*T,f.y*T-10-(1-a)*10)}
+  ctx.globalAlpha=1;ctx.textAlign="left";
+  drawToolOverlay();
+  nightPass();
+  // screen-space effects
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(ST.storm>ST.tick){
+    ctx.fillStyle="rgba(255,45,149,"+(0.04+0.03*Math.sin(ST.tick*.7)).toFixed(3)+")";
+    ctx.fillRect(0,0,VW,VH);
+    if(Math.random()<.08){ctx.fillStyle="rgba(255,45,149,.22)";
+      ctx.fillRect(0,Math.random()*VH,VW,2)}}
+  const vg=ctx.createRadialGradient(VW/2,VH/2,Math.min(VW,VH)*.45,VW/2,VH/2,Math.max(VW,VH)*.78);
+  vg.addColorStop(0,"rgba(0,0,0,0)");vg.addColorStop(1,"rgba(0,0,0,.45)");
+  ctx.fillStyle=vg;ctx.fillRect(0,0,VW,VH)}
+
+/* ============================================================
+   INPUT & TOOLS
+   ============================================================ */
+const PT={down:false,btn:0,sx:0,sy:0,lx:0,ly:0,moved:false,panning:false,
+  marq:null,paint:null,lastC:null,hoverX:-1,hoverY:-1,hwx:0,hwy:0,
+  touches:new Map(),pinch:null};
+let TOOL=null;
+const KEYS={};
+function s2w(sx,sy){return{wx:sx/cam.z+cam.x,wy:sy/cam.z+cam.y}}
+function cellAt(sx,sy){const w=s2w(sx,sy);
+  return{x:Math.floor(w.wx/T),y:Math.floor(w.wy/T),wx:w.wx,wy:w.wy}}
+function selPawns(){return ST.sel.filter(e=>e.kind==="pawn")}
+function pawnAt(wx,wy){let best=null,bd=.8;
+  for(const p of ST.pawns){const d=DIST(wx/T,wy/T,p.px,p.py);if(d<bd){bd=d;best=p}}return best}
+function foeAt(wx,wy){let best=null,bd=.8;
+  for(const f of ST.foes){const d=DIST(wx/T,wy/T,f.px,f.py);if(d<bd){bd=d;best=f}}return best}
+
+function setTool(t){TOOL=t;$("cancelTool").style.display=t?"block":"none";refreshToolBtns()}
+function dragToolKind(){if(!TOOL)return null;
+  if(TOOL.k==="build")return TOOL.type==="wall"?"paint":"single";
+  return "rect"}
+function applyCell(x,y){if(!INB(x,y)||!TOOL)return;
+  switch(TOOL.k){
+    case "build":placeBp(TOOL.type,x,y);break;
+    case "salv":{const s=structAt(x,y);
+      if(s&&(s.type==="scrap"||s.type==="cache")){s.desig=true;ST.flags.salv=true}break}
+    case "cancel":{const s=structAt(x,y);
+      if(s){if(s.bp)cancelBp(s);else{s.desig=false;s.decon=false}}break}
+    case "decon":{const s=structAt(x,y);
+      if(s&&!s.bp&&(s.type==="ruin"||DEF[s.type].cat==="b"))s.decon=true;break}
+    case "zadd":if(colCost(x,y)>=0)ST.zone.add(K(x,y));break;
+    case "zdel":ST.zone.delete(K(x,y));break}}
+function applyRect(x0,y0,x1,y1){
+  const ax=clamp(Math.min(x0,x1),0,MW-1),bx=clamp(Math.max(x0,x1),0,MW-1);
+  const ay=clamp(Math.min(y0,y1),0,MH-1),by=clamp(Math.max(y0,y1),0,MH-1);
+  for(let y=ay;y<=by;y++)for(let x=ax;x<=bx;x++)applyCell(x,y)}
+function paintCell(x,y){if(!PT.paint)return;const k=K(x,y);
+  if(PT.paint.has(k))return;PT.paint.add(k);applyCell(x,y)}
+function paintTo(c){if(!PT.lastC){PT.lastC=c;paintCell(c.x,c.y);return}
+  const x=PT.lastC.x,y=PT.lastC.y;
+  const n=Math.max(Math.abs(c.x-x),Math.abs(c.y-y));
+  for(let i=1;i<=n;i++)paintCell(Math.round(x+(c.x-x)*i/n),Math.round(y+(c.y-y)*i/n));
+  PT.lastC=c}
+
+function spreadCells(x,y,n){const out=[],seen=new Set([K(x,y)]),q=[{x,y}];
+  while(q.length&&out.length<n){const c=q.shift();
+    if(INB(c.x,c.y)&&colCost(c.x,c.y)>=0)out.push(c);
+    for(let k=0;k<8;k++){const X=c.x+DIRS[k][0],Y=c.y+DIRS[k][1];
+      if(INB(X,Y)&&!seen.has(K(X,Y))){seen.add(K(X,Y));q.push({x:X,y:Y})}}}
+  return out.length?out:[{x,y}]}
+function clickSelect(c){const p=pawnAt(c.wx,c.wy);
+  if(p){ST.sel=[p];renderInspect();return}
+  const f=foeAt(c.wx,c.wy);if(f){ST.sel=[f];renderInspect();return}
+  const s=structAt(c.x,c.y);if(s){ST.sel=[s];renderInspect();return}
+  ST.sel=[];renderInspect()}
+function marqueeSelect(m){
+  const ax=Math.min(m.x0,m.x1),bx=Math.max(m.x0,m.x1);
+  const ay=Math.min(m.y0,m.y1),by=Math.max(m.y0,m.y1);
+  const got=ST.pawns.filter(p=>p.px*T>=ax&&p.px*T<=bx&&p.py*T>=ay&&p.py*T<=by);
+  if(got.length)ST.sel=got;else ST.sel=[];
+  renderInspect()}
+function rmbAction(c){if(TOOL){setTool(null);return}
+  const dr=selPawns().filter(p=>p.drafted);
+  if(!dr.length)return;
+  const f=foeAt(c.wx,c.wy);
+  if(f){for(const p of dr){p.forced=f.id;p.order=null}
+    log("Target marked: "+f.name,"info");return}
+  const cells=spreadCells(c.x,c.y,dr.length);
+  dr.forEach((p,i)=>{p.forced=0;p.order=cells[i]||cells[0];p.path=null})}
+function tapAction(c){
+  if(TOOL){applyCell(c.x,c.y);return}
+  const p=pawnAt(c.wx,c.wy);
+  if(p){ST.sel=[p];renderInspect();syncHUD();return}
+  const dr=selPawns().filter(q=>q.drafted);
+  const f=foeAt(c.wx,c.wy);
+  if(f){if(dr.length){dr.forEach(q=>{q.forced=f.id;q.order=null})}
+    else{ST.sel=[f]}renderInspect();return}
+  if(dr.length){const cells=spreadCells(c.x,c.y,dr.length);
+    dr.forEach((q,i)=>{q.forced=0;q.order=cells[i]||cells[0];q.path=null});return}
+  const s=structAt(c.x,c.y);
+  if(s){ST.sel=[s];renderInspect();return}
+  ST.sel=[];renderInspect()}
+function toggleDraft(){const ps=selPawns();if(!ps.length)return;
+  const v=!ps.every(p=>p.drafted);
+  for(const p of ps){p.drafted=v;p.order=null;p.forced=0;
+    if(v)clearJob(p);else p.path=null}
+  SFX.ui();renderInspect();syncHUD()}
+
+/* mouse */
+cv.addEventListener("mousedown",e=>{e.preventDefault();SFX.wake();
+  if(ST.phase!=="run")return;
+  const c=cellAt(e.clientX,e.clientY);
+  if(e.button===0){PT.down=true;PT.btn=0;PT.sx=e.clientX;PT.sy=e.clientY;PT.moved=false;
+    const dk=dragToolKind();
+    if(dk==="paint"){PT.paint=new Set();PT.lastC=c;paintCell(c.x,c.y)}
+    else if(dk==="rect")PT.marq={x0:c.wx,y0:c.wy,x1:c.wx,y1:c.wy,rect:true};
+    else if(!TOOL)PT.marq={x0:c.wx,y0:c.wy,x1:c.wx,y1:c.wy,rect:false}}
+  else{PT.panning=true;PT.btn=e.button;PT.lx=e.clientX;PT.ly=e.clientY;PT.moved=false}});
+window.addEventListener("mousemove",e=>{
+  const c=cellAt(e.clientX,e.clientY);
+  PT.hoverX=c.x;PT.hoverY=c.y;PT.hwx=c.wx;PT.hwy=c.wy;
+  if(PT.panning){const dx=e.clientX-PT.lx,dy=e.clientY-PT.ly;
+    if(Math.abs(dx)+Math.abs(dy)>3)PT.moved=true;
+    cam.x-=dx/cam.z;cam.y-=dy/cam.z;clampCam();
+    PT.lx=e.clientX;PT.ly=e.clientY;return}
+  if(!PT.down)return;
+  if(Math.hypot(e.clientX-PT.sx,e.clientY-PT.sy)>4)PT.moved=true;
+  if(PT.paint)paintTo(c);
+  else if(PT.marq){PT.marq.x1=c.wx;PT.marq.y1=c.wy}});
+window.addEventListener("mouseup",e=>{
+  if(PT.panning){PT.panning=false;
+    if(e.button===2&&!PT.moved&&ST.phase==="run")rmbAction(cellAt(e.clientX,e.clientY));
+    return}
+  if(!PT.down)return;PT.down=false;
+  if(ST.phase!=="run"){PT.paint=null;PT.marq=null;return}
+  const c=cellAt(e.clientX,e.clientY);
+  if(PT.paint){PT.paint=null;PT.lastC=null;return}
+  if(PT.marq){const m=PT.marq;PT.marq=null;
+    if(m.rect){applyRect(Math.floor(m.x0/T),Math.floor(m.y0/T),
+      Math.floor(m.x1/T),Math.floor(m.y1/T));return}
+    if(!PT.moved)clickSelect(c);else marqueeSelect(m);
+    syncHUD();return}
+  if(TOOL&&dragToolKind()==="single")applyCell(c.x,c.y)});
+cv.addEventListener("contextmenu",e=>e.preventDefault());
+cv.addEventListener("wheel",e=>{e.preventDefault();if(ST.phase!=="run")return;
+  const f=e.deltaY<0?1.12:1/1.12;
+  const nz=clamp(cam.z*f,.7,3);
+  const w=s2w(e.clientX,e.clientY);
+  cam.x=w.wx-e.clientX/nz;cam.y=w.wy-e.clientY/nz;cam.z=nz;clampCam()},{passive:false});
+
+/* keyboard */
+window.addEventListener("keydown",e=>{const k=e.key.toLowerCase();KEYS[k]=true;
+  if($("modal").classList.contains("open")){
+    if(k==="escape"&&ST.phase==="run")hideModal();return}
+  if(ST.phase!=="run")return;
+  if(k===" "){togglePause();e.preventDefault()}
+  else if(k==="1")setSpeed(1);else if(k==="2")setSpeed(2);else if(k==="3")setSpeed(3);
+  else if(k==="r")toggleDraft();
+  else if(k==="escape"){if(TOOL)setTool(null);
+    else{ST.sel=[];renderInspect();closeSub();syncHUD()}}});
+window.addEventListener("keyup",e=>{KEYS[e.key.toLowerCase()]=false});
+
+/* touch */
+cv.addEventListener("touchstart",e=>{e.preventDefault();SFX.wake();
+  if(ST.phase!=="run")return;
+  for(const t of e.changedTouches)
+    PT.touches.set(t.identifier,{x:t.clientX,y:t.clientY,sx:t.clientX,sy:t.clientY,t0:performance.now()});
+  if(PT.touches.size===2){const a=[...PT.touches.values()];
+    PT.pinch={d:Math.hypot(a[1].x-a[0].x,a[1].y-a[0].y)};
+    PT.marq=null;PT.paint=null;PT.lastC=null}
+  else if(PT.touches.size===1&&TOOL&&dragToolKind()==="paint"){
+    const c=cellAt(e.changedTouches[0].clientX,e.changedTouches[0].clientY);
+    PT.paint=new Set();PT.lastC=c;paintCell(c.x,c.y)}},{passive:false});
+cv.addEventListener("touchmove",e=>{e.preventDefault();if(ST.phase!=="run")return;
+  for(const t of e.changedTouches){const r=PT.touches.get(t.identifier);
+    if(r){r.px=r.x;r.py=r.y;r.x=t.clientX;r.y=t.clientY}}
+  const a=[...PT.touches.values()];
+  if(a.length>=2&&PT.pinch){
+    const d=Math.hypot(a[1].x-a[0].x,a[1].y-a[0].y);
+    const ccx=(a[0].x+a[1].x)/2,ccy=(a[0].y+a[1].y)/2;
+    const nz=clamp(cam.z*d/Math.max(1,PT.pinch.d),.7,3);
+    const w=s2w(ccx,ccy);
+    cam.x=w.wx-ccx/nz;cam.y=w.wy-ccy/nz;cam.z=nz;PT.pinch.d=d;clampCam();return}
+  if(a.length===1){const r=a[0];
+    const moved=Math.hypot(r.x-r.sx,r.y-r.sy);
+    const c=cellAt(r.x,r.y);
+    PT.hoverX=c.x;PT.hoverY=c.y;PT.hwx=c.wx;PT.hwy=c.wy;
+    if(TOOL){const dk=dragToolKind();
+      if(dk==="paint"&&PT.paint)paintTo(c);
+      else if(dk==="rect"&&moved>8){
+        if(!PT.marq){const s0=cellAt(r.sx,r.sy);
+          PT.marq={x0:s0.wx,y0:s0.wy,x1:c.wx,y1:c.wy,rect:true}}
+        else{PT.marq.x1=c.wx;PT.marq.y1=c.wy}}
+      return}
+    if(moved>8&&r.px!==undefined){
+      cam.x-=(r.x-r.px)/cam.z;cam.y-=(r.y-r.py)/cam.z;clampCam()}}},{passive:false});
+cv.addEventListener("touchend",e=>{e.preventDefault();if(ST.phase!=="run")return;
+  for(const t of e.changedTouches){const r=PT.touches.get(t.identifier);
+    PT.touches.delete(t.identifier);
+    if(!r||PT.touches.size>0)continue;
+    PT.pinch=null;
+    const dur=performance.now()-r.t0;
+    const moved=Math.hypot(t.clientX-r.sx,t.clientY-r.sy);
+    const c=cellAt(t.clientX,t.clientY);
+    if(PT.paint){PT.paint=null;PT.lastC=null;continue}
+    if(PT.marq){const m=PT.marq;PT.marq=null;
+      applyRect(Math.floor(m.x0/T),Math.floor(m.y0/T),
+        Math.floor(m.x1/T),Math.floor(m.y1/T));continue}
+    if(dur<400&&moved<10)tapAction(c)}},{passive:false});
+cv.addEventListener("touchcancel",e=>{
+  for(const t of e.changedTouches)PT.touches.delete(t.identifier);
+  PT.pinch=null;PT.paint=null;PT.marq=null;PT.lastC=null});
+
+/* ============================================================
+   UI / DOM
+   ============================================================ */
+function log(msg,cls){const d=document.createElement("div");
+  d.className=cls||"info";d.textContent="» "+msg;
+  const L=$("log");L.prepend(d);
+  while(L.children.length>40)L.removeChild(L.lastChild)}
+let banT=0;
+function banner(txt,cls){const b=$("banner");
+  b.textContent=txt;b.className=cls||"";b.classList.add("show");
+  clearTimeout(banT);banT=setTimeout(()=>b.classList.remove("show"),2400)}
+function flashMsg(m){log(m,"warn")}
+function showModal(html){$("modal").innerHTML="<div class='mbox'>"+html+"</div>";
+  $("modal").classList.add("open")}
+function hideModal(){$("modal").classList.remove("open")}
+$("modal").addEventListener("click",e=>{const id=e.target.id;
+  if(id==="m-start"||id==="m-restart"){SFX.wake();SFX.ui();newGame()}
+  else if(id==="m-close"){SFX.ui();hideModal()}});
+
+function syncHUD(){
+  $("h-scrap").textContent=ST.res.scrap;$("h-comp").textContent=ST.res.comp;
+  $("h-raw").textContent=ST.res.raw;$("h-meal").textContent=ST.res.meal;
+  const pw=$("h-pwr");pw.textContent="PWR "+ST.pwU+"/"+ST.pwG;
+  pw.classList.toggle("bad",!ST.pwOk&&ST.pwU>0);
+  const h=hourN();
+  const hh=String(Math.floor(h)).padStart(2,"0");
+  const mm=String(Math.floor((h%1)*60)).padStart(2,"0");
+  $("h-day").textContent="DAY "+dayN()+" "+hh+":"+mm;
+  let bea=null;
+  for(const s of ST.structs.values())if(s.type==="beacon"&&!s.bp){bea=s;break}
+  const ex=$("h-extract");
+  if(bea){ex.style.display="";$("h-exv").textContent=Math.floor(bea.charge/TPD*100)+"%"}
+  else ex.style.display="none";
+  const ps=selPawns();
+  $("t-draft").style.display=ps.length?"":"none";
+  const dr=ps.length&&ps.every(p=>p.drafted);
+  $("t-draft").textContent=(dr?"UNDRAFT":"DRAFT")+" [R]";
+  $("t-draft").classList.toggle("on",!!dr)}
+
+const CK=[
+  {id:"zone",t:"Zone a stockpile (ZONES)"},
+  {id:"salv",t:"Designate scrap salvage (ORDERS)"},
+  {id:"haul",t:"Haul supplies to the stockpile"},
+  {id:"wall",t:"Wall a perimeter with a door"},
+  {id:"pod",t:"Build two sleep pods"},
+  {id:"food",t:"Build Synth Station + Algae Vat"},
+  {id:"pwr",t:"Build a Fusion Cell"},
+  {id:"def",t:"Build an Auto-Turret"},
+  {id:"beacon",t:"Build the Extraction Beacon"}];
+function renderChecklist(){const ul=$("ck");let h="";
+  for(const c of CK)h+="<li class='"+(ST.flags[c.id]?"done":"")+"'>"+c.t+"</li>";
+  if(ul.innerHTML!==h)ul.innerHTML=h}
+
+function barHtml(lab,val,col){
+  return "<div class='blab'><span>"+lab+"</span><span>"+Math.round(val)+"</span></div>"+
+    "<div class='bar'><i style='width:"+clamp(val,0,100)+"%;background:"+col+"'></i></div>"}
+function renderInspect(){const el=$("inspect");
+  ST.sel=ST.sel.filter(e=>e.kind==="pawn"?ST.pawns.includes(e):
+    e.kind==="foe"?ST.foes.includes(e):structAt(e.x,e.y)===e);
+  if(!ST.sel.length){el.style.display="none";return}
+  el.style.display="block";
+  if(ST.sel.length>1){
+    el.innerHTML="<h3>"+ST.sel.length+" RUNNERS</h3><div class='sub'>squad selected</div>"+
+      "<button class='tb' id='i-draft'>TOGGLE DRAFT</button>";return}
+  const e=ST.sel[0];
+  if(e.kind==="pawn"){
+    let h="<h3 style='color:"+e.accent+"'>"+e.name+"</h3>";
+    h+="<div class='sub'>"+e.tr.map(t=>t.n).join(" · ")+" — "+e.weapon.name+"</div>";
+    h+=barHtml("HP",e.hp,"#39ff88");
+    h+=barHtml("FOOD",e.needs.food,"#b8ff5e");
+    h+=barHtml("REST",e.needs.rest,"#7aa2ff");
+    h+=barHtml("MOOD",e.mood,e.mood<25?"#ff4757":"#ffd84a");
+    h+="<div class='sub'>TASK: "+jobLabel(e)+"</div>";
+    h+="<div class='sub'>SAL "+e.sk.sal+" · BLD "+e.sk.bld+" · COOK "+e.sk.cook+" · SHT "+e.sk.sht+"</div>";
+    h+="<button class='tb' id='i-draft'>"+(e.drafted?"UNDRAFT":"DRAFT")+"</button>";
+    el.innerHTML=h}
+  else if(e.kind==="foe"){
+    el.innerHTML="<h3 style='color:"+e.col+"'>"+e.name+"</h3>"+
+      "<div class='sub'>hostile</div>"+barHtml("HP",e.hp/e.maxHp*100,"#ff4757")}
+  else{const d=DEF[e.type];
+    let h="<h3>"+d.name+"</h3>";
+    if(e.bp)h+="<div class='sub'>BLUEPRINT — "+Math.floor(e.prog/e.need*100)+"% built</div>";
+    else if(d.hp>1)h+=barHtml("INTEGRITY",e.hp/e.maxHp*100,"#39ff88");
+    if(d.pw)h+="<div class='sub'>POWER DRAW "+d.pw+" — "+
+      (e.powered?"<span style='color:var(--gn)'>ONLINE</span>":"<span style='color:var(--rd)'>OFFLINE</span>")+"</div>";
+    if(d.pwGen)h+="<div class='sub'>OUTPUT +"+d.pwGen+
+      (ST.black>ST.tick?" <span style='color:var(--rd)'>(BLACKOUT)</span>":"")+"</div>";
+    if(e.type==="pod"&&e.owner){const o=ST.pawns.find(p=>p.id===e.owner);
+      h+="<div class='sub'>Assigned: "+(o?o.name:"—")+"</div>"}
+    if(e.type==="vat"&&!e.bp)h+="<div class='sub'>Growth "+Math.floor(e.vt/600*100)+"%</div>";
+    if(e.type==="beacon"&&!e.bp)h+="<div class='sub'>CHARGE "+Math.floor(e.charge/TPD*100)+"%</div>";
+    if(d.desc)h+="<div class='sub'>"+d.desc+"</div>";
+    if(e.bp)h+="<button class='tb' id='i-cancel'>CANCEL</button>";
+    else if(e.type==="scrap"||e.type==="cache")
+      h+="<button class='tb' id='i-salv'>"+(e.desig?"UNMARK":"SALVAGE")+"</button>";
+    else if(e.type==="ruin"||d.cat==="b")
+      h+="<button class='tb' id='i-decon'>"+(e.decon?"CANCEL DECON":"DECONSTRUCT")+"</button>";
+    el.innerHTML=h}}
+$("inspect").addEventListener("click",e=>{const id=e.target.id;if(!id)return;
+  const sel=ST.sel[0];SFX.ui();
+  if(id==="i-draft")toggleDraft();
+  else if(id==="i-cancel"&&sel&&sel.bp){cancelBp(sel);ST.sel=[];renderInspect()}
+  else if(id==="i-salv"&&sel){sel.desig=!sel.desig;
+    if(sel.desig)ST.flags.salv=true;renderInspect()}
+  else if(id==="i-decon"&&sel){sel.decon=!sel.decon;renderInspect()}});
+
+/* toolbar */
+let subCat=null;
+function refreshCats(){$("t-build").classList.toggle("on",subCat==="b");
+  $("t-orders").classList.toggle("on",subCat==="o");
+  $("t-zones").classList.toggle("on",subCat==="z")}
+function closeSub(){subCat=null;$("submenu").classList.remove("open");refreshCats()}
+function refreshToolBtns(){const sm=$("submenu");
+  for(const b of sm.children){const dt=b.dataset.tool;let on=false;
+    if(TOOL&&dt){if(TOOL.k==="build")on=dt==="build:"+TOOL.type;else on=dt===TOOL.k}
+    b.classList.toggle("on",on)}}
+function openSub(cat){if(subCat===cat){closeSub();return}
+  subCat=cat;const sm=$("submenu");sm.innerHTML="";
+  function mk(label,tool,title){const b=document.createElement("button");
+    b.className="tb";b.innerHTML=label;if(title)b.title=title;
+    b.dataset.tool=tool.k==="build"?"build:"+tool.type:tool.k;
+    b.onclick=()=>{SFX.ui();setTool(tool)};sm.appendChild(b)}
+  if(cat==="b"){for(const t of BUILD_ORDER){const d=DEF[t];
+    const cost=Object.entries(d.cost).map(([k,v])=>v+" "+k).join(" + ");
+    mk(d.name+"<span class='cost'>"+cost+"</span>",{k:"build",type:t},d.desc)}}
+  else if(cat==="o"){
+    mk("SALVAGE",{k:"salv"},"Drag over scrap heaps and caches");
+    mk("DECONSTRUCT",{k:"decon"},"Drag over structures to tear down (50% refund / ruins yield scrap)");
+    mk("CANCEL",{k:"cancel"},"Drag to cancel blueprints and designations")}
+  else{
+    mk("STOCKPILE +",{k:"zadd"},"Drag to zone a stockpile — hauled goods become usable here");
+    mk("STOCKPILE −",{k:"zdel"},"Drag to remove stockpile cells")}
+  sm.classList.add("open");refreshCats();refreshToolBtns()}
+$("t-build").onclick=()=>{SFX.ui();openSub("b")};
+$("t-orders").onclick=()=>{SFX.ui();openSub("o")};
+$("t-zones").onclick=()=>{SFX.ui();openSub("z")};
+$("t-draft").onclick=toggleDraft;
+$("b-all").onclick=()=>{SFX.ui();ST.sel=ST.pawns.slice();renderInspect();syncHUD()};
+$("b-mute").onclick=function(){this.classList.toggle("on",SFX.toggleMute())};
+$("b-help").onclick=()=>{SFX.ui();showHelp()};
+$("cancelTool").onclick=()=>{SFX.ui();setTool(null)};
+function setSpeed(s){ST.speed=s;ST.paused=false;refreshSpd()}
+function togglePause(){ST.paused=!ST.paused;refreshSpd()}
+function refreshSpd(){$("sp-p").classList.toggle("on",ST.paused);
+  $("sp-1").classList.toggle("on",!ST.paused&&ST.speed===1);
+  $("sp-2").classList.toggle("on",!ST.paused&&ST.speed===2);
+  $("sp-3").classList.toggle("on",!ST.paused&&ST.speed===3)}
+$("sp-p").onclick=()=>{SFX.ui();togglePause()};
+$("sp-1").onclick=()=>{SFX.ui();setSpeed(1)};
+$("sp-2").onclick=()=>{SFX.ui();setSpeed(2)};
+$("sp-3").onclick=()=>{SFX.ui();setSpeed(3)};
+
+function showHelp(){if(ST.phase==="run"){ST.paused=true;refreshSpd()}showModal(
+  "<h1 style='font-size:20px'>FIELD MANUAL</h1><div class='mh-sub'>NEON SPRAWL</div>"+
+  "<p>Keep the crew fed, rested, and sane. Runners work jobs automatically by priority: cook → build → salvage → haul. Salvage only counts once it is hauled into a stockpile zone.</p>"+
+  "<table>"+
+  "<tr><td>Select</td><td>Click/tap a runner. Drag on open ground to box-select. SQUAD selects everyone.</td></tr>"+
+  "<tr><td>Draft</td><td>R or the DRAFT button. Drafted runners stop working, hold position, and shoot.</td></tr>"+
+  "<tr><td>Command</td><td>Right-click (desktop) or tap (touch) ground to move drafted runners; an enemy to focus-fire.</td></tr>"+
+  "<tr><td>Camera</td><td>WASD / arrows / right-drag / one-finger drag. Wheel or pinch to zoom.</td></tr>"+
+  "<tr><td>Build</td><td>BUILD menu, click to place. Walls paint with click-drag. Blueprints consume resources on placement.</td></tr>"+
+  "<tr><td>Power</td><td>Fusion Cells generate 12. If demand exceeds supply, ALL powered devices go offline.</td></tr>"+
+  "<tr><td>Food</td><td>Algae Vat grows protein; Synth Station turns 2 protein into 1 meal. Raw protein is edible but tanks mood.</td></tr>"+
+  "<tr><td>Mood</td><td>Below ~22, runners can snap and wander dazed. Pods, hot meals, and neon lamps help.</td></tr>"+
+  "<tr><td>Speed</td><td>Space pauses. 1/2/3 set game speed.</td></tr>"+
+  "<tr><td>Win</td><td>Build the Extraction Beacon and keep it powered for one full day.</td></tr>"+
+  "</table><button class='tb big' id='m-close'>CLOSE</button>")}
+function showStart(){showModal(
+  "<h1>NEON SPRAWL</h1><div class='mh-sub'>COLONY PROTOCOL</div>"+
+  "<p>2087. Your crew of three runners just claimed a dead block on the edge of the sprawl. Scrap is currency, protein is life, and the gangs come hunting after dark.</p>"+
+  "<p>Salvage. Build. Defend. Then raise an <span style='color:var(--cy)'>Extraction Beacon</span> and keep it powered for one full day to buy your way out.</p>"+
+  "<button class='tb big' id='m-start'>INITIALIZE COLONY</button>"+
+  "<p style='color:var(--dim);font-size:10px'>Hit ? in the top bar for the field manual · v0.1</p>")}
+
+/* ============================================================
+   GAME START / MAIN LOOP
+   ============================================================ */
+function newGame(){
+  ST.phase="run";ST.tick=0;ST.speed=1;ST.paused=false;
+  ST.res={scrap:0,comp:0,raw:0,meal:0};
+  ST.pawns.length=0;ST.foes.length=0;ST.beams.length=0;ST.floats.length=0;
+  ST.grp={};ST.sel=[];ST.storm=0;ST.black=0;
+  ST.stats={kills:0,built:0,deaths:0,salv:0,hauled:0,raids:0};
+  ST.flags={};setTool(null);closeSub();
+  genMap();drawTerrain();
+  const cx=MW/2|0,cy=MH/2|0;
+  const specs=["sal","bld","sht"],ox=[-2,2,0],oy=[-1,-1,1];
+  for(let i=0;i<3;i++)ST.pawns.push(mkPawn(cx+ox[i],cy+oy[i],specs[i]));
+  cam.z=clamp(Math.min(VW/(MW*T),VH/(MH*T))*1.9,1,2.2);
+  cam.x=cx*T-VW/cam.z/2;cam.y=cy*T-VH/cam.z/2;clampCam();
+  ST.lastRaid=0;ST.nextEv=Math.floor(TPD*1.25);
+  $("log").innerHTML="";
+  log("Crew of three holed up in the dead district. Daylight won't last.","info");
+  log("Zone a stockpile, mark scrap for salvage, and get walls up before the gangs notice.","info");
+  powerRecalc();updateFlags();syncHUD();renderInspect();refreshSpd();hideModal();
+  banner("DAY 1 — THE SPRAWL","good")}
+
+let lastT=0,acc=0;
+function loop(ts){requestAnimationFrame(loop);
+  const dt=Math.min(60,lastT?ts-lastT:16);lastT=ts;
+  if(ST.phase==="run"&&!ST.paused){
+    acc+=dt;const step=100/ST.speed;let n=0;
+    while(acc>=step&&n<10){tick();acc-=step;n++;if(ST.phase!=="run")break}
+    if(n>=10)acc=0}
+  if(ST.phase==="run"){let dx=0,dy=0;const sp=.55*dt/cam.z;
+    if(KEYS.w||KEYS.arrowup)dy-=sp;
+    if(KEYS.s||KEYS.arrowdown)dy+=sp;
+    if(KEYS.a||KEYS.arrowleft)dx-=sp;
+    if(KEYS.d||KEYS.arrowright)dx+=sp;
+    if(dx||dy){cam.x+=dx;cam.y+=dy;clampCam()}}
+  render()}
+
+window.addEventListener("resize",resize);
+resize();renderChecklist();showStart();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
