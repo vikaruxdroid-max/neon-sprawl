@@ -361,7 +361,7 @@ incremental, never a per-call `MW·MH` (56·40 = 2240-cell) scan.
 
 ## 8. Open design questions
 
-Please answer these in one pass before coding begins — several gate phase 1.
+> **Answered.** See §9 for locked decisions. Questions preserved here for context.
 
 1. **Agent count.** Confirm dropping from 3 runners to **2 agents**? The smoke
    tests and the (unmeasured) difficulty assume 3; 2 agents that sometimes
@@ -409,3 +409,58 @@ Please answer these in one pass before coding begins — several gate phase 1.
     runners, do we accept easier-via-fewer-hands for v0.2, or compensate (raid
     curve in `spawnRaid`)? Per CLAUDE.md, no blind tuning — this would wait on a
     playtest verdict regardless.
+
+---
+
+## 9. Decisions (locked)
+
+Owner-resolved 2026-06-13. These answers are final for v0.2 implementation.
+
+1. **Agent count.** 2 agents confirmed.
+
+2. **Survival floor.** Hard survival gates stay (`food≤22` / `rest≤18`).
+   Personality governs the discretionary band only.
+
+3. **Personality seeds.** Fixed archetypes:
+   - **Vex** `{ ind:40, cau:30, soc:60, cur:80 }` — curious scout
+   - **Static** `{ ind:80, cau:65, soc:45, cur:25 }` — industrious homebody
+
+4. **Save/load.** Persist `pers`, `bias`, `drift.day`, `drift.used`,
+   `seen.explored`, `ST.bond`, and pending-only `ST.requests` to localStorage
+   when save/load ships (roadmap item 1).
+
+5. **Request panel form.** Persistent sidebar positioned under `#log` on the
+   right. Sim keeps running while requests are pending. Color-shift the request
+   card as expiration approaches.
+
+6. **Ignoring requests.** Non-engagement is not neutral. On expiry: apply
+   `soc −1` to the asking agent and `bond −1`. The default action taken must be
+   logged in the panel (e.g. "Vex got tired of waiting and went past the
+   barricade anyway").
+
+7. **Bias decay.** Biases decay slowly toward 1.0 at **0.05 per game day**.
+   Clamp range **0.6 … 1.5** confirmed.
+
+8. **Bond scope.** Keep bond as designed. The 2-agent constraint intensifies
+   rather than dilutes bond. Build in phase 4 as planned; re-evaluate after
+   playtest if underwhelming.
+
+9. **Explore target.** Add minimal fog of war. `ST.fog` as
+   `Uint8Array(MW * MH)`, cells start at `1` (unseen). Agents reveal cells in
+   radius 4 around their current position (`p.px` / `p.py`) each tick; revealed
+   cells stay revealed. Items, scrap, and caches render only in revealed cells.
+   Unseen cells get a translucent black overlay additive to `nightPass`. This
+   gives the `explore` action a real target.
+
+10. **Combat & personality.** Drafted combat is 100% manual as today.
+    Personality affects undrafted behavior only. High-`cau` agents flee at higher
+    HP thresholds; low-`cau` agents fight briefly before fleeing.
+
+11. **Test migration.** Rewrite test **F** to exercise the personality AI:
+    verify the utility scorer picks sensible actions, drift moves axes correctly,
+    and requests fire at expected triggers. Keep test **C** as-is — the
+    reservation/pathing/zone logic survives untouched.
+
+12. **Difficulty offset.** Accept 2-agent weakness for v0.2. No compensation.
+    Ship phase 1 with the existing raid curve. Tune only after playtest data
+    exists.
