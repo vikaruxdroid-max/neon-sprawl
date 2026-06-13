@@ -435,6 +435,9 @@ function moodCalc(p){
   if(lightLevel(hourN())>.3){                       // neon lamp aura at night
     for(const s of ST.structs.values())
       if(s.type==="lamp"&&s.powered&&DIST(p.px,p.py,s.x+.5,s.y+.5)<4.5){m+=3;break}}
+  if(ST.pawns.length===2){const other=ST.pawns.find(q=>q.id!==p.id);
+    if(other&&DIST(p.px,p.py,other.px,other.py)<6){
+      if(ST.bond>65)m+=5;else if(ST.bond<35)m-=5}}
   p.mood=clamp(m,0,100)}
 
 /* movement */
@@ -525,7 +528,7 @@ function scoreJobs(p){
     build:bpStr?50:0,salvage:salvStr?40:0,haul:haulItem?30:0,
     explore:explJob?25:0,idle:10};
   const pw={
-    eat:0.5+cau/100,sleep:0.5+cau/100,cook:0.5+ind/100,build:0.5+ind/100,
+    eat:0.5+cau/100,sleep:0.5+cau/100,cook:0.5+ind/100,build:0.5+ind/100+(ST.pawns.length===2&&ST.bond>65?0.1:0),
     salvage:0.5+ind/100+0.1*(cur/100),haul:0.5+ind/100,explore:0.5+cur/100,
     idle:0.5+(100-ind)/100};
   const sm={eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1};
@@ -585,6 +588,8 @@ function fireAt(p,f){p.cd=p.weapon.cd;
   beam(p.px,p.py,f.px,f.py,"#7df9ff");SFX.shoot();gainXp(p,"sht");
   if(Math.random()<accOf(p,d))damageFoe(f,RI(p.weapon.dmg[0],p.weapon.dmg[1]))}
 function damagePawn(p,d){p.hp-=d;p.hurtT=ST.tick;SFX.hit();applyDrift(p,{cau:3});
+  const watcher=ST.pawns.find(q=>q.id!==p.id&&DIST(q.px,q.py,p.px,p.py)<8);
+  if(watcher)ST.bond=clamp(ST.bond-1,0,100);
   addMod(p,"pain","In pain",-8,TPD*.4);
   if(!p.drafted&&p.flee<ST.tick){clearJob(p);p.flee=ST.tick+90}
   if(p.hp<=0)killPawn(p,"was killed in the fighting")}
@@ -685,7 +690,10 @@ function pawnTick(p){
           if(j.prog>=50){deconFinish(s);p.job=null}}
         else{s.prog+=workSpd(p,p.sk.bld);
           if(ST.tick%25===0)gainXp(p,"bld");
-          if(s.prog>=s.need){finishBuild(s);s.res=0;applyDrift(p,{ind:1});p.job=null}}}
+          if(s.prog>=s.need){finishBuild(s);s.res=0;applyDrift(p,{ind:1});
+  const co=ST.pawns.find(q=>q.id!==p.id&&q.job&&q.job.s===s);
+  if(co)ST.bond=clamp(ST.bond+2,0,100);
+  p.job=null}}}
       break}
     case "salvage":{const s=j.s;
       if(structAt(s.x,s.y)!==s||!s.desig){p.job=null;break}
@@ -897,6 +905,8 @@ function updateFlags(){const F=ST.flags;
   renderChecklist()}
 function tick(){ST.tick++;
   if(ST.tick%10===0)powerRecalc();
+  if(ST.tick%5===0&&ST.pawns.length===2){const [a,b]=ST.pawns;
+    if(DIST(a.px,a.py,b.px,b.py)<5)ST.bond=clamp(ST.bond+0.02,0,100)}
   if(ST.tick%5===0&&ST.fog){for(const p of ST.pawns){
     const px=p.px|0,py=p.py|0;
     for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){
