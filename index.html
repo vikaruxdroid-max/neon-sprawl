@@ -1419,10 +1419,11 @@ function expireRequests(){
 function applyDrift(p,deltas){
   const today=Math.floor(ST.tick/2400);
   if(p.drift.day!==today){p.drift.day=today;p.drift.used=0}
-  if(p.drift.used>=10)return;
+  if(p.drift.used>=5)return;
+  let changed=false;
   for(const[k,v]of Object.entries(deltas)){
-    if(k in p.pers){p.pers[k]=clamp(p.pers[k]+v,0,100)}}
-  p.drift.used++}
+    if(k in p.pers){p.pers[k]=clamp(p.pers[k]+v,0,100);changed=true}}
+  if(changed)p.drift.used++}
 function canGenRequest(p){
   return !ST.requests.some(r=>r.agentId===p.id&&r.status==="pending")}
 
@@ -1445,7 +1446,7 @@ function tryBuildRequest(p){
   if(p.needs.food<55&&ST.res.meal===0&&ST.res.raw>0&&Math.random()<0.4)
     return{...base,kind:"food",text:p.name+" is hungry — eat raw or wait for cooked protein?",
       options:[{label:"Eat raw",apply:{eat:+0.2,cau:-2}},{label:"Wait",apply:{eat:-0.1,cau:+2}}]};
-  const bps=[...ST.structs.values()].filter(s=>s.bp);
+  const bps=[...new Map([...ST.structs.values()].filter(s=>s.bp).map(s=>[s.type,s])).values()];
   if(bps.length>=2&&p.pers.ind>55&&Math.random()<0.3)
     return{...base,kind:"build",text:p.name+" asks: raise the "+DEF[bps[0].type].name+" or the "+DEF[bps[1].type].name+" first?",
       options:[{label:DEF[bps[0].type].name,apply:{build:+0.2}},{label:DEF[bps[1].type].name,apply:{build:+0.1}}]};
