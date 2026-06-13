@@ -54,29 +54,45 @@ function T_path(){
   console.log("E A* corner-to-corner:",ok?"PASS ("+pth.length+" steps)":"FAIL");
 }
 function T_fullrun(){
-  // crude auto-player baseline; NOT a difficulty gate — survival to day 4+ acceptable
-  newGame();
   const cx=MW/2|0,cy=MH/2|0;
-  for(let y=cy-1;y<=cy+2;y++)for(let x=cx-2;x<=cx+2;x++)
-    if(colCost(x,y)>=0)ST.zone.add(K(x,y));
-  for(const s of ST.structs.values())if(s.type==="scrap"||s.type==="cache")s.desig=true;
-  ST.res.scrap+=120;ST.res.comp+=20;
-  placeBp("gen",cx+4,cy);placeBp("vat",cx+4,cy+2);placeBp("synth",cx+4,cy+1);
-  placeBp("pod",cx-4,cy);placeBp("pod",cx-4,cy+1);placeBp("turret",cx,cy-4);
-  for(let i=0;i<TPD*8&&ST.phase==="run";i++){
-    const hostile=ST.foes.length>0;
-    for(const p of ST.pawns){
-      if(hostile&&!p.drafted){p.drafted=true;clearJob(p)}
-      if(hostile){let bf=null,bd=1e9;
-        for(const f of ST.foes){const d=DIST(p.px,p.py,f.px,f.py);if(d<bd){bd=d;bf=f}}
-        if(bf)p.forced=bf.id}
-      if(!hostile&&p.drafted){p.drafted=false;p.forced=0;p.order=null}}
-    tick()}
-  const ok=dayN()>=4||ST.phase==="run";
-  if(!ok)fails++;
-  console.log("F 8-day baseline run:",ok?"PASS":"FAIL",
-    JSON.stringify({day:dayN(),phase:ST.phase,kills:ST.stats.kills,
-    deaths:ST.stats.deaths,raids:ST.stats.raids}));
+
+  // F1: industrious agent (Static) picks build when blueprint queued + comfortable needs
+  newGame();ST.nextEv=1e9;
+  const sta=ST.pawns.find(p=>p.name==="Static");
+  sta.needs.food=80;sta.needs.rest=80;
+  ST.res.scrap+=200;ST.res.comp+=40;
+  placeBp("wall",cx+6,cy+6);
+  sta.job=null;
+  const j1=chooseJob(sta);
+  const f1=j1&&j1.t==="build";
+  if(!f1)fails++;
+  console.log("F1 industrious picks build:",f1?"PASS":"FAIL","got:"+(j1&&j1.t));
+  // clean up reservation for next sub-test
+  if(j1&&j1.s&&j1.s.res===sta.id)j1.s.res=0;
+
+  // F2: curious agent (Vex) picks explore when no urgent jobs + fog cells in range
+  newGame();ST.nextEv=1e9;
+  const vex=ST.pawns.find(p=>p.name==="Vex");
+  vex.needs.food=80;vex.needs.rest=80;
+  // no blueprints, no designations, meal full so cook won't trigger, no zone for haul
+  for(const s of ST.structs.values()){s.bp=false;s.decon=false;s.desig=false;s.res=0}
+  ST.res.meal=10;ST.res.raw=0;
+  vex.job=null;
+  const j2=chooseJob(vex);
+  const f2=j2&&j2.t==="explore";
+  if(!f2)fails++;
+  console.log("F2 curious picks explore:",f2?"PASS":"FAIL","got:"+(j2&&j2.t));
+
+  // F3: hard gate fires eat at food=15 regardless of personality
+  newGame();ST.nextEv=1e9;ST.res.meal=5;
+  const p3=ST.pawns[0];
+  p3.pers={ind:100,cau:0,soc:50,cur:50};
+  p3.needs.food=15;p3.needs.rest=80;
+  p3.job=null;
+  const j3=chooseJob(p3);
+  const f3=j3&&j3.t==="eat";
+  if(!f3)fails++;
+  console.log("F3 hard gate eat at food=15:",f3?"PASS":"FAIL","got:"+(j3&&j3.t));
 }
 try{T_combat();T_economy();T_path();T_fullrun();
   if(fails>0){console.error(fails+" TEST(S) FAILED");process.exit(1)}
