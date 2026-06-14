@@ -65,6 +65,12 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 .bar i{display:block;height:100%}
 .blab{display:flex;justify-content:space-between;font-size:10px;color:var(--dim)}
 #inspect .tb{margin-top:6px;margin-right:5px;padding:5px 9px}
+.ordsec{font-family:var(--disp);font-weight:600;font-size:9px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase;margin:11px 0 7px;display:flex;align-items:center;gap:7px}
+.ordsec::after{content:"";flex:1;height:1px;background:var(--bd)}
+.ordgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.ob{font-family:var(--disp);font-weight:600;font-size:10px;background:#0f2a22;border:1px solid var(--bd);color:var(--tx);padding:8px 4px;border-radius:5px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;transition:border-color .12s,background .12s}
+.ob span{font-size:14px;line-height:1}
+.ob:hover{border-color:var(--cy);color:#eafff4;background:#11332b}
 #toolbar{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);display:flex;gap:6px;
   padding:6px;max-width:96vw;overflow-x:auto}
 #submenu{position:fixed;bottom:52px;left:50%;transform:translateX(-50%);display:none;gap:6px;
@@ -655,6 +661,10 @@ function scoreJobs(p){
     {k:"substance",mk:()=>dlrStr?{t:"substance",s:dlrStr,prog:0}:null},
     {k:"crime",  mk:()=>robTgt?{t:"crime",s:robTgt,prog:0}:null},
     {k:"idle",   mk:()=>{const w=randNear(p,5)||{x:p.px|0,y:p.py|0};return{t:"idle",until:ST.tick+RI(25,70),x:w.x,y:w.y}}}];
+  if(p.cmd){const a=acts.find(x=>x.k===p.cmd);p.cmd=null;
+    if(a){const cj=a.mk();
+      if(cj){if(cj.t==="cook"&&cj.s)cj.s.res=p.id;if(cj.t==="build"&&cj.s)cj.s.res=p.id;
+        if(cj.t==="salvage"&&cj.s)cj.s.res=p.id;if(cj.t==="haul"&&cj.it)cj.it.resv=p.id;return cj}}}
   let bestU=-1,bestMk=null;
   for(const a of acts){
     const u=base[a.k]*pw[a.k]*(bias[a.k]||1)*sm[a.k];
@@ -1797,6 +1807,13 @@ function renderInspect(){const el=$("inspect");
     h+="<div class='sub'>STRESS "+(e.stress|0)+(e.addiction>0?" · ADDICTION "+(e.addiction|0):"")+"</div>";
     if(e.rep&&(e.rep.city||e.rep.gang))h+="<div class='sub'>REP city "+(e.rep.city|0)+" · gang "+(e.rep.gang|0)+"</div>";
     h+="<div class='sub'>SAL "+e.sk.sal+" · BLD "+e.sk.bld+" · COOK "+e.sk.cook+" · SHT "+e.sk.sht+"</div>";
+    if(!e.drafted)h+="<div class='ordsec'>DIRECT ORDERS</div><div class='ordgrid'>"+
+      "<button class='ob' data-o='work'><span>⚒</span>Work</button>"+
+      "<button class='ob' data-o='sleep'><span>☾</span>Rest</button>"+
+      "<button class='ob' data-o='eat'><span>⊕</span>Feed</button>"+
+      "<button class='ob' data-o='hygiene'><span>≈</span>Cleanse</button>"+
+      "<button class='ob' data-o='recreate'><span>◈</span>Wander</button>"+
+      "<button class='ob' data-o='socialize'><span>⚇</span>Commune</button></div>";
     h+="<button class='tb' id='i-draft'>"+(e.drafted?"UNDRAFT":"DRAFT")+"</button>";
     el.innerHTML=h}
   else if(e.kind==="foe"){
@@ -1821,7 +1838,10 @@ function renderInspect(){const el=$("inspect");
     else if(e.type==="ruin"||d.cat==="b")
       h+="<button class='tb' id='i-decon'>"+(e.decon?"CANCEL DECON":"DECONSTRUCT")+"</button>";
     el.innerHTML=h}}
-$("inspect").addEventListener("click",e=>{const id=e.target.id;if(!id)return;
+$("inspect").addEventListener("click",e=>{
+  const ob=e.target.closest&&e.target.closest(".ob");
+  if(ob){const s=ST.sel[0];if(s&&s.kind==="pawn"){SFX.ui();clearJob(s);s.job=null;s.cmd=ob.dataset.o;renderInspect()}return}
+  const id=e.target.id;if(!id)return;
   const sel=ST.sel[0];SFX.ui();
   if(id==="i-draft")toggleDraft();
   else if(id==="i-cancel"&&sel&&sel.bp){cancelBp(sel);ST.sel=[];renderInspect()}
