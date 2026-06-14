@@ -34,6 +34,18 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 #checklist ul{margin:6px 0 0;padding:0 0 0 14px}
 #checklist li{color:var(--dim)}
 #checklist li.done{color:var(--gn);text-decoration:line-through;opacity:.65}
+#roster{position:fixed;right:8px;top:42vh;width:262px;max-height:48vh;overflow-y:auto;padding:8px 10px;font-size:11px;line-height:1.4;z-index:11}
+#roster .rhdr{color:var(--cy);letter-spacing:.15em;font-size:10px;margin-bottom:6px}
+#roster .rrow{padding:6px 2px;border-top:1px solid rgba(28,42,68,.55);cursor:pointer}
+#roster .rrow:hover{background:rgba(0,229,255,.06)}
+#roster .rrow.sel{background:rgba(0,229,255,.10)}
+#roster .rname{font-weight:600;display:flex;justify-content:space-between;gap:6px}
+#roster .rtask{color:var(--dim);font-size:9px;text-transform:uppercase;letter-spacing:.06em;align-self:center}
+#roster .barlab{display:flex;justify-content:space-between;font-size:8px;color:var(--dim);letter-spacing:.06em;margin-top:3px}
+#roster .bar{height:4px;border-radius:2px;background:#0b1322;overflow:hidden}
+#roster .bar>i{display:block;height:100%;border-radius:2px}
+#roster .tags{margin-top:4px;display:flex;flex-wrap:wrap;gap:3px}
+#roster .tag{font-size:8px;padding:1px 4px;border-radius:2px;letter-spacing:.04em;font-weight:600}
 #log{position:fixed;right:8px;top:54px;width:262px;max-height:34vh;overflow:hidden;
   padding:6px 9px;font-size:11px;line-height:1.45}
 #log div{margin:1px 0;opacity:.92}
@@ -117,6 +129,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 </div>
 <div id="checklist" class="panel"><b>PRIORITY DIRECTIVES</b><ul id="ck"></ul></div>
 <div id="log" class="panel"></div>
+<div id="roster" class="panel"></div>
 <div id="inspect" class="panel"></div>
 <div id="requests" class="panel"></div>
 <div id="submenu" class="panel"></div>
@@ -1084,7 +1097,7 @@ function tick(){ST.tick++;
     if(ST.heat<40)ST.heatWarn=false;
     if(ST.heat>60&&ST.foes.length===0&&ST.tick-ST.lastRaid>TPD*0.4&&Math.random()<0.25){
       spawnRaid();ST.heat=Math.max(0,ST.heat-40)}}
-  if(ST.tick%10===0)syncHUD();
+  if(ST.tick%10===0){syncHUD();renderRoster()}
   if(ST.tick%25===0){renderInspect();renderRequests()}}
 
 /* ============================================================
@@ -1198,6 +1211,34 @@ function drawBody(p,X,Y){
   ctx.fillStyle="#0e1420";ctx.fillRect(X-3,Y-9,6,6);
   ctx.fillStyle=c2;ctx.fillRect(X-3,Y-7,6,1.5);
   if(p.drafted||ST.foes.length){ctx.fillStyle="#8fa3c4";ctx.fillRect(X+3,Y-1,5,2)}}
+function renderRoster(){
+  const el=$("roster");if(!el)return;
+  let h="<div class='rhdr'>CREW · "+ST.pawns.length+"</div>";
+  for(const p of ST.pawns){
+    const sel=ST.sel.includes(p),mood=p.mood|0,stress=p.stress|0;
+    const moodCol=mood>60?"var(--gn)":mood>35?"var(--yl)":"var(--rd)";
+    const strCol=stress<35?"var(--gn)":stress<65?"var(--or)":"var(--rd)";
+    const task=p.dazed>ST.tick?"dazed":(p.job?(p.job.t||"busy"):"idle");
+    h+="<div class='rrow"+(sel?" sel":"")+"' data-id='"+p.id+"'>";
+    h+="<div class='rname'><span style='color:"+p.accent+"'>"+p.name+"</span><span class='rtask'>"+task+"</span></div>";
+    h+="<div class='barlab'><span>MOOD</span><span>"+mood+"</span></div><div class='bar'><i style='width:"+mood+"%;background:"+moodCol+"'></i></div>";
+    h+="<div class='barlab'><span>STRESS</span><span>"+stress+"</span></div><div class='bar'><i style='width:"+stress+"%;background:"+strCol+"'></i></div>";
+    let t="";
+    if(p.sick)t+="<span class='tag' style='background:#3a1620;color:var(--rd)'>SICK</span>";
+    if(p.homeless)t+="<span class='tag' style='background:#3a2410;color:var(--or)'>EVICTED</span>";
+    if(p.dazed>ST.tick)t+="<span class='tag' style='background:#241a3a;color:#b06fff'>DAZED</span>";
+    if(p.addiction>40)t+="<span class='tag' style='background:#241a3a;color:#b06fff'>HOOKED</span>";
+    if((p.credits||0)<0)t+="<span class='tag' style='background:#3a1620;color:var(--rd)'>BROKE</span>";
+    if(t)h+="<div class='tags'>"+t+"</div>";
+    h+="</div>";
+  }
+  el.innerHTML=h}
+const _rEl=$("roster");
+if(_rEl)_rEl.addEventListener("click",function(e){
+  const row=e.target.closest&&e.target.closest(".rrow");if(!row)return;
+  const p=ST.pawns.find(q=>q.id==row.dataset.id);if(!p)return;
+  ST.sel=[p];cam.x=p.px*T-VW/cam.z/2;cam.y=p.py*T-VH/cam.z/2;clampCam();
+  renderInspect();renderRoster()});
 function drawPawn(p){const X=p.px*T,Y=p.py*T;
   ctx.fillStyle="rgba(0,0,0,.4)";ctx.beginPath();ctx.ellipse(X,Y+5,5,2,0,0,7);ctx.fill();
   const sel=ST.sel.includes(p);
@@ -1802,7 +1843,7 @@ function newGame(){
   cam.z=clamp(Math.min(VW/(MW*T),VH/(MH*T))*1.9,1,2.2);
   cam.x=cx*T-VW/cam.z/2;cam.y=cy*T-VH/cam.z/2;clampCam();
   ST.lastRaid=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.bond=50;ST.heat=0;ST.heatWarn=false;
-  $("log").innerHTML="";
+  $("log").innerHTML="";renderRoster();
   log("Vex and Static holed up in the dead district. Daylight won't last.","info");
   log("Zone a stockpile, mark scrap for salvage, and get walls up before the gangs notice.","info");
   powerRecalc();updateFlags();syncHUD();renderInspect();refreshSpd();hideModal();
