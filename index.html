@@ -371,6 +371,21 @@ function powerRecalc(){let g=0,u=0;const blackout=ST.black>ST.tick;
     s.powered=!s.bp&&(!d.pw||ST.pwOk)&&!(d.pwGen&&blackout)}}
 
 /* ---------- map generation ---------- */
+function addBuilt(type,x,y,owner){if(!INB(x,y))return;
+  addStruct({id:uid(),kind:"s",type,x,y,hp:DEF[type].hp,maxHp:DEF[type].hp,bp:false,prog:0,need:0,
+    res:0,desig:false,decon:false,owner:owner||0,cd:0,charge:0,vt:0,aim:0,powered:false})}
+function placeRoom(x0,y0,w,h,door,furn){
+  for(let x=x0;x<x0+w;x++)for(let y=y0;y<y0+h;y++){
+    const edge=(x===x0||x===x0+w-1||y===y0||y===y0+h-1);
+    if(!edge)continue;
+    if(door&&x===door.x&&y===door.y)addBuilt("door",x,y);else addBuilt("wall",x,y)}
+  if(furn)for(const f of furn)addBuilt(f.t,x0+f.x,y0+f.y,f.o)}
+function buildCity(){
+  placeRoom(19,12,6,5,{x:21,y:16},[{t:"pod",x:1,y:1},{t:"synth",x:2,y:1},{t:"fridge",x:3,y:1},{t:"shower",x:4,y:1},{t:"toilet",x:4,y:2},{t:"tv",x:1,y:2}]);
+  placeRoom(33,12,6,5,{x:35,y:16},[{t:"pod",x:1,y:1},{t:"synth",x:2,y:1},{t:"fridge",x:3,y:1},{t:"shower",x:4,y:1},{t:"toilet",x:4,y:2},{t:"tv",x:1,y:2}]);
+  placeRoom(19,22,6,5,{x:21,y:22},[{t:"workstation",x:1,y:1},{t:"workstation",x:3,y:1},{t:"gym",x:4,y:3}]);
+  placeRoom(33,22,6,5,{x:35,y:22},[{t:"counter",x:2,y:1},{t:"counter",x:3,y:1}]);
+  placeRoom(26,17,5,5,{x:28,y:21},[{t:"medbed",x:1,y:1},{t:"medbed",x:3,y:1}])}
 function genMap(){
   ST.ter=new Uint8Array(MW*MH);ST.structs.clear();ST.items.length=0;ST.zone.clear();
   const cx=MW/2,cy=MH/2;
@@ -407,7 +422,8 @@ function genMap(){
   // starting supplies
   dropItem(cx-2|0,cy|0,"scrap",16);dropItem(cx+2|0,cy-1|0,"scrap",14);
   dropItem(cx|0,(cy+2)|0,"raw",10);dropItem((cx+1)|0,(cy+2)|0,"meal",6);
-  dropItem((cx-1)|0,(cy-2)|0,"comp",4)}
+  dropItem((cx-1)|0,(cy-2)|0,"comp",4);
+  buildCity()}
 
 /* ---------- pawns ---------- */
 function mkPawn(x,y,spec){const t1=CH(TRAITS);let t2=CH(TRAITS);while(t2===t1)t2=CH(TRAITS);
@@ -1652,10 +1668,10 @@ function newGame(){
   genMap();drawTerrain();
   ST.fog=new Uint8Array(MW*MH).fill(1);
   const cx=MW/2|0,cy=MH/2|0;
-  const vex=mkPawn(cx-2,cy-1,"sal");
+  const vex=mkPawn(21,15,"sal");
   vex.name="Vex";vex.accent=ACC[0];Object.assign(vex.pers,{ind:40,cau:30,soc:60,cur:80});
   ST.pawns.push(vex);
-  const sta=mkPawn(cx+2,cy-1,"bld");
+  const sta=mkPawn(35,15,"bld");
   sta.name="Static";sta.accent=ACC[1];Object.assign(sta.pers,{ind:80,cau:65,soc:45,cur:25});
   ST.pawns.push(sta);
   cam.z=clamp(Math.min(VW/(MW*T),VH/(MH*T))*1.9,1,2.2);

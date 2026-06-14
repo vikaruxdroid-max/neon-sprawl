@@ -61,7 +61,10 @@ function T_fullrun(){
   const sta=ST.pawns.find(p=>p.name==="Static");
   sta.needs.food=80;sta.needs.rest=80;
   ST.res.scrap+=200;ST.res.comp+=40;
-  placeBp("wall",cx+6,cy+6);
+  // place blueprint adjacent to Static and reveal fog in radius so explore won't win
+  const sbx=(sta.px|0)+2,sby=(sta.py|0);
+  for(let dy=-5;dy<=5;dy++)for(let dx=-5;dx<=5;dx++){const X=(sta.px|0)+dx,Y=(sta.py|0)+dy;if(INB(X,Y))ST.fog[X+Y*MW]=0}
+  placeBp("wall",sbx,sby);
   sta.job=null;
   const j1=chooseJob(sta);
   const f1=j1&&j1.t==="build";
