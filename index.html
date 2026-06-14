@@ -672,10 +672,10 @@ function pawnTick(p){
   const hd=100/(TPD*0.95)*trMul(p,"hung");
   const rd=100/(TPD*1.5)*trMul(p,"rest");
   p.needs.food=Math.max(0,p.needs.food-hd);
-  p.needs.hyg=Math.max(0,(p.needs.hyg??80)-100/(TPD*2.2));
+  p.needs.hyg=Math.max(0,(p.needs.hyg??80)-100/(TPD*2.2)-(p.homeless?100/(TPD*1.6):0));
   p.needs.fun=Math.max(0,(p.needs.fun??70)-100/(TPD*2.0));
   p.needs.socN=Math.max(0,(p.needs.socN??70)-100/(TPD*2.6));
-  if(p.sleeping){const rate=(p.job&&p.job.s)?0.10:0.065;
+  if(p.sleeping){const rate=(p.job&&p.job.s&&!p.homeless)?0.10:0.065;
     p.needs.rest=Math.min(100,p.needs.rest+rate);
     if(p.needs.food>40&&p.hp<100)p.hp=Math.min(100,p.hp+0.03)}
   else p.needs.rest=Math.max(0,p.needs.rest-rd);
@@ -755,7 +755,8 @@ function pawnTick(p){
       if(r==="fail"){if(j.s)markUnre(p,j.x,j.y);clearJob(p);break}
       if(r==="arr"){p.sleeping=true;
         if(p.needs.rest>=99||p.needs.food<12){
-          addMod(p,j.s?"pod":"floor",j.s?"Slept in a pod":"Slept on concrete",j.s?4:-7,TPD*.6);
+          const pod=j.s&&!p.homeless;
+          addMod(p,pod?"pod":"floor",pod?"Slept in a pod":"Slept rough",pod?4:-7,TPD*.6);
           clearJob(p)}}
       break}
     case "cook":{const s=j.s;
