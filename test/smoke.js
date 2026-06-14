@@ -59,7 +59,7 @@ function T_fullrun(){
   // F1: industrious agent (Static) picks build when blueprint queued + comfortable needs
   newGame();ST.nextEv=1e9;
   const sta=ST.pawns.find(p=>p.name==="Static");
-  sta.needs.food=80;sta.needs.rest=80;
+  sta.needs.food=80;sta.needs.rest=80;sta.credits=100;
   ST.res.scrap+=200;ST.res.comp+=40;
   // place blueprint adjacent to Static and reveal fog in radius so explore won't win
   const sbx=(sta.px|0)+2,sby=(sta.py|0);
@@ -76,7 +76,7 @@ function T_fullrun(){
   // F2: curious agent (Vex) picks explore when no urgent jobs + fog cells in range
   newGame();ST.nextEv=1e9;
   const vex=ST.pawns.find(p=>p.name==="Vex");
-  vex.needs.food=80;vex.needs.rest=80;
+  vex.needs.food=80;vex.needs.rest=80;vex.credits=100;
   // no blueprints, no designations, meal full so cook won't trigger, no zone for haul
   for(const s of ST.structs.values()){s.bp=false;s.decon=false;s.desig=false;s.res=0}
   ST.res.meal=10;ST.res.raw=0;
@@ -90,7 +90,7 @@ function T_fullrun(){
   newGame();ST.nextEv=1e9;ST.res.meal=5;
   const p3=ST.pawns[0];
   p3.pers={ind:100,cau:0,soc:50,cur:50};
-  p3.needs.food=15;p3.needs.rest=80;
+  p3.needs.food=15;p3.needs.rest=80;p3.credits=100;
   p3.job=null;
   const j3=chooseJob(p3);
   const f3=j3&&j3.t==="eat";

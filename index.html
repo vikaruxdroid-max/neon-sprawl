@@ -457,8 +457,8 @@ function mkPawn(x,y,spec){const t1=CH(TRAITS);let t2=CH(TRAITS);while(t2===t1)t2
     job:null,path:null,pi:0,pTx:-1,pTy:-1,claim:0,dazed:0,dz:null,sleeping:false,
     carry:null,forced:0,order:null,unre:new Map(),flee:0,hurtT:-999,
     pers:{ind:50,cau:50,soc:50,cur:50},
-    bias:{eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1,hygiene:1,recreate:1,socialize:1},
-    drift:{day:0,used:0},seen:{explored:new Set()}}}
+    bias:{eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1},
+    drift:{day:0,used:0},seen:{explored:new Set()},credits:R(25,60),homeless:false}}
 function trMul(p,k){let m=1;for(const t of p.tr)if(t[k]!==undefined)m*=t[k];return m}
 function trAdd(p,k){let v=0;for(const t of p.tr)if(t[k]!==undefined)v+=t[k];return v}
 function workSpd(p,sk){return (0.6+sk*0.09)*trMul(p,"work")}
@@ -573,19 +573,22 @@ function scoreJobs(p){
   const showStr=nearestStruct(p,s=>(s.type==="shower"||s.type==="toilet")&&!s.bp);
   const funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar")&&!s.bp);
   const mate=ST.pawns.find(q=>q.id!==p.id);
+  const cred=p.credits??40;
+  const workStr=nearestStruct(p,s=>s.type==="workstation"&&!s.bp);
   const base={
     eat:clamp(80-food,0,100),sleep:clamp(70-rest,0,100),
     cook:ST.res.raw>=2&&ST.res.meal<10&&stn?45:0,
     build:bpStr?50:0,salvage:salvStr?40:0,haul:haulItem?30:0,
     explore:explJob?25:0,idle:10,
-    hygiene:showStr?clamp(70-hyg,0,100):0,recreate:funStr?clamp(60-fun,0,100):0,socialize:mate?clamp(60-socN,0,100):0};
+    hygiene:showStr?clamp(70-hyg,0,100):0,recreate:funStr?clamp(60-fun,0,100):0,socialize:mate?clamp(60-socN,0,100):0,
+    work:workStr?clamp(60-cred*0.6,0,100):0};
   const pw={
     eat:0.5+cau/100,sleep:0.5+cau/100,cook:0.5+ind/100,build:0.5+ind/100+(ST.pawns.length===2&&ST.bond>65?0.1:0),
     salvage:0.5+ind/100+0.1*(cur/100),haul:0.5+ind/100,explore:0.5+cur/100,
     idle:0.5+(100-ind)/100,
-    hygiene:1,recreate:0.5+cur/100,socialize:0.5+soc/100};
-  const sm={eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1,hygiene:1,recreate:1,socialize:1};
-  if(foe){sm.explore*=0.2;sm.build*=0.6;sm.salvage*=0.6;sm.haul*=0.6;sm.sleep*=0.3;sm.eat*=0.8}
+    hygiene:1,recreate:0.5+cur/100,socialize:0.5+soc/100,work:0.5+ind/100};
+  const sm={eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1};
+  if(foe){sm.explore*=0.2;sm.build*=0.6;sm.salvage*=0.6;sm.haul*=0.6;sm.sleep*=0.3;sm.eat*=0.8;sm.work*=0.4}
   if(night){sm.sleep*=1.4;sm.explore*=0.7}
   if(inj){sm.eat*=1.3;sm.sleep*=1.3}
   const bias=p.bias;
@@ -600,6 +603,7 @@ function scoreJobs(p){
     {k:"hygiene", mk:()=>showStr?{t:"hygiene",s:showStr,prog:0}:null},
     {k:"recreate",mk:()=>funStr?{t:"recreate",s:funStr,prog:0}:null},
     {k:"socialize",mk:()=>mate?{t:"socialize",oid:mate.id,prog:0}:null},
+    {k:"work",   mk:()=>workStr?{t:"work",s:workStr,prog:0}:null},
     {k:"idle",   mk:()=>{const w=randNear(p,5)||{x:p.px|0,y:p.py|0};return{t:"idle",until:ST.tick+RI(25,70),x:w.x,y:w.y}}}];
   let bestU=-1,bestMk=null;
   for(const a of acts){
@@ -803,6 +807,14 @@ function pawnTick(p){
       const r=gotoCell(p,o.px|0,o.py|0,1);
       if(r==="fail"){p.job=null;break}
       if(r==="arr"){j.prog++;if(j.prog>=40){p.needs.socN=100;ST.bond=clamp(ST.bond+1,0,100);p.job=null}}
+      break}
+    case "work":{const s=j.s;
+      if(structAt(s.x,s.y)!==s||s.bp){p.job=null;break}
+      const r=gotoCell(p,s.x,s.y,1);
+      if(r==="fail"){markUnre(p,s.x,s.y);p.job=null;break}
+      if(r==="arr"){j.prog++;
+        if(j.prog>=120){const pay=RI(14,24);p.credits=(p.credits||0)+pay;
+          float(s.x+.5,s.y+.5,"+"+pay+"c","#ffd84a");addMod(p,"paid","Got paid",4,TPD*.4);applyDrift(p,{ind:1});p.job=null}}
       break}
   }
 }
@@ -1011,6 +1023,9 @@ function tick(){ST.tick++;
         it.gone=true;ST.items.splice(i,1);syncHUD()}}}
   if(ST.tick>=ST.nextEv)fireEvent();
   if(ST.tick%30===0){updateFlags();genRequests();expireRequests()}
+  if(ST.tick%TPD===0&&ST.tick>0)for(const q of ST.pawns){q.credits=(q.credits||0)-18;
+    if(q.credits<0&&!q.homeless){q.homeless=true;log(q.name+" couldn't make rent — evicted.","bad")}
+    else if(q.credits>=0&&q.homeless){q.homeless=false;log(q.name+" cleared their back rent.","good")}}
   if(ST.tick%10===0)syncHUD();
   if(ST.tick%25===0){renderInspect();renderRequests()}}
 
@@ -1605,6 +1620,7 @@ function renderInspect(){const el=$("inspect");
     h+=barHtml("REST",e.needs.rest,"#7aa2ff");
     h+=barHtml("MOOD",e.mood,e.mood<25?"#ff4757":"#ffd84a");
     h+="<div class='sub'>TASK: "+jobLabel(e)+"</div>";
+    h+="<div class='sub'>CREDITS "+(e.credits|0)+(e.homeless?" · <span style='color:var(--rd)'>EVICTED</span>":"")+"</div>";
     h+="<div class='sub'>SAL "+e.sk.sal+" · BLD "+e.sk.bld+" · COOK "+e.sk.cook+" · SHT "+e.sk.sht+"</div>";
     h+="<button class='tb' id='i-draft'>"+(e.drafted?"UNDRAFT":"DRAFT")+"</button>";
     el.innerHTML=h}
