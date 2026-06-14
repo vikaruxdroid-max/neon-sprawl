@@ -73,18 +73,18 @@ function T_fullrun(){
   // clean up reservation for next sub-test
   if(j1&&j1.s&&j1.s.res===sta.id)j1.s.res=0;
 
-  // F2: curious agent (Vex) picks explore when no urgent jobs + fog cells in range
+  // F2: curious agent (Vex) picks recreate when fun is low and all other needs comfortable
   newGame();ST.nextEv=1e9;
   const vex=ST.pawns.find(p=>p.name==="Vex");
-  vex.needs.food=80;vex.needs.rest=80;vex.credits=100;
+  vex.needs.food=80;vex.needs.rest=80;vex.needs.hyg=90;vex.needs.socN=90;vex.needs.fun=10;vex.credits=100;
   // no blueprints, no designations, meal full so cook won't trigger, no zone for haul
   for(const s of ST.structs.values()){s.bp=false;s.decon=false;s.desig=false;s.res=0}
   ST.res.meal=10;ST.res.raw=0;
   vex.job=null;
   const j2=chooseJob(vex);
-  const f2=j2&&j2.t==="explore";
+  const f2=j2&&j2.t==="recreate";
   if(!f2)fails++;
-  console.log("F2 curious picks explore:",f2?"PASS":"FAIL","got:"+(j2&&j2.t));
+  console.log("F2 curious picks recreate:",f2?"PASS":"FAIL","got:"+(j2&&j2.t));
 
   // F3: hard gate fires eat at food=15 regardless of personality
   newGame();ST.nextEv=1e9;ST.res.meal=5;

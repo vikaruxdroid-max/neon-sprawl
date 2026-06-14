@@ -458,7 +458,7 @@ function mkPawn(x,y,spec){const t1=CH(TRAITS);let t2=CH(TRAITS);while(t2===t1)t2
     carry:null,forced:0,order:null,unre:new Map(),flee:0,hurtT:-999,
     pers:{ind:50,cau:50,soc:50,cur:50},
     bias:{eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1},
-    drift:{day:0,used:0},seen:{explored:new Set()},credits:R(25,60),homeless:false}}
+    drift:{day:0,used:0},credits:R(25,60),homeless:false}}
 function trMul(p,k){let m=1;for(const t of p.tr)if(t[k]!==undefined)m*=t[k];return m}
 function trAdd(p,k){let v=0;for(const t of p.tr)if(t[k]!==undefined)v+=t[k];return v}
 function workSpd(p,sk){return (0.6+sk*0.09)*trMul(p,"work")}
@@ -552,14 +552,6 @@ function findJob(p){
   if(p.needs.rest<=35)return mkSleep(p);
   const w=randNear(p,5)||{x:p.px|0,y:p.py|0};
   return{t:"idle",until:ST.tick+RI(25,70),x:w.x,y:w.y}}
-function mkExplore(p){
-  const px=p.px|0,py=p.py|0;let best=null,bd=1e9;
-  for(let dy=-12;dy<=12;dy++)for(let dx=-12;dx<=12;dx++){
-    const d2=dx*dx+dy*dy;if(d2>144)continue;
-    const X=px+dx,Y=py+dy;
-    if(X<0||X>=MW||Y<0||Y>=MH)continue;
-    if(ST.fog&&ST.fog[X+Y*MW]&&colCost(X,Y)>=0&&d2<bd){bd=d2;best={x:X,y:Y}}}
-  return best?{t:"explore",x:best.x,y:best.y}:null}
 function scoreJobs(p){
   const food=p.needs.food,rest=p.needs.rest,hp=p.hp;
   const ind=p.pers.ind,cau=p.pers.cau,cur=p.pers.cur;
@@ -568,7 +560,6 @@ function scoreJobs(p){
   const bpStr=nearestStruct(p,s=>(s.bp||s.decon)&&!s.res);
   const salvStr=nearestStruct(p,s=>s.desig&&!s.res&&(s.type==="scrap"||s.type==="cache"));
   const haulItem=ST.zone.size>0?nearestItem(p):null;
-  const explJob=mkExplore(p);
   const hyg=p.needs.hyg??80,fun=p.needs.fun??70,socN=p.needs.socN??70,soc=p.pers.soc;
   const showStr=nearestStruct(p,s=>(s.type==="shower"||s.type==="toilet")&&!s.bp);
   const funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar")&&!s.bp);
@@ -579,17 +570,17 @@ function scoreJobs(p){
     eat:clamp(80-food,0,100),sleep:clamp(70-rest,0,100),
     cook:ST.res.raw>=2&&ST.res.meal<10&&stn?45:0,
     build:bpStr?50:0,salvage:salvStr?40:0,haul:haulItem?30:0,
-    explore:explJob?25:0,idle:10,
+    idle:10,
     hygiene:showStr?clamp(70-hyg,0,100):0,recreate:funStr?clamp(60-fun,0,100):0,socialize:mate?clamp(60-socN,0,100):0,
     work:workStr?clamp(60-cred*0.6,0,100):0};
   const pw={
     eat:0.5+cau/100,sleep:0.5+cau/100,cook:0.5+ind/100,build:0.5+ind/100+(ST.pawns.length===2&&ST.bond>65?0.1:0),
-    salvage:0.5+ind/100+0.1*(cur/100),haul:0.5+ind/100,explore:0.5+cur/100,
+    salvage:0.5+ind/100+0.1*(cur/100),haul:0.5+ind/100,
     idle:0.5+(100-ind)/100,
     hygiene:1,recreate:0.5+cur/100,socialize:0.5+soc/100,work:0.5+ind/100};
-  const sm={eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1};
-  if(foe){sm.explore*=0.2;sm.build*=0.6;sm.salvage*=0.6;sm.haul*=0.6;sm.sleep*=0.3;sm.eat*=0.8;sm.work*=0.4}
-  if(night){sm.sleep*=1.4;sm.explore*=0.7}
+  const sm={eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1};
+  if(foe){sm.build*=0.6;sm.salvage*=0.6;sm.haul*=0.6;sm.sleep*=0.3;sm.eat*=0.8;sm.work*=0.4}
+  if(night){sm.sleep*=1.4}
   if(inj){sm.eat*=1.3;sm.sleep*=1.3}
   const bias=p.bias;
   const acts=[
@@ -599,7 +590,6 @@ function scoreJobs(p){
     {k:"build",  mk:()=>bpStr?{t:"build",s:bpStr,prog:0}:null},
     {k:"salvage",mk:()=>salvStr?{t:"salvage",s:salvStr}:null},
     {k:"haul",   mk:()=>haulItem?{t:"haul",it:haulItem,phase:0,x:0,y:0}:null},
-    {k:"explore",mk:()=>explJob},
     {k:"hygiene", mk:()=>showStr?{t:"hygiene",s:showStr,prog:0}:null},
     {k:"recreate",mk:()=>funStr?{t:"recreate",s:funStr,prog:0}:null},
     {k:"socialize",mk:()=>mate?{t:"socialize",oid:mate.id,prog:0}:null},
@@ -632,7 +622,7 @@ function jobLabel(p){if(p.drafted)return p.order?"Moving (drafted)":"Standing gu
   switch(j.t){case "eat":return "Getting food";case "sleep":return p.sleeping?"Sleeping":"Heading to rest";
     case "cook":return "Synthesizing meals";case "build":return j.s&&j.s.decon?"Deconstructing":"Constructing";
     case "salvage":return "Salvaging";case "haul":return p.carry?"Hauling to stockpile":"Collecting salvage";
-    case "explore":return "Exploring";default:return "Idling"}}
+    default:return "Idling"}}
 
 /* combat helpers (pawn side) */
 function foeById(id){for(const f of ST.foes)if(f.id===id)return f;return null}
@@ -787,9 +777,6 @@ function pawnTick(p){
           float(p.px,p.py,"+"+p.carry.qty+" "+RESNAME[p.carry.res].toUpperCase(),RESCOL[p.carry.res]);
           p.carry=null;p.job=null;syncHUD()}}
       break}
-    case "explore":{const r=gotoCell(p,j.x,j.y,0);
-      if(r==="fail"){markUnre(p,j.x,j.y);p.job=null;break}
-      if(r==="arr")p.job=null;break}
     case "hygiene":{const s=j.s;
       if(structAt(s.x,s.y)!==s||s.bp){p.job=null;break}
       const r=gotoCell(p,s.x,s.y,1);
@@ -1543,9 +1530,6 @@ function tryBuildRequest(p){
   const id=uid();
   const exp=ST.tick+Math.floor(2400*0.4);
   const base={id,agentId:p.id,agentName:p.name,created:ST.tick,expires:exp,status:"pending"};
-  if(p.pers.cau>60&&p.pers.cur>55&&Math.random()<0.35)
-    return{...base,kind:"safety",text:p.name+" wants to know if it's safe past the eastern barricade.",
-      options:[{label:"Go ahead",apply:{explore:+0.15}},{label:"Hold back",apply:{explore:-0.15,cau:+3}}]};
   if(p.needs.food<55&&ST.res.meal===0&&ST.res.raw>0&&Math.random()<0.4)
     return{...base,kind:"food",text:p.name+" is hungry — eat raw or wait for cooked protein?",
       options:[{label:"Eat raw",apply:{eat:+0.2,cau:-2}},{label:"Wait",apply:{eat:-0.1,cau:+2}}]};
