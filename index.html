@@ -1404,7 +1404,7 @@ function applyRequest(rid,oi){
 $("requests").addEventListener("click",e=>{
   const rid=e.target.dataset.rid;
   const oi=e.target.dataset.oi;
-  if(rid&&oi!==undefined){SFX.ui();applyRequest(rid,parseInt(oi))}});
+  if(rid&&oi!==undefined){SFX.ui();applyRequest(+rid,parseInt(oi))}});
 
 function expireRequests(){
   if(!ST.requests)return;
