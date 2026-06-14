@@ -452,12 +452,12 @@ function mkPawn(x,y,spec){const t1=CH(TRAITS);let t2=CH(TRAITS);while(t2===t1)t2
   if(spec)sk[spec]=clamp(sk[spec]+4,0,10);
   return{id:uid(),kind:"pawn",name:CH(NF)+' "'+CH(NH)+'"',
     accent:ACC[(ST.pawns.length)%ACC.length],tr:[t1,t2],sk,xp:{sal:0,bld:0,cook:0,sht:0},
-    px:x+.5,py:y+.5,hp:100,drafted:false,needs:{food:R(80,95),rest:R(70,90)},
+    px:x+.5,py:y+.5,hp:100,drafted:false,needs:{food:R(80,95),rest:R(70,90),hyg:R(70,90),fun:R(60,85),socN:R(60,85)},
     mood:60,mods:[],weapon:WEAP[CH(["pistol","pistol","smg"])],cd:0,
     job:null,path:null,pi:0,pTx:-1,pTy:-1,claim:0,dazed:0,dz:null,sleeping:false,
     carry:null,forced:0,order:null,unre:new Map(),flee:0,hurtT:-999,
     pers:{ind:50,cau:50,soc:50,cur:50},
-    bias:{eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1},
+    bias:{eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1,hygiene:1,recreate:1,socialize:1},
     drift:{day:0,used:0},seen:{explored:new Set()}}}
 function trMul(p,k){let m=1;for(const t of p.tr)if(t[k]!==undefined)m*=t[k];return m}
 function trAdd(p,k){let v=0;for(const t of p.tr)if(t[k]!==undefined)v+=t[k];return v}
@@ -569,16 +569,22 @@ function scoreJobs(p){
   const salvStr=nearestStruct(p,s=>s.desig&&!s.res&&(s.type==="scrap"||s.type==="cache"));
   const haulItem=ST.zone.size>0?nearestItem(p):null;
   const explJob=mkExplore(p);
+  const hyg=p.needs.hyg??80,fun=p.needs.fun??70,socN=p.needs.socN??70,soc=p.pers.soc;
+  const showStr=nearestStruct(p,s=>(s.type==="shower"||s.type==="toilet")&&!s.bp);
+  const funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar")&&!s.bp);
+  const mate=ST.pawns.find(q=>q.id!==p.id);
   const base={
     eat:clamp(80-food,0,100),sleep:clamp(70-rest,0,100),
     cook:ST.res.raw>=2&&ST.res.meal<10&&stn?45:0,
     build:bpStr?50:0,salvage:salvStr?40:0,haul:haulItem?30:0,
-    explore:explJob?25:0,idle:10};
+    explore:explJob?25:0,idle:10,
+    hygiene:showStr?clamp(70-hyg,0,100):0,recreate:funStr?clamp(60-fun,0,100):0,socialize:mate?clamp(60-socN,0,100):0};
   const pw={
     eat:0.5+cau/100,sleep:0.5+cau/100,cook:0.5+ind/100,build:0.5+ind/100+(ST.pawns.length===2&&ST.bond>65?0.1:0),
     salvage:0.5+ind/100+0.1*(cur/100),haul:0.5+ind/100,explore:0.5+cur/100,
-    idle:0.5+(100-ind)/100};
-  const sm={eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1};
+    idle:0.5+(100-ind)/100,
+    hygiene:1,recreate:0.5+cur/100,socialize:0.5+soc/100};
+  const sm={eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1,hygiene:1,recreate:1,socialize:1};
   if(foe){sm.explore*=0.2;sm.build*=0.6;sm.salvage*=0.6;sm.haul*=0.6;sm.sleep*=0.3;sm.eat*=0.8}
   if(night){sm.sleep*=1.4;sm.explore*=0.7}
   if(inj){sm.eat*=1.3;sm.sleep*=1.3}
@@ -591,10 +597,13 @@ function scoreJobs(p){
     {k:"salvage",mk:()=>salvStr?{t:"salvage",s:salvStr}:null},
     {k:"haul",   mk:()=>haulItem?{t:"haul",it:haulItem,phase:0,x:0,y:0}:null},
     {k:"explore",mk:()=>explJob},
+    {k:"hygiene", mk:()=>showStr?{t:"hygiene",s:showStr,prog:0}:null},
+    {k:"recreate",mk:()=>funStr?{t:"recreate",s:funStr,prog:0}:null},
+    {k:"socialize",mk:()=>mate?{t:"socialize",oid:mate.id,prog:0}:null},
     {k:"idle",   mk:()=>{const w=randNear(p,5)||{x:p.px|0,y:p.py|0};return{t:"idle",until:ST.tick+RI(25,70),x:w.x,y:w.y}}}];
   let bestU=-1,bestMk=null;
   for(const a of acts){
-    const u=base[a.k]*pw[a.k]*bias[a.k]*sm[a.k];
+    const u=base[a.k]*pw[a.k]*(bias[a.k]||1)*sm[a.k];
     if(u>bestU){bestU=u;bestMk=a.mk}}
   const j=bestMk?bestMk():null;
   if(!j)return{t:"idle",until:ST.tick+RI(25,70),x:p.px|0,y:p.py|0};
@@ -654,6 +663,9 @@ function pawnTick(p){
   const hd=100/(TPD*0.95)*trMul(p,"hung");
   const rd=100/(TPD*1.5)*trMul(p,"rest");
   p.needs.food=Math.max(0,p.needs.food-hd);
+  p.needs.hyg=Math.max(0,(p.needs.hyg??80)-100/(TPD*2.2));
+  p.needs.fun=Math.max(0,(p.needs.fun??70)-100/(TPD*2.0));
+  p.needs.socN=Math.max(0,(p.needs.socN??70)-100/(TPD*2.6));
   if(p.sleeping){const rate=(p.job&&p.job.s)?0.10:0.065;
     p.needs.rest=Math.min(100,p.needs.rest+rate);
     if(p.needs.food>40&&p.hp<100)p.hp=Math.min(100,p.hp+0.03)}
@@ -774,6 +786,24 @@ function pawnTick(p){
     case "explore":{const r=gotoCell(p,j.x,j.y,0);
       if(r==="fail"){markUnre(p,j.x,j.y);p.job=null;break}
       if(r==="arr")p.job=null;break}
+    case "hygiene":{const s=j.s;
+      if(structAt(s.x,s.y)!==s||s.bp){p.job=null;break}
+      const r=gotoCell(p,s.x,s.y,1);
+      if(r==="fail"){markUnre(p,s.x,s.y);p.job=null;break}
+      if(r==="arr"){j.prog++;if(j.prog>=40){p.needs.hyg=100;p.job=null}}
+      break}
+    case "recreate":{const s=j.s;
+      if(structAt(s.x,s.y)!==s||s.bp){p.job=null;break}
+      const r=gotoCell(p,s.x,s.y,1);
+      if(r==="fail"){markUnre(p,s.x,s.y);p.job=null;break}
+      if(r==="arr"){j.prog++;if(j.prog>=50){p.needs.fun=100;addMod(p,"fun","Unwound",3,TPD*.4);p.job=null}}
+      break}
+    case "socialize":{const o=ST.pawns.find(q=>q.id===j.oid);
+      if(!o||o===p){p.job=null;break}
+      const r=gotoCell(p,o.px|0,o.py|0,1);
+      if(r==="fail"){p.job=null;break}
+      if(r==="arr"){j.prog++;if(j.prog>=40){p.needs.socN=100;ST.bond=clamp(ST.bond+1,0,100);p.job=null}}
+      break}
   }
 }
 
