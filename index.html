@@ -506,10 +506,10 @@ function moodCalc(p){
   if(ST.pawns.length===2){const other=ST.pawns.find(q=>q.id!==p.id);
     if(other&&DIST(p.px,p.py,other.px,other.py)<6){
       if(ST.bond>65)m+=5;else if(ST.bond<35)m-=5}}
-  if(p.needs.hyg<25)m-=5;
-  if(p.needs.fun<25)m-=5;
-  if(p.needs.socN<20)m-=6;
-  m-=(p.stress||0)*0.25;
+  if(p.needs.hyg<20)m-=4;
+  if(p.needs.fun<20)m-=4;
+  if(p.needs.socN<20)m-=5;
+  m-=(p.stress||0)*0.18;
   p.mood=clamp(m,0,100)}
 
 /* movement */
@@ -702,22 +702,21 @@ function pawnTick(p){
   if(!p.sleeping&&!p.sick&&p.hp<100&&p.needs.food>30&&ST.tick%10===0&&!foeNear(p,10))
     p.hp=Math.min(100,p.hp+0.1);
   if(ST.procgen!==false&&!p.sick&&ST.tick%60===0&&Math.random()<0.002+(p.needs.hyg<35?(35-p.needs.hyg)/35*0.12:0)){
-    p.sick=true;addMod(p,"sick","Infection",-10,TPD);log(p.name+" caught an infection.","warn")}
+    p.sick=true;addMod(p,"sick","Infection",-10,TPD);float(p.px,p.py,"INFECTED","#ff4757");log(p.name+" caught an infection.","warn")}
   if(p.sick){
     if(ST.tick%40===0)p.hp-=1;
     if(p.hp<=0){killPawn(p,"died of an untreated infection");return}
     if(p.needs.hyg>60&&p.hp>60&&ST.tick%80===0&&Math.random()<0.05){p.sick=false;log(p.name+" shook off the infection.","good")}}
   if(ST.tick%100===0){
-    let sp=0;
-    if(p.sick)sp+=2.5;
-    if(p.needs.food<25)sp+=2;
-    if(p.needs.rest<25)sp+=2;
-    if(p.needs.hyg<25)sp+=1.2;
-    if(p.needs.fun<25)sp+=1.2;
-    if(p.needs.socN<20)sp+=1.8;
-    if(p.homeless)sp+=2;
-    if(p.addiction>40)sp+=(p.addiction-40)/20;
-    if(sp===0)sp=-2;
+    let sp=-3;
+    if(p.sick)sp+=3;
+    if(p.needs.food<15)sp+=2;
+    if(p.needs.rest<15)sp+=2;
+    if(p.needs.hyg<15)sp+=1;
+    if(p.needs.fun<15)sp+=1;
+    if(p.needs.socN<15)sp+=1.5;
+    if(p.homeless)sp+=2.5;
+    if(p.addiction>40)sp+=(p.addiction-40)/25;
     p.stress=clamp((p.stress||0)+sp,0,100);
     if(p.addiction>0)p.addiction=Math.max(0,p.addiction-0.5)}
   if((ST.tick+p.id)%40===0)moodCalc(p);
@@ -725,6 +724,7 @@ function pawnTick(p){
   const brk=22+trAdd(p,"brk");
   if(!p.drafted&&p.dazed<ST.tick&&p.mood<brk&&Math.random()<0.0018+(p.stress>70?0.0025:0)){
     clearJob(p);p.dazed=ST.tick+260;p.dz=null;
+    float(p.px,p.py,"SNAPPED","#b06fff");
     log(p.name+" snapped — wandering dazed.","warn")}
   if(p.dazed>ST.tick&&p.dazed-ST.tick===1){applyDrift(p,{cau:2,soc:-1})}
   if(p.dazed>ST.tick){p.sleeping=false;
@@ -1090,7 +1090,7 @@ function tick(){ST.tick++;
   if(ST.tick>=ST.nextEv)fireEvent();
   if(ST.tick%30===0){updateFlags();genRequests();expireRequests()}
   if(ST.tick%TPD===0&&ST.tick>0)for(const q of ST.pawns){q.credits=(q.credits||0)-18;
-    if(q.credits<0&&!q.homeless){q.homeless=true;log(q.name+" couldn't make rent — evicted.","bad")}
+    if(q.credits<0&&!q.homeless){q.homeless=true;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad")}
     else if(q.credits>=0&&q.homeless){q.homeless=false;log(q.name+" cleared their back rent.","good")}}
   if(ST.tick%100===0){
     if(ST.heat>0)ST.heat=Math.max(0,ST.heat-1);
@@ -1251,7 +1251,22 @@ function drawPawn(p){const X=p.px*T,Y=p.py*T;
   if(p.carry){ctx.fillStyle=RESCOL[p.carry.res];ctx.fillRect(X-2,Y-13,4,4)}
   if(p.drafted){ctx.fillStyle="#ff4757";ctx.beginPath();
     ctx.moveTo(X,Y-12);ctx.lineTo(X-3,Y-16);ctx.lineTo(X+3,Y-16);ctx.fill()}
-  if(p.dazed>ST.tick){ctx.fillStyle="#ffd84a";ctx.font="8px monospace";ctx.fillText("?",X+5,Y-8)}
+  const _bdg=[];
+  if(p.flee>ST.tick)_bdg.push(["!","#ffd84a"]);
+  else if(p.mood<22||p.stress>75)_bdg.push(["!","#ff4757"]);
+  if(p.sick)_bdg.push(["+","#ff4757"]);
+  if(p.dazed>ST.tick)_bdg.push(["?","#b06fff"]);
+  if(p.addiction>40)_bdg.push(["*","#c98bff"]);
+  if(p.homeless)_bdg.push(["⌂","#ff9f2d"]);
+  if(_bdg.length){ctx.font="7px monospace";ctx.textAlign="center";
+    const _x0=X-(_bdg.length-1)*3.5;
+    for(let _i=0;_i<_bdg.length;_i++){ctx.fillStyle=_bdg[_i][1];ctx.fillText(_bdg[_i][0],_x0+_i*7,Y-10)}
+    ctx.textAlign="left"}
+  {const _lm={eat:"eat",sleep:"rest",cook:"cook",build:"build",salvage:"salvage",haul:"haul",hygiene:"wash",recreate:"unwind",socialize:"talk",work:"work",treat:"clinic",substance:"using",crime:"robbing",idle:"idle"};
+   let _lbl=p.dazed>ST.tick?"dazed":(p.job?(_lm[p.job.t]||p.job.t):"idle"),_lc="#7f8ba3";
+   if(p.job&&p.job.t==="crime")_lc="#ff4757";else if(p.job&&p.job.t==="substance")_lc="#c98bff";else if(p.job&&p.job.t==="treat")_lc="#39ff88";
+   if(p.dazed>ST.tick)_lc="#b06fff";
+   ctx.font="6px monospace";ctx.textAlign="center";ctx.fillStyle=_lc;ctx.fillText(_lbl,X,Y+15);ctx.textAlign="left"}
   if(sel||ST.tick-p.hurtT<60){ctx.fillStyle="#101626";ctx.fillRect(X-7,Y+8,14,2);
     ctx.fillStyle="#39ff88";ctx.fillRect(X-7,Y+8,14*clamp(p.hp/100,0,1),2)}
   if(sel){ctx.fillStyle=p.accent;ctx.font="7px monospace";ctx.textAlign="center";
