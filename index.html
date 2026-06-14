@@ -1078,6 +1078,12 @@ function tick(){ST.tick++;
   if(ST.tick%TPD===0&&ST.tick>0)for(const q of ST.pawns){q.credits=(q.credits||0)-18;
     if(q.credits<0&&!q.homeless){q.homeless=true;log(q.name+" couldn't make rent — evicted.","bad")}
     else if(q.credits>=0&&q.homeless){q.homeless=false;log(q.name+" cleared their back rent.","good")}}
+  if(ST.tick%100===0){
+    if(ST.heat>0)ST.heat=Math.max(0,ST.heat-1);
+    if(ST.heat>60&&!ST.heatWarn){ST.heatWarn=true;log("Enforcers are taking notice of the sprawl.","warn")}
+    if(ST.heat<40)ST.heatWarn=false;
+    if(ST.heat>60&&ST.foes.length===0&&ST.tick-ST.lastRaid>TPD*0.4&&Math.random()<0.25){
+      spawnRaid();ST.heat=Math.max(0,ST.heat-40)}}
   if(ST.tick%10===0)syncHUD();
   if(ST.tick%25===0){renderInspect();renderRequests()}}
 
@@ -1795,7 +1801,7 @@ function newGame(){
   ST.pawns.push(sta);
   cam.z=clamp(Math.min(VW/(MW*T),VH/(MH*T))*1.9,1,2.2);
   cam.x=cx*T-VW/cam.z/2;cam.y=cy*T-VH/cam.z/2;clampCam();
-  ST.lastRaid=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.bond=50;
+  ST.lastRaid=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.bond=50;ST.heat=0;ST.heatWarn=false;
   $("log").innerHTML="";
   log("Vex and Static holed up in the dead district. Daylight won't last.","info");
   log("Zone a stockpile, mark scrap for salvage, and get walls up before the gangs notice.","info");
