@@ -477,11 +477,23 @@ function mkPawn(x,y,spec){const t1=CH(TRAITS);let t2=CH(TRAITS);while(t2===t1)t2
     mood:60,mods:[],weapon:WEAP[CH(["pistol","pistol","smg"])],cd:0,
     job:null,path:null,pi:0,pTx:-1,pTy:-1,claim:0,dazed:0,dz:null,sleeping:false,
     carry:null,forced:0,order:null,unre:new Map(),flee:0,hurtT:-999,
-    pers,stress:0,addiction:0,rep:{corp:0,gang:0,neighbors:0,city:0},
+    pers,sched:mkSched(pers,[t1,t2]),stress:0,addiction:0,rep:{corp:0,gang:0,neighbors:0,city:0},
     bias:{eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1},
     drift:{day:0,used:0},credits:R(18,38),homeless:false}}
 function trMul(p,k){let m=1;for(const t of p.tr)if(t[k]!==undefined)m*=t[k];return m}
 function trAdd(p,k){let v=0;for(const t of p.tr)if(t[k]!==undefined)v+=t[k];return v}
+function hasTr(tr,id){return tr.some(t=>t&&t.id===id)}
+function inWin(hr,a,b){a=((a%24)+24)%24;b=((b%24)+24)%24;return a<=b?(hr>=a&&hr<b):(hr>=a||hr<b)}
+function nearWin(hr,c,half){c=((c%24)+24)%24;let d=Math.abs(((hr-c+12+24)%24)-12);return d<=half}
+function mkSched(P,tr){
+  const owl=hasTr(tr,"nightowl")||hasTr(tr,"wired"),burned=hasTr(tr,"lazy"),r2=x=>Math.round(x*100)/100;
+  const wake=clamp(7.5-(P.ind-50)/22-(P.amb-50)/45+(owl?3:0)+(burned?1.3:0),5,11.5);
+  const sleepAt=clamp(22.5+(owl?2.6:0)+(P.soc-50)/45+(P.imp-50)/40-(P.cau-50)/40-(P.ind-50)/55,20,27);
+  const workLen=clamp(6+(P.amb-50)/14+(P.ind-50)/22,3.5,11);
+  const workStart=clamp(wake+1.8+(P.cau-50)/70,wake+1,13.5);
+  return{wake:r2(wake),sleepAt:r2(sleepAt),workStart:r2(workStart),
+    workEnd:r2(clamp(workStart+workLen,workStart+3,25.5)),
+    bf:r2(wake+0.4),lunch:r2(clamp(12.5+(P.imp-50)/55,11.5,14.5)),dinner:r2(clamp(18.5+(P.soc-50)/45,17,21))}}
 function workSpd(p,sk){return (0.6+sk*0.09)*trMul(p,"work")}
 function moveSpd(p){let s=0.32*trMul(p,"move");if(p.dazed>ST.tick)s*=.55;return s}
 function accOf(p,d){return clamp((0.92-d*0.034)*(0.66+p.sk.sht*0.035)+trAdd(p,"acc")+(p.weapon.acc||0),0.05,0.97)}
@@ -612,7 +624,12 @@ function scoreJobs(p){
     hygiene:1,recreate:0.5+cur/100,socialize:0.5+soc/100,work:0.5+ind/100,treat:0.5+cau/100,substance:0.3+p.pers.imp/150+(100-p.pers.intg)/200,crime:(100-p.pers.intg)/100*(0.4+p.pers.imp/150)};
   const sm={eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1,treat:1,substance:1,crime:1};
   if(foe){sm.build*=0.6;sm.salvage*=0.6;sm.haul*=0.6;sm.sleep*=0.3;sm.eat*=0.8;sm.work*=0.4}
-  if(night){sm.sleep*=1.4}
+  if(p.sched){const S=p.sched,hr=hourN();
+    sm.sleep*=inWin(hr,S.sleepAt,S.wake)?1.9:(rest<18?0.7:0.12);
+    sm.work*=inWin(hr,S.workStart,S.workEnd)?1.6:0.6;
+    sm.eat*=(nearWin(hr,S.bf,0.9)||nearWin(hr,S.lunch,0.8)||nearWin(hr,S.dinner,1.0))?1.7:0.7;
+    if(nearWin(hr,S.wake+0.6,1.0))sm.hygiene*=1.7;
+  }else if(night){sm.sleep*=1.4}
   if(inj){sm.eat*=1.3;sm.sleep*=1.3}
   const bias=p.bias;
   const acts=[
@@ -1872,10 +1889,10 @@ function newGame(){
   genMap();drawTerrain();
   const cx=MW/2|0,cy=MH/2|0;
   const vex=mkPawn(21,15,"sal");
-  vex.name="Vex";Object.assign(vex.pers,{ind:40,cau:30,soc:60,cur:80,amb:55,emp:55,imp:70,intg:35});vex.accent=tempCols(vex.pers)[0];
+  vex.name="Vex";Object.assign(vex.pers,{ind:40,cau:30,soc:60,cur:80,amb:55,emp:55,imp:70,intg:35});vex.accent=tempCols(vex.pers)[0];vex.sched=mkSched(vex.pers,vex.tr);
   ST.pawns.push(vex);
   const sta=mkPawn(35,15,"bld");
-  sta.name="Static";Object.assign(sta.pers,{ind:80,cau:65,soc:45,cur:25,amb:60,emp:50,imp:25,intg:75});sta.accent=tempCols(sta.pers)[0];
+  sta.name="Static";Object.assign(sta.pers,{ind:80,cau:65,soc:45,cur:25,amb:60,emp:50,imp:25,intg:75});sta.accent=tempCols(sta.pers)[0];sta.sched=mkSched(sta.pers,sta.tr);
   ST.pawns.push(sta);
   cam.z=clamp(Math.min(VW/(MW*T),VH/(MH*T))*1.9,1,2.2);
   cam.x=cx*T-VW/cam.z/2;cam.y=cy*T-VH/cam.z/2;clampCam();
