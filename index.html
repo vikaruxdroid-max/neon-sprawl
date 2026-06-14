@@ -458,7 +458,7 @@ function mkPawn(x,y,spec){const t1=CH(TRAITS);let t2=CH(TRAITS);while(t2===t1)t2
     soc:clamp(TP.bond+jt(),0,100),emp:clamp((TP.bond+100-TP.grit)/2+jt(),0,100),
     cur:clamp(TP.edge+jt(),0,100),intg:clamp((TP.guard+100-TP.edge)/2+jt(),0,100)};
   return{id:uid(),kind:"pawn",name:CH(NF)+' "'+CH(NH)+'"',
-    accent:ACC[(ST.pawns.length)%ACC.length],tr:[t1,t2],sk,xp:{sal:0,bld:0,cook:0,sht:0},
+    accent:tempCols(pers)[0],tr:[t1,t2],sk,xp:{sal:0,bld:0,cook:0,sht:0},
     px:x+.5,py:y+.5,hp:100,drafted:false,needs:{food:R(80,95),rest:R(70,90),hyg:R(70,90),fun:R(60,85),socN:R(60,85)},
     mood:60,mods:[],weapon:WEAP[CH(["pistol","pistol","smg"])],cd:0,
     job:null,path:null,pi:0,pTx:-1,pTy:-1,claim:0,dazed:0,dz:null,sleeping:false,
@@ -1116,11 +1116,17 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T,d=DEF[s.type];
     ctx.fillStyle="#101626";ctx.fillRect(X+1,Y-3,T-2,2);
     ctx.fillStyle="#ff4757";ctx.fillRect(X+1,Y-3,(T-2)*clamp(s.hp/s.maxHp,0,1),2)}}
 
+function tempCols(P){
+  const T=[[(P.amb+P.ind)/2,"#ff2d95"],[(P.imp+100-P.cau)/2,"#ff4757"],
+    [(P.soc+P.emp)/2,"#39ff88"],[(P.cau+P.intg)/2,"#00e5ff"],
+    [(P.cur+100-P.intg)/2,"#b06fff"],[(P.ind+100-P.emp)/2,"#ff9f2d"]];
+  T.sort((a,b)=>b[0]-a[0]);return[T[0][1],T[1][1]]}
 function drawBody(p,X,Y){
-  ctx.fillStyle="#1a2130";ctx.fillRect(X-3.5,Y-3,7,9);
-  ctx.fillStyle=p.accent;ctx.fillRect(X-3.5,Y-3,7,2);
+  const[c1,c2]=tempCols(p.pers);
+  ctx.fillStyle="#141a26";ctx.fillRect(X-3.5,Y-3,7,9);
+  ctx.fillStyle=c1;ctx.fillRect(X-3.5,Y-3,7,3);
   ctx.fillStyle="#0e1420";ctx.fillRect(X-3,Y-9,6,6);
-  ctx.fillStyle=p.accent;ctx.fillRect(X-3,Y-7,6,1.5);
+  ctx.fillStyle=c2;ctx.fillRect(X-3,Y-7,6,1.5);
   if(p.drafted||ST.foes.length){ctx.fillStyle="#8fa3c4";ctx.fillRect(X+3,Y-1,5,2)}}
 function drawPawn(p){const X=p.px*T,Y=p.py*T;
   ctx.fillStyle="rgba(0,0,0,.4)";ctx.beginPath();ctx.ellipse(X,Y+5,5,2,0,0,7);ctx.fill();
@@ -1715,10 +1721,10 @@ function newGame(){
   genMap();drawTerrain();
   const cx=MW/2|0,cy=MH/2|0;
   const vex=mkPawn(21,15,"sal");
-  vex.name="Vex";vex.accent=ACC[0];Object.assign(vex.pers,{ind:40,cau:30,soc:60,cur:80,amb:55,emp:55,imp:70,intg:35});
+  vex.name="Vex";Object.assign(vex.pers,{ind:40,cau:30,soc:60,cur:80,amb:55,emp:55,imp:70,intg:35});vex.accent=tempCols(vex.pers)[0];
   ST.pawns.push(vex);
   const sta=mkPawn(35,15,"bld");
-  sta.name="Static";sta.accent=ACC[1];Object.assign(sta.pers,{ind:80,cau:65,soc:45,cur:25,amb:60,emp:50,imp:25,intg:75});
+  sta.name="Static";Object.assign(sta.pers,{ind:80,cau:65,soc:45,cur:25,amb:60,emp:50,imp:25,intg:75});sta.accent=tempCols(sta.pers)[0];
   ST.pawns.push(sta);
   cam.z=clamp(Math.min(VW/(MW*T),VH/(MH*T))*1.9,1,2.2);
   cam.x=cx*T-VW/cam.z/2;cam.y=cy*T-VH/cam.z/2;clampCam();
