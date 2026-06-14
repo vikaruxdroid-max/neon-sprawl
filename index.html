@@ -578,19 +578,20 @@ function scoreJobs(p){
   const cred=p.credits??40;
   const workStr=nearestStruct(p,s=>s.type==="workstation"&&!s.bp);
   const medStr=nearestStruct(p,s=>s.type==="medbed"&&!s.bp);
+  const dlrStr=nearestStruct(p,s=>s.type==="dealer"&&!s.bp);
   const base={
     eat:clamp(80-food,0,100),sleep:clamp(70-rest,0,100),
     cook:ST.res.raw>=2&&ST.res.meal<10&&stn?45:0,
     build:bpStr?50:0,salvage:salvStr?40:0,haul:haulItem?30:0,
     idle:10,
     hygiene:showStr?clamp(70-hyg,0,100):0,recreate:funStr?clamp(60-fun,0,100):0,socialize:mate?clamp(60-socN,0,100):0,
-    work:workStr?clamp(60-cred*0.6,0,100):0,treat:p.sick&&medStr?80:0};
+    work:workStr?clamp(60-cred*0.6,0,100):0,treat:p.sick&&medStr?80:0,substance:dlrStr?clamp((p.addiction||0)*0.6+((p.stress||0)>40?((p.stress||0)-40)*0.4:0),0,100):0};
   const pw={
     eat:0.5+cau/100,sleep:0.5+cau/100,cook:0.5+ind/100,build:0.5+ind/100+(ST.pawns.length===2&&ST.bond>65?0.1:0),
     salvage:0.5+ind/100+0.1*(cur/100),haul:0.5+ind/100,
     idle:0.5+(100-ind)/100,
-    hygiene:1,recreate:0.5+cur/100,socialize:0.5+soc/100,work:0.5+ind/100,treat:0.5+cau/100};
-  const sm={eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1,treat:1};
+    hygiene:1,recreate:0.5+cur/100,socialize:0.5+soc/100,work:0.5+ind/100,treat:0.5+cau/100,substance:0.3+p.pers.imp/150+(100-p.pers.intg)/200};
+  const sm={eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1,treat:1,substance:1};
   if(foe){sm.build*=0.6;sm.salvage*=0.6;sm.haul*=0.6;sm.sleep*=0.3;sm.eat*=0.8;sm.work*=0.4}
   if(night){sm.sleep*=1.4}
   if(inj){sm.eat*=1.3;sm.sleep*=1.3}
@@ -607,6 +608,7 @@ function scoreJobs(p){
     {k:"socialize",mk:()=>mate?{t:"socialize",oid:mate.id,prog:0}:null},
     {k:"work",   mk:()=>workStr?{t:"work",s:workStr,prog:0}:null},
     {k:"treat",  mk:()=>medStr?{t:"treat",s:medStr,prog:0}:null},
+    {k:"substance",mk:()=>dlrStr?{t:"substance",s:dlrStr,prog:0}:null},
     {k:"idle",   mk:()=>{const w=randNear(p,5)||{x:p.px|0,y:p.py|0};return{t:"idle",until:ST.tick+RI(25,70),x:w.x,y:w.y}}}];
   let bestU=-1,bestMk=null;
   for(const a of acts){
@@ -698,8 +700,10 @@ function pawnTick(p){
     if(p.needs.fun<25)sp+=1.2;
     if(p.needs.socN<20)sp+=1.8;
     if(p.homeless)sp+=2;
+    if(p.addiction>40)sp+=(p.addiction-40)/20;
     if(sp===0)sp=-2;
-    p.stress=clamp((p.stress||0)+sp,0,100)}
+    p.stress=clamp((p.stress||0)+sp,0,100);
+    if(p.addiction>0)p.addiction=Math.max(0,p.addiction-0.5)}
   if((ST.tick+p.id)%40===0)moodCalc(p);
   // mental break
   const brk=22+trAdd(p,"brk");
@@ -840,6 +844,17 @@ function pawnTick(p){
       if(r==="arr"){j.prog++;
         if(j.prog>=30){p.sick=false;p.credits=(p.credits||0)-15;p.hp=Math.min(100,p.hp+20);
           float(s.x+.5,s.y+.5,"TREATED","#39ff88");addMod(p,"heal","Treated at clinic",4,TPD*.4);p.job=null;syncHUD()}}
+      break}
+    case "substance":{const s=j.s;
+      if(structAt(s.x,s.y)!==s||s.bp){p.job=null;break}
+      const r=gotoCell(p,s.x,s.y,1);
+      if(r==="fail"){markUnre(p,s.x,s.y);p.job=null;break}
+      if(r==="arr"){j.prog++;
+        if(j.prog>=40){p.credits=(p.credits||0)-12;
+          p.needs.fun=Math.min(100,(p.needs.fun||0)+30);
+          p.stress=Math.max(0,(p.stress||0)-25);
+          p.addiction=Math.min(100,(p.addiction||0)+6);
+          float(s.x+.5,s.y+.5,"USED","#b06fff");addMod(p,"high","Chemically numb",6,TPD*.3);applyDrift(p,{intg:-1,cau:-1});p.job=null;syncHUD()}}
       break}
   }
 }
@@ -1639,7 +1654,7 @@ function renderInspect(){const el=$("inspect");
     h+="<div class='sub'>TASK: "+jobLabel(e)+"</div>";
     h+="<div class='sub'>CREDITS "+(e.credits|0)+(e.homeless?" · <span style='color:var(--rd)'>EVICTED</span>":"")+"</div>";
     if(e.sick)h+="<div class='sub' style='color:var(--rd)'>INFECTED — needs a clinic</div>";
-    h+="<div class='sub'>STRESS "+(e.stress|0)+"</div>";
+    h+="<div class='sub'>STRESS "+(e.stress|0)+(e.addiction>0?" · ADDICTION "+(e.addiction|0):"")+"</div>";
     h+="<div class='sub'>SAL "+e.sk.sal+" · BLD "+e.sk.bld+" · COOK "+e.sk.cook+" · SHT "+e.sk.sht+"</div>";
     h+="<button class='tb' id='i-draft'>"+(e.drafted?"UNDRAFT":"DRAFT")+"</button>";
     el.innerHTML=h}
