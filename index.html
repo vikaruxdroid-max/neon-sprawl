@@ -117,6 +117,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   <span class="res"><i class="sw" style="background:#b8ff5e"></i>PRO <b id="h-raw">0</b></span>
   <span class="res"><i class="sw" style="background:#00e5ff"></i>MEAL <b id="h-meal">0</b></span>
   <span class="res"><i class="sw" style="background:#ffd84a"></i><span id="h-pwr">PWR 0/0</span></span>
+  <span class="res"><i class="sw" style="background:#ff4757"></i>HEAT <b id="h-heat">0</b></span>
   <span id="h-extract" style="display:none">EXTRACT <b id="h-exv">0%</b></span>
   <span class="gap"></span>
   <button class="tb spd" id="sp-p">II</button>
@@ -1232,7 +1233,8 @@ function renderRoster(){
     if(t)h+="<div class='tags'>"+t+"</div>";
     h+="</div>";
   }
-  el.innerHTML=h}
+  el.innerHTML=h;
+  const hb=$("h-heat");if(hb){hb.textContent=ST.heat|0;hb.style.color=ST.heat>60?"var(--rd)":ST.heat>30?"var(--or)":"var(--dim)"}}
 const _rEl=$("roster");
 if(_rEl)_rEl.addEventListener("click",function(e){
   const row=e.target.closest&&e.target.closest(".rrow");if(!row)return;
