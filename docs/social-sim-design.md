@@ -508,9 +508,10 @@ mapped at implementation time).
    Phase F, does Claude only *propose* (recommended, §8.3) or also influence odds?
 7. **Save/load.** Roadmap item — persist the full stat model, economy, relations,
    factions, city layout, pending requests. Confirm scope.
-8. **Fog of war.** Keep `ST.fog` (characters reveal as they move — fits "watch the
-   city wake up") or remove it for a fully-visible city? Or repurpose as "districts
-   you haven't influenced yet"?
+8. **Fog of war.** **RESOLVED (B0).** Removed entirely, along with the `explore`
+   action. A life sim is about watching known characters in a known city; a fog
+   frontier and an "explore the unknown" drive were colony-genre holdovers that
+   fought the design and caused spawn-time explore-obsession. City is fully visible.
 9. **Population ceiling.** Churn implies growth — cap the live population (perf) and
    at what number?
 10. **Player verbs.** Confirm the full order set beyond v0.2's bias nudges — can the
@@ -559,3 +560,9 @@ Owner-resolved during the v0.3 design session. Final for v0.3 implementation.
     criminal-vs-saint. Color = temperament, never morality. Deterministic mapping
     (soft-learnable) is accepted as *suspicion without certainty*; optional hue
     jitter held in reserve.
+14. **Fog & explore removed (B0).** Fog of war (`ST.fog`) and the `explore` action
+    are gone — state, tick reveal, render overlay, frontier targeting, and the
+    safety request that nudged exploration. The city is fully visible; curiosity
+    now expresses through recreation rather than exploration. This reverses the
+    v0.2-era fog/explore decisions, which were colony-genre and wrong for a life
+    sim.
