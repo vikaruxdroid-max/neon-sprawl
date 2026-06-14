@@ -479,7 +479,7 @@ function mkPawn(x,y,spec){const t1=CH(TRAITS);let t2=CH(TRAITS);while(t2===t1)t2
     carry:null,forced:0,order:null,unre:new Map(),flee:0,hurtT:-999,
     pers,stress:0,addiction:0,rep:{corp:0,gang:0,neighbors:0,city:0},
     bias:{eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1},
-    drift:{day:0,used:0},credits:R(25,60),homeless:false}}
+    drift:{day:0,used:0},credits:R(18,38),homeless:false}}
 function trMul(p,k){let m=1;for(const t of p.tr)if(t[k]!==undefined)m*=t[k];return m}
 function trAdd(p,k){let v=0;for(const t of p.tr)if(t[k]!==undefined)v+=t[k];return v}
 function workSpd(p,sk){return (0.6+sk*0.09)*trMul(p,"work")}
@@ -604,7 +604,7 @@ function scoreJobs(p){
     build:bpStr?50:0,salvage:salvStr?40:0,haul:haulItem?30:0,
     idle:10,
     hygiene:showStr?clamp(70-hyg,0,100):0,recreate:funStr?clamp(60-fun,0,100):0,socialize:mate?clamp(60-socN,0,100):0,
-    work:workStr?clamp(60-cred*0.6,0,100):0,treat:p.sick&&medStr?80:0,substance:dlrStr?clamp((p.addiction||0)*0.6+((p.stress||0)>40?((p.stress||0)-40)*0.4:0),0,100):0,crime:(robTgt&&cred<20)?clamp(30-cred*1.1,0,100):0};
+    work:(workStr&&ST.tick>(p.workCd||0))?clamp(60-cred*0.6,0,100):0,treat:p.sick&&medStr?80:0,substance:dlrStr?clamp((p.addiction||0)*0.6+((p.stress||0)>40?((p.stress||0)-40)*0.4:0),0,100):0,crime:(robTgt&&cred<20)?clamp(30-cred*1.1,0,100):0};
   const pw={
     eat:0.5+cau/100,sleep:0.5+cau/100,cook:0.5+ind/100,build:0.5+ind/100+(ST.pawns.length===2&&ST.bond>65?0.1:0),
     salvage:0.5+ind/100+0.1*(cur/100),haul:0.5+ind/100,
@@ -857,7 +857,7 @@ function pawnTick(p){
       const r=gotoCell(p,s.x,s.y,1);
       if(r==="fail"){markUnre(p,s.x,s.y);p.job=null;break}
       if(r==="arr"){j.prog++;
-        if(j.prog>=120){const pay=RI(14,24);p.credits=(p.credits||0)+pay;
+        if(j.prog>=120){const pay=RI(10,15);p.credits=(p.credits||0)+pay;p.workCd=ST.tick+RI(280,440);
           float(s.x+.5,s.y+.5,"+"+pay+"c","#ffd84a");addMod(p,"paid","Got paid",4,TPD*.4);applyDrift(p,{ind:1});p.job=null}}
       break}
     case "treat":{const s=j.s;
@@ -1007,15 +1007,11 @@ function float(x,y,txt,col){ST.floats.push({x,y,txt,col,ttl:46,t0:46})}
 function anyGen(){for(const s of ST.structs.values())if(s.type==="gen"&&!s.bp)return true;return false}
 function scheduleEv(){ST.nextEv=ST.tick+Math.floor(R(.55,1.05)*TPD)}
 function fireEvent(){
-  const forceRaid=ST.tick-ST.lastRaid>TPD*2.2;
   const r=Math.random();
-  let ev=forceRaid?"raid":(r<.38?"raid":r<.58?"pod":r<.70?"wander":r<.85?"storm":"blackout");
-  if(ev==="raid"&&!forceRaid&&ST.tick-ST.lastRaid<TPD*0.9)ev=Math.random()<.5?"pod":"storm";
+  let ev=r<.20?"pod":r<.38?"wander":r<.52?"storm":r<.64?"blackout":r<.78?"mugging":r<.90?"medbill":"gigdrought";
   if(ev==="wander"&&ST.pawns.length>=6)ev="pod";
-  if(ev==="blackout"&&!anyGen())ev="pod";
-  if(ev==="raid"&&dayN()<2)ev="pod";
+  if(ev==="blackout"&&!anyGen())ev="storm";
   switch(ev){
-    case "raid":spawnRaid();break;
     case "pod":{const cx=clamp((MW/2|0)+RI(-9,9),2,MW-3),cy=clamp((MH/2|0)+RI(-7,7),2,MH-3);
       const picks=["scrap","comp","raw"];
       for(let i=0;i<RI(2,3);i++){const res=CH(picks);
@@ -1034,7 +1030,18 @@ function fireEvent(){
       banner("NET STORM","warn");SFX.alert();break}
     case "blackout":{ST.black=ST.tick+Math.floor(TPD*.3);powerRecalc();
       log("Grid blackout — fusion cells offline for a few hours.","warn");
-      banner("BLACKOUT","warn");SFX.alert();break}}
+      banner("BLACKOUT","warn");SFX.alert();break}
+    case "mugging":{const p=CH(ST.pawns);if(p){const loss=RI(15,35);
+      p.credits=(p.credits||0)-loss;p.stress=Math.min(100,(p.stress||0)+15);
+      float(p.px,p.py,"MUGGED -"+loss+"c","#ff4757");
+      log(p.name+" was mugged in the sprawl — lost "+loss+" credits.","warn");banner("MUGGING","warn");SFX.alert()}break}
+    case "medbill":{const p=CH(ST.pawns);if(p){const bill=RI(18,32);
+      p.credits=(p.credits||0)-bill;p.stress=Math.min(100,(p.stress||0)+10);
+      float(p.px,p.py,"MED BILL -"+bill+"c","#ff9f2d");
+      log(p.name+" got hit with an unexpected medical bill ("+bill+"c).","warn");banner("MEDICAL BILL","warn");SFX.alert()}break}
+    case "gigdrought":{const p=CH(ST.pawns);if(p){p.workCd=ST.tick+RI(600,1100);p.stress=Math.min(100,(p.stress||0)+8);
+      float(p.px,p.py,"LAID OFF","#ff9f2d");
+      log(p.name+" lost their gig — no work for a while.","warn");banner("GIG DROUGHT","warn");SFX.alert()}break}}
   scheduleEv()}
 
 /* ---------- win / lose ---------- */
@@ -1095,15 +1102,22 @@ function tick(){ST.tick++;
         it.gone=true;ST.items.splice(i,1);syncHUD()}}}
   if(ST.tick>=ST.nextEv)fireEvent();
   if(ST.tick%30===0){updateFlags();genRequests();expireRequests()}
-  if(ST.tick%TPD===0&&ST.tick>0)for(const q of ST.pawns){q.credits=(q.credits||0)-18;
+  if(ST.tick%TPD===0&&ST.tick>0)for(const q of ST.pawns){q.credits=(q.credits||0)-34;
     if(q.credits<0&&!q.homeless){q.homeless=true;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad")}
     else if(q.credits>=0&&q.homeless){q.homeless=false;log(q.name+" cleared their back rent.","good")}}
   if(ST.tick%100===0){
     if(ST.heat>0)ST.heat=Math.max(0,ST.heat-1);
     if(ST.heat>60&&!ST.heatWarn){ST.heatWarn=true;log("Enforcers are taking notice of the sprawl.","warn")}
     if(ST.heat<40)ST.heatWarn=false;
-    if(ST.heat>60&&ST.foes.length===0&&ST.tick-ST.lastRaid>TPD*0.4&&Math.random()<0.25){
-      spawnRaid();ST.heat=Math.max(0,ST.heat-40)}}
+    if(ST.heat>60&&ST.tick-ST.lastRaid>TPD*0.4&&Math.random()<0.25){
+      let tgt=null,hi=-1;for(const q of ST.pawns){const g=q.rep?(q.rep.gang||0):0;if(g>hi){hi=g;tgt=q}}
+      if(tgt){const fine=Math.round(Math.min(70,Math.max(20,(tgt.credits||0)*0.4+20)));
+        tgt.credits=(tgt.credits||0)-fine;tgt.stress=Math.min(100,(tgt.stress||0)+25);
+        if(tgt.rep){tgt.rep.gang=clamp((tgt.rep.gang||0)-20,-100,100);tgt.rep.city=clamp((tgt.rep.city||0)-5,-100,100)}
+        tgt.dazed=ST.tick+200;clearJob(tgt);
+        float(tgt.px,tgt.py,"BUSTED -"+fine+"c","#ff4757");
+        log("Enforcers swept the sprawl — "+tgt.name+" was detained and fined "+fine+"c.","bad");banner("ENFORCER CRACKDOWN","bad")}
+      ST.lastRaid=ST.tick;ST.heat=Math.max(0,ST.heat-45)}}
   if(ST.tick%10===0){syncHUD();renderRoster()}
   if(ST.tick%25===0){renderInspect();renderRequests()}}
 
