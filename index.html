@@ -400,7 +400,7 @@ function footprintClear(x0,y0,w,h){
 function placeDistrict(){
   let placed=0,guard=0,target=RI(4,7);
   while(placed<target&&guard++<500){
-    const tpl=CH(DTPL);
+    const tpl=placed===0?DTPL[3]:CH(DTPL);
     const x0=RI(2,MW-tpl.w-3),y0=RI(2,MH-tpl.h-3);
     if(overlapsCore(x0,y0,tpl.w,tpl.h))continue;
     if(!footprintClear(x0,y0,tpl.w,tpl.h))continue;
