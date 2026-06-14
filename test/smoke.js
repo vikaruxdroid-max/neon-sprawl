@@ -5,7 +5,7 @@
 let fails=0;ST.procgen=false;
 function T_combat(){
   newGame();ST.nextEv=1e9;
-  const p=ST.pawns[0];p.drafted=true;clearJob(p);
+  const p=ST.pawns[0];p.drafted=true;clearJob(p);p.sick=false;p.stress=0;p.needs.hyg=100;
   spawnFoeAt("ganger",(p.px|0)+4,(p.py|0),uid());
   let killed=false;
   for(let i=0;i<600;i++){tick();if(ST.foes.length===0){killed=true;break}}
@@ -59,11 +59,13 @@ function T_fullrun(){
   // F1: industrious agent (Static) picks build when blueprint queued + comfortable needs
   newGame();ST.nextEv=1e9;
   const sta=ST.pawns.find(p=>p.name==="Static");
-  sta.needs.food=80;sta.needs.rest=80;sta.credits=100;
+  sta.needs.food=80;sta.needs.rest=80;sta.needs.hyg=90;sta.needs.fun=90;sta.needs.socN=90;sta.credits=100;sta.stress=0;
   ST.res.scrap+=200;ST.res.comp+=40;
-  // place blueprint adjacent to Static and reveal fog in radius so explore won't win
-  const sbx=(sta.px|0)+2,sby=(sta.py|0);
-  placeBp("wall",sbx,sby);
+  // place blueprint in open space south of map center; procgen=false so layout is fixed
+  let bpPlaced=false;
+  for(let dx=-6;dx<=6&&!bpPlaced;dx++)for(let dy=1;dy<=6&&!bpPlaced;dy++){
+    const bx=(sta.px|0)+dx,by=(sta.py|0)+dy;
+    if(canPlace("wall",bx,by)){bpPlaced=placeBp("wall",bx,by)}};
   sta.job=null;
   const j1=chooseJob(sta);
   const f1=j1&&j1.t==="build";

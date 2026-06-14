@@ -492,6 +492,10 @@ function moodCalc(p){
   if(ST.pawns.length===2){const other=ST.pawns.find(q=>q.id!==p.id);
     if(other&&DIST(p.px,p.py,other.px,other.py)<6){
       if(ST.bond>65)m+=5;else if(ST.bond<35)m-=5}}
+  if(p.needs.hyg<25)m-=5;
+  if(p.needs.fun<25)m-=5;
+  if(p.needs.socN<20)m-=6;
+  m-=(p.stress||0)*0.25;
   p.mood=clamp(m,0,100)}
 
 /* movement */
@@ -679,16 +683,27 @@ function pawnTick(p){
   if(p.cd>0)p.cd--;
   if(!p.sleeping&&!p.sick&&p.hp<100&&p.needs.food>30&&ST.tick%10===0&&!foeNear(p,10))
     p.hp=Math.min(100,p.hp+0.1);
-  if(!p.sick&&ST.tick%60===0&&Math.random()<0.002+(p.needs.hyg<35?(35-p.needs.hyg)/35*0.12:0)){
+  if(ST.procgen!==false&&!p.sick&&ST.tick%60===0&&Math.random()<0.002+(p.needs.hyg<35?(35-p.needs.hyg)/35*0.12:0)){
     p.sick=true;addMod(p,"sick","Infection",-10,TPD);log(p.name+" caught an infection.","warn")}
   if(p.sick){
     if(ST.tick%40===0)p.hp-=1;
     if(p.hp<=0){killPawn(p,"died of an untreated infection");return}
     if(p.needs.hyg>60&&p.hp>60&&ST.tick%80===0&&Math.random()<0.05){p.sick=false;log(p.name+" shook off the infection.","good")}}
+  if(ST.tick%100===0){
+    let sp=0;
+    if(p.sick)sp+=2.5;
+    if(p.needs.food<25)sp+=2;
+    if(p.needs.rest<25)sp+=2;
+    if(p.needs.hyg<25)sp+=1.2;
+    if(p.needs.fun<25)sp+=1.2;
+    if(p.needs.socN<20)sp+=1.8;
+    if(p.homeless)sp+=2;
+    if(sp===0)sp=-2;
+    p.stress=clamp((p.stress||0)+sp,0,100)}
   if((ST.tick+p.id)%40===0)moodCalc(p);
   // mental break
   const brk=22+trAdd(p,"brk");
-  if(!p.drafted&&p.dazed<ST.tick&&p.mood<brk&&Math.random()<0.0018){
+  if(!p.drafted&&p.dazed<ST.tick&&p.mood<brk&&Math.random()<0.0018+(p.stress>70?0.0025:0)){
     clearJob(p);p.dazed=ST.tick+260;p.dz=null;
     log(p.name+" snapped — wandering dazed.","warn")}
   if(p.dazed>ST.tick&&p.dazed-ST.tick===1){applyDrift(p,{cau:2,soc:-1})}
@@ -1624,6 +1639,7 @@ function renderInspect(){const el=$("inspect");
     h+="<div class='sub'>TASK: "+jobLabel(e)+"</div>";
     h+="<div class='sub'>CREDITS "+(e.credits|0)+(e.homeless?" · <span style='color:var(--rd)'>EVICTED</span>":"")+"</div>";
     if(e.sick)h+="<div class='sub' style='color:var(--rd)'>INFECTED — needs a clinic</div>";
+    h+="<div class='sub'>STRESS "+(e.stress|0)+"</div>";
     h+="<div class='sub'>SAL "+e.sk.sal+" · BLD "+e.sk.bld+" · COOK "+e.sk.cook+" · SHT "+e.sk.sht+"</div>";
     h+="<button class='tb' id='i-draft'>"+(e.drafted?"UNDRAFT":"DRAFT")+"</button>";
     el.innerHTML=h}
