@@ -450,13 +450,20 @@ function genMap(){
 function mkPawn(x,y,spec){const t1=CH(TRAITS);let t2=CH(TRAITS);while(t2===t1)t2=CH(TRAITS);
   const sk={sal:RI(0,5),bld:RI(0,5),cook:RI(0,5),sht:RI(1,6)};
   if(spec)sk[spec]=clamp(sk[spec]+4,0,10);
+  const TP={drive:RI(5,95),nerve:RI(5,95),bond:RI(5,95),guard:RI(5,95),edge:RI(5,95),grit:RI(5,95)};
+  const jt=()=>RI(-7,7);
+  const pers={
+    amb:clamp(TP.drive+jt(),0,100),ind:clamp((TP.drive+TP.grit)/2+jt(),0,100),
+    imp:clamp(TP.nerve+jt(),0,100),cau:clamp((TP.guard+100-TP.nerve)/2+jt(),0,100),
+    soc:clamp(TP.bond+jt(),0,100),emp:clamp((TP.bond+100-TP.grit)/2+jt(),0,100),
+    cur:clamp(TP.edge+jt(),0,100),intg:clamp((TP.guard+100-TP.edge)/2+jt(),0,100)};
   return{id:uid(),kind:"pawn",name:CH(NF)+' "'+CH(NH)+'"',
     accent:ACC[(ST.pawns.length)%ACC.length],tr:[t1,t2],sk,xp:{sal:0,bld:0,cook:0,sht:0},
     px:x+.5,py:y+.5,hp:100,drafted:false,needs:{food:R(80,95),rest:R(70,90),hyg:R(70,90),fun:R(60,85),socN:R(60,85)},
     mood:60,mods:[],weapon:WEAP[CH(["pistol","pistol","smg"])],cd:0,
     job:null,path:null,pi:0,pTx:-1,pTy:-1,claim:0,dazed:0,dz:null,sleeping:false,
     carry:null,forced:0,order:null,unre:new Map(),flee:0,hurtT:-999,
-    pers:{ind:50,cau:50,soc:50,cur:50},
+    pers,stress:0,addiction:0,rep:{corp:0,gang:0,neighbors:0,city:0},
     bias:{eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1},
     drift:{day:0,used:0},credits:R(25,60),homeless:false}}
 function trMul(p,k){let m=1;for(const t of p.tr)if(t[k]!==undefined)m*=t[k];return m}
@@ -1708,10 +1715,10 @@ function newGame(){
   genMap();drawTerrain();
   const cx=MW/2|0,cy=MH/2|0;
   const vex=mkPawn(21,15,"sal");
-  vex.name="Vex";vex.accent=ACC[0];Object.assign(vex.pers,{ind:40,cau:30,soc:60,cur:80});
+  vex.name="Vex";vex.accent=ACC[0];Object.assign(vex.pers,{ind:40,cau:30,soc:60,cur:80,amb:55,emp:55,imp:70,intg:35});
   ST.pawns.push(vex);
   const sta=mkPawn(35,15,"bld");
-  sta.name="Static";sta.accent=ACC[1];Object.assign(sta.pers,{ind:80,cau:65,soc:45,cur:25});
+  sta.name="Static";sta.accent=ACC[1];Object.assign(sta.pers,{ind:80,cau:65,soc:45,cur:25,amb:60,emp:50,imp:25,intg:75});
   ST.pawns.push(sta);
   cam.z=clamp(Math.min(VW/(MW*T),VH/(MH*T))*1.9,1,2.2);
   cam.x=cx*T-VW/cam.z/2;cam.y=cy*T-VH/cam.z/2;clampCam();
