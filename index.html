@@ -983,12 +983,6 @@ function tick(){ST.tick++;
   if(ST.tick%10===0)powerRecalc();
   if(ST.tick%5===0&&ST.pawns.length===2){const [a,b]=ST.pawns;
     if(DIST(a.px,a.py,b.px,b.py)<5)ST.bond=clamp(ST.bond+0.02,0,100)}
-  if(ST.tick%5===0&&ST.fog){for(const p of ST.pawns){
-    const px=p.px|0,py=p.py|0;
-    for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){
-      if(dx*dx+dy*dy>16)continue;
-      const X=px+dx,Y=py+dy;
-      if(X>=0&&X<MW&&Y>=0&&Y<MH)ST.fog[X+Y*MW]=0}}}
   if(ST.tick%20===0){
     for(const s of ST.structs.values()){if(s.bp)continue;
       if(s.type==="vat"&&s.powered){s.vt+=20;
@@ -1207,19 +1201,14 @@ function render(){
     ctx.fillRect(x*T,y*T,T,T);ctx.strokeRect(x*T+.5,y*T+.5,T-1,T-1)}
   // items (hidden in fog)
   for(const it of ST.items){if(it.x<x0||it.x>=x1||it.y<y0||it.y>=y1)continue;
-    if(ST.fog&&ST.fog[it.x+it.y*MW])continue;
     const X=it.x*T+T/2,Y=it.y*T+T/2;
     ctx.fillStyle="#0c1018";ctx.fillRect(X-4,Y-3,8,7);
     ctx.fillStyle=RESCOL[it.res];ctx.fillRect(X-3,Y-2,6,5);
     if(z>1.05){ctx.fillStyle="#dfe9f7";ctx.font="6px monospace";ctx.textAlign="center";
       ctx.fillText(it.qty,X,Y+10);ctx.textAlign="left"}}
-  // fog overlay — over terrain, under structures
-  if(ST.fog){ctx.fillStyle="rgba(0,0,0,0.75)";
-    for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){if(ST.fog[x+y*MW])ctx.fillRect(x*T,y*T,T,T)}}
   // structures (scrap/cache hidden in fog; player-built always visible)
   for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){const s=structAt(x,y);
     if(!s)continue;
-    if((s.type==="scrap"||s.type==="cache")&&ST.fog&&ST.fog[s.x+s.y*MW])continue;
     drawStruct(s)}
   // move-order markers
   for(const p of ST.pawns)if(p.drafted&&p.order){
@@ -1717,7 +1706,6 @@ function newGame(){
   ST.stats={kills:0,built:0,deaths:0,salv:0,hauled:0,raids:0};
   ST.flags={};setTool(null);closeSub();
   genMap();drawTerrain();
-  ST.fog=new Uint8Array(MW*MH).fill(1);
   const cx=MW/2|0,cy=MH/2|0;
   const vex=mkPawn(21,15,"sal");
   vex.name="Vex";vex.accent=ACC[0];Object.assign(vex.pers,{ind:40,cau:30,soc:60,cur:80});

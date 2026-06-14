@@ -63,7 +63,6 @@ function T_fullrun(){
   ST.res.scrap+=200;ST.res.comp+=40;
   // place blueprint adjacent to Static and reveal fog in radius so explore won't win
   const sbx=(sta.px|0)+2,sby=(sta.py|0);
-  for(let dy=-5;dy<=5;dy++)for(let dx=-5;dx<=5;dx++){const X=(sta.px|0)+dx,Y=(sta.py|0)+dy;if(INB(X,Y))ST.fog[X+Y*MW]=0}
   placeBp("wall",sbx,sby);
   sta.job=null;
   const j1=chooseJob(sta);
