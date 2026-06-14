@@ -2,7 +2,7 @@
 // ---- NEON SPRAWL headless test suite ----
 // Runs against the real game script with DOM/canvas stubbed.
 // Exit code 0 = all pass. Any FAIL string = investigate before commit.
-let fails=0;
+let fails=0;ST.procgen=false;
 function T_combat(){
   newGame();ST.nextEv=1e9;
   const p=ST.pawns[0];p.drafted=true;clearJob(p);

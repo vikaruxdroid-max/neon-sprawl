@@ -386,6 +386,26 @@ function buildCity(){
   placeRoom(19,22,6,5,{x:21,y:22},[{t:"workstation",x:1,y:1},{t:"workstation",x:3,y:1},{t:"gym",x:4,y:3}]);
   placeRoom(33,22,6,5,{x:35,y:22},[{t:"counter",x:2,y:1},{t:"counter",x:3,y:1}]);
   placeRoom(26,17,5,5,{x:28,y:21},[{t:"medbed",x:1,y:1},{t:"medbed",x:3,y:1}])}
+const DTPL=[
+  {w:6,h:5,furn:[{t:"pod",x:1,y:1},{t:"synth",x:2,y:1},{t:"fridge",x:3,y:1},{t:"shower",x:4,y:1},{t:"toilet",x:4,y:2},{t:"tv",x:1,y:2}]},
+  {w:6,h:5,furn:[{t:"pod",x:1,y:1},{t:"synth",x:2,y:1},{t:"fridge",x:3,y:1},{t:"shower",x:4,y:1},{t:"toilet",x:4,y:2},{t:"tv",x:1,y:2}]},
+  {w:7,h:5,furn:[{t:"bar",x:1,y:1},{t:"bar",x:2,y:1},{t:"bar",x:3,y:1},{t:"tv",x:5,y:1}]},
+  {w:6,h:5,furn:[{t:"dealer",x:1,y:1},{t:"dealer",x:4,y:1},{t:"pod",x:1,y:3}]},
+  {w:6,h:5,furn:[{t:"workstation",x:1,y:1},{t:"workstation",x:3,y:1},{t:"gym",x:4,y:3}]}];
+function overlapsCore(x0,y0,w,h){return !(x0+w<17||x0>40||y0+h<11||y0>27)}
+function footprintClear(x0,y0,w,h){
+  for(let x=x0-1;x<=x0+w;x++)for(let y=y0-1;y<=y0+h;y++){
+    if(!INB(x,y))return false;if(structAt(x,y))return false}
+  return true}
+function placeDistrict(){
+  let placed=0,guard=0,target=RI(4,7);
+  while(placed<target&&guard++<500){
+    const tpl=CH(DTPL);
+    const x0=RI(2,MW-tpl.w-3),y0=RI(2,MH-tpl.h-3);
+    if(overlapsCore(x0,y0,tpl.w,tpl.h))continue;
+    if(!footprintClear(x0,y0,tpl.w,tpl.h))continue;
+    placeRoom(x0,y0,tpl.w,tpl.h,{x:x0+(tpl.w>>1),y:y0+tpl.h-1},tpl.furn);
+    placed++}}
 function genMap(){
   ST.ter=new Uint8Array(MW*MH);ST.structs.clear();ST.items.length=0;ST.zone.clear();
   const cx=MW/2,cy=MH/2;
@@ -423,7 +443,8 @@ function genMap(){
   dropItem(cx-2|0,cy|0,"scrap",16);dropItem(cx+2|0,cy-1|0,"scrap",14);
   dropItem(cx|0,(cy+2)|0,"raw",10);dropItem((cx+1)|0,(cy+2)|0,"meal",6);
   dropItem((cx-1)|0,(cy-2)|0,"comp",4);
-  buildCity()}
+  buildCity();
+  if(ST.procgen!==false)placeDistrict()}
 
 /* ---------- pawns ---------- */
 function mkPawn(x,y,spec){const t1=CH(TRAITS);let t2=CH(TRAITS);while(t2===t1)t2=CH(TRAITS);
@@ -1044,7 +1065,7 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T,d=DEF[s.type];
       if(s.charge>0){ctx.fillStyle="#00e5ff";
         ctx.fillRect(X+2,Y+T-3,(T-4)*clamp(s.charge/TPD,0,1),2)}break}
     case "fridge":rr(X+3,Y+1,T-6,T-2,"#2a3340");rr(X+4,Y+2,T-8,5,"#34404f");rr(X+4,Y+8,T-8,6,"#2f3a47");rr(X+10,Y+3,1,3,"#9fb4d8");rr(X+10,Y+9,1,3,"#9fb4d8");rr(X+5,Y+2,2,1,"#39ff88");break;
-    case "toilet":rr(X+5,Y+2,6,3,"#aab6c6");rr(X+5,Y+5,6,6,"#cdd6e3");rr(X+4,Y+10,8,3,"#9fb4d8");break;
+    case "toilet":rr(X+5,Y+2,6,3,"#3a4658");rr(X+5,Y+5,6,6,"#5d6c85");rr(X+4,Y+10,8,3,"#2a3340");break;
     case "shower":rr(X+3,Y+2,T-6,T-3,"#1c2735");rr(X+T/2-1,Y+2,2,2,"#9fb4d8");rr(X+T/2-2,Y+6,1,1,"#00e5ff");rr(X+T/2+1,Y+8,1,1,"#00e5ff");rr(X+T/2,Y+10,1,1,"#00e5ff");break;
     case "tv":rr(X+2,Y+3,T-4,9,"#0c1018");rr(X+3,Y+4,T-6,7,"#0a2e38");rr(X+4,Y+5,T-8,2,"#00e5ff");rr(X+T/2-1,Y+12,2,2,"#3a4658");break;
     case "gym":rr(X+2,Y+4,2,8,"#3a4658");rr(X+T-4,Y+4,2,8,"#3a4658");rr(X+2,Y+4,T-4,1,"#9fb4d8");rr(X+4,Y+8,T-8,3,"#2a3340");rr(X+5,Y+5,2,2,"#ff9f2d");break;
