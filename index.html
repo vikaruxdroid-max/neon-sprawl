@@ -548,12 +548,16 @@ function nearestItem(p){let best=null,bd=1e9;
     if(ST.zone.has(K(it.x,it.y)))continue;                 // already in stockpile
     const d=DIST(p.px,p.py,it.x+.5,it.y+.5);if(d<bd){bd=d;best=it}}
   return best}
-function mkEat(p){if(ST.res.meal<=0&&ST.res.raw<=0)return null;
-  let c=nearestZoneCell(p.px,p.py),adj=0;
-  if(!c){const stn=nearestStruct(p,s=>s.type==="synth"&&!s.bp);
-    if(stn){c={x:stn.x,y:stn.y};adj=1}}
-  if(!c)c={x:p.px|0,y:p.py|0};
-  return{t:"eat",x:c.x,y:c.y,adj,prog:0}}
+function mkEat(p){
+  if(ST.res.meal>0||ST.res.raw>0){
+    let c=nearestZoneCell(p.px,p.py),adj=0;
+    if(!c){const stn=nearestStruct(p,s=>s.type==="synth"&&!s.bp);
+      if(stn){c={x:stn.x,y:stn.y};adj=1}}
+    if(!c)c={x:p.px|0,y:p.py|0};
+    return{t:"eat",x:c.x,y:c.y,adj,prog:0,buy:false}}
+  const fr=nearestStruct(p,s=>s.type==="fridge"&&!s.bp);
+  if(fr)return{t:"eat",x:fr.x,y:fr.y,adj:1,prog:0,buy:true};
+  return null}
 function mkSleep(p){let pod=null;
   for(const s of ST.structs.values()){
     if(s.type!=="pod"||s.bp||unre(p,s.x,s.y))continue;
@@ -758,9 +762,11 @@ function pawnTick(p){
       if(r==="fail"){markUnre(p,j.x,j.y);p.job=null;break}
       if(r==="arr"){j.prog++;
         if(j.prog>=22){
-          if(ST.res.meal>0){ST.res.meal--;p.needs.food=100;addMod(p,"meal","Hot synth-meal",5,TPD*.5)}
+          if(j.buy){p.credits=(p.credits||0)-5;p.needs.food=100;addMod(p,"meal","Bought a meal",4,TPD*.5)}
+          else if(ST.res.meal>0){ST.res.meal--;p.needs.food=100;addMod(p,"meal","Hot synth-meal",5,TPD*.5)}
           else if(ST.res.raw>0){ST.res.raw--;p.needs.food=Math.min(100,p.needs.food+55);
             addMod(p,"raw","Ate raw protein",-6,TPD*.4)}
+          else{p.needs.food=Math.min(100,p.needs.food+40);addMod(p,"scraps","Scrounged scraps",-4,TPD*.3)}
           const other=ST.pawns.find(q=>q.id!==p.id);
           if(other&&Math.hypot(p.px-other.px,p.py-other.py)<6){ST.bond=clamp(ST.bond+3,0,100);applyDrift(p,{soc:2})}
           p.job=null;syncHUD()}}
