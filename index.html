@@ -5,14 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="color-scheme" content="dark">
 <title>NEON SPRAWL — Colony Protocol</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --cy:#00e5ff; --mg:#ff2d95; --yl:#ffd84a; --gn:#39ff88; --rd:#ff4757; --or:#ff9f2d;
-  --bg:#04050a; --panel:rgba(9,13,23,.93); --bd:#1c2a44; --tx:#b8c7e0; --dim:#5d6c85;
+  --cy:#00e0c8; --mg:#ff3db0; --yl:#ffd86a; --gn:#2ee89a; --rd:#ff5a6a; --or:#ffb04a;
+  --bg:#04100c; --panel:rgba(6,22,17,.92); --bd:#173b30; --tx:#d9eee4; --dim:#86a89c;
+  --disp:"Chakra Petch",system-ui,sans-serif; --mono:"JetBrains Mono","Cascadia Mono",monospace;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
-  font-family:"Cascadia Mono","Consolas","Lucida Console",monospace;color:var(--tx);
+  font-family:var(--mono);color:var(--tx);
   -webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
 #c{position:fixed;inset:0;display:block;touch-action:none;cursor:crosshair}
 .panel{background:var(--panel);border:1px solid var(--bd);border-radius:4px;z-index:10}
@@ -29,7 +33,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 .gap{flex:1}
 #h-pwr.bad{color:var(--rd)}
 #h-extract{color:var(--cy);letter-spacing:.1em}
-#checklist{position:fixed;left:8px;top:54px;width:236px;padding:8px 10px;font-size:11px;line-height:1.5}
+#checklist{display:none;position:fixed;left:8px;top:54px;width:236px;padding:8px 10px;font-size:11px;line-height:1.5}
 #checklist b{color:var(--cy);letter-spacing:.15em;font-size:10px}
 #checklist ul{margin:6px 0 0;padding:0 0 0 14px}
 #checklist li{color:var(--dim)}
@@ -40,12 +44,12 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 #roster .rrow:hover{background:rgba(0,229,255,.06)}
 #roster .rrow.sel{background:rgba(0,229,255,.10)}
 #roster .rname{font-weight:600;display:flex;justify-content:space-between;gap:6px}
-#roster .rtask{color:var(--dim);font-size:9px;text-transform:uppercase;letter-spacing:.06em;align-self:center}
-#roster .barlab{display:flex;justify-content:space-between;font-size:8px;color:var(--dim);letter-spacing:.06em;margin-top:3px}
+#roster .rtask{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.06em;align-self:center}
+#roster .barlab{display:flex;justify-content:space-between;font-size:9px;color:var(--dim);letter-spacing:.06em;margin-top:3px}
 #roster .bar{height:4px;border-radius:2px;background:#0b1322;overflow:hidden}
 #roster .bar>i{display:block;height:100%;border-radius:2px}
 #roster .tags{margin-top:4px;display:flex;flex-wrap:wrap;gap:3px}
-#roster .tag{font-size:8px;padding:1px 4px;border-radius:2px;letter-spacing:.04em;font-weight:600}
+#roster .tag{font-size:9px;padding:1px 4px;border-radius:2px;letter-spacing:.04em;font-weight:600}
 #log{position:fixed;right:8px;top:54px;width:262px;max-height:34vh;overflow:hidden;
   padding:6px 9px;font-size:11px;line-height:1.45}
 #log div{margin:1px 0;opacity:.92}
