@@ -1198,12 +1198,12 @@ function drawTerrain(){const g=tctx;
     g.fillRect(X,Y,T,T);
     if(h2<.45){g.fillStyle="rgba(22,64,48,.4)";g.fillRect(X+((h*10)|0),Y+((h2*10)|0)+2,3,2)}
     if((x+y)%2===0){g.fillStyle="rgba(0,0,0,.16)";g.fillRect(X,Y,T,1)}
-    if(t!==3&&h>.9){const c=FLO[(h2*3)|0],cx=X+T/2,cy=Y+T/2;
-      const rg=g.createRadialGradient(cx,cy-1,0,cx,cy-1,7);
+    if(t!==3&&h>.85){const c=FLO[(h2*3)|0],cx=X+T/2,cy=Y+T/2;
+      const rg=g.createRadialGradient(cx,cy-1,0,cx,cy-1,9);
       rg.addColorStop(0,c);rg.addColorStop(1,"rgba(0,0,0,0)");
-      g.globalAlpha=.5;g.fillStyle=rg;g.beginPath();g.arc(cx,cy-1,7,0,7);g.fill();g.globalAlpha=1;
+      g.globalAlpha=.6;g.fillStyle=rg;g.beginPath();g.arc(cx,cy-1,9,0,7);g.fill();g.globalAlpha=1;
       g.fillStyle="#0e2820";g.fillRect(cx-1,cy-1,2,5);
-      g.fillStyle=c;g.beginPath();g.ellipse(cx,cy-2,3,2,0,0,7);g.fill();
+      g.fillStyle=c;g.beginPath();g.ellipse(cx,cy-2,4,2.5,0,0,7);g.fill();
       g.fillStyle="#eafff4";g.fillRect(cx-1,cy-3,2,1)}}
   g.strokeStyle="rgba(0,224,200,.18)";g.strokeRect(.5,.5,MW*T-1,MH*T-1)}
 
@@ -1214,23 +1214,23 @@ const PODTH={
   med:{c:"#00e0c8",fill:"rgba(0,224,200,.10)"},
   exchange:{c:"#ffd86a",fill:"rgba(255,216,106,.09)"},
   toxic:{c:"#ff3db0",fill:"rgba(255,61,176,.11)"}};
-function rr(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);
+function rrect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);
   ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);
   ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
 function drawPod(rm){const th=PODTH[rm.theme]||PODTH.den;
   const X=rm.x0*T+1,Y=rm.y0*T+1,W=rm.w*T-2,H=rm.h*T-2;
   ctx.save();
   ctx.shadowColor=th.c;ctx.shadowBlur=12;ctx.fillStyle=th.fill;
-  rr(X,Y,W,H,8);ctx.fill();ctx.shadowBlur=0;
+  rrect(X,Y,W,H,8);ctx.fill();ctx.shadowBlur=0;
   ctx.strokeStyle=th.c;ctx.globalAlpha=.75;ctx.lineWidth=1.4;
-  rr(X,Y,W,H,8);ctx.stroke();
+  rrect(X,Y,W,H,8);ctx.stroke();
   ctx.globalAlpha=1;ctx.lineWidth=1;ctx.restore()}
 function drawRoomStruct(s){const X=s.x*T+T/2,Y=s.y*T+T/2,th=PODTH[s.rth]||PODTH.den;
   if(s.type==="wall")return;
   if(s.type==="door"){ctx.strokeStyle=th.c;ctx.globalAlpha=.45;ctx.lineWidth=1;
     ctx.beginPath();ctx.arc(X,Y,T*.34,0,7);ctx.stroke();ctx.globalAlpha=1;ctx.lineWidth=1;return}
-  ctx.globalAlpha=.6;ctx.fillStyle=th.c;ctx.beginPath();ctx.arc(X,Y,2.3,0,7);ctx.fill();
-  ctx.globalAlpha=.55;ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(X-.5,Y-.6,.8,0,7);ctx.fill();
+  ctx.globalAlpha=.46;ctx.fillStyle=th.c;ctx.beginPath();ctx.arc(X,Y,2,0,7);ctx.fill();
+  ctx.globalAlpha=.4;ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(X-.5,Y-.6,.7,0,7);ctx.fill();
   ctx.globalAlpha=1}
 function drawStruct(s){const X=s.x*T,Y=s.y*T,d=DEF[s.type];
   if(s.inRoom&&!s.bp&&!s.desig&&!s.decon)return drawRoomStruct(s);
@@ -1356,15 +1356,18 @@ function animaColor(p){
   const br=0.4+m*0.6;r=Math.round(r*br);g=Math.round(g*br);b=Math.round(b*br);
   return{col:"rgb("+r+","+g+","+b+")",core:"rgb("+Math.min(255,r+45)+","+Math.min(255,g+45)+","+Math.min(255,b+45)+")",glowA:(0.32+m*0.45)};}
 function drawPawn(p){const X=p.px*T,Y=p.py*T;
-  const sel=ST.sel.includes(p),ac=animaColor(p),slp=p.sleeping,rad=slp?7:10;
+  const sel=ST.sel.includes(p),ac=animaColor(p),slp=p.sleeping;
+  const pls=0.5+0.5*Math.sin(performance.now()*0.0028+(p.px+p.py)*0.5);
+  const rad=(slp?8:12)+(slp?0:pls*3);
+  const ga=(slp?ac.glowA*0.5:ac.glowA)*(0.72+0.28*pls);
   const rg=ctx.createRadialGradient(X,Y,0,X,Y,rad);
-  rg.addColorStop(0,ac.col);rg.addColorStop(1,"rgba(0,0,0,0)");
-  ctx.globalAlpha=slp?ac.glowA*0.5:ac.glowA;ctx.fillStyle=rg;ctx.beginPath();ctx.arc(X,Y,rad,0,7);ctx.fill();ctx.globalAlpha=1;
-  if(sel){ctx.strokeStyle="#eafff4";ctx.lineWidth=1.3;ctx.beginPath();ctx.arc(X,Y,8,0,7);ctx.stroke();ctx.lineWidth=1}
-  ctx.fillStyle=ac.col;ctx.beginPath();ctx.arc(X,Y,slp?2.6:3.4,0,7);ctx.fill();
-  ctx.fillStyle=ac.core;ctx.beginPath();ctx.arc(X,Y,slp?1.2:1.7,0,7);ctx.fill();
-  ctx.fillStyle="rgba(255,255,255,.9)";ctx.beginPath();ctx.arc(X-0.6,Y-0.6,slp?0.6:0.9,0,7);ctx.fill();
-  if(slp){ctx.fillStyle="#aef3ff";ctx.font="7px monospace";ctx.fillText("z",X+5,Y-6)}
+  rg.addColorStop(0,ac.col);rg.addColorStop(0.5,ac.col);rg.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.globalAlpha=ga;ctx.fillStyle=rg;ctx.beginPath();ctx.arc(X,Y,rad,0,7);ctx.fill();ctx.globalAlpha=1;
+  if(sel){ctx.strokeStyle="#eafff4";ctx.lineWidth=1.3;ctx.beginPath();ctx.arc(X,Y,9,0,7);ctx.stroke();ctx.lineWidth=1}
+  ctx.fillStyle=ac.col;ctx.beginPath();ctx.arc(X,Y,slp?2.8:3.8,0,7);ctx.fill();
+  ctx.fillStyle=ac.core;ctx.beginPath();ctx.arc(X,Y,slp?1.3:1.9,0,7);ctx.fill();
+  ctx.fillStyle="rgba(255,255,255,.92)";ctx.beginPath();ctx.arc(X-0.6,Y-0.6,slp?0.7:1,0,7);ctx.fill();
+  if(slp){ctx.fillStyle="#aef3ff";ctx.font="7px monospace";ctx.fillText("z",X+6,Y-7)}
   if(p.carry){ctx.fillStyle=RESCOL[p.carry.res];ctx.fillRect(X-2,Y-13,4,4)}
   if(p.drafted){ctx.fillStyle="#ff4757";ctx.beginPath();
     ctx.moveTo(X,Y-12);ctx.lineTo(X-3,Y-16);ctx.lineTo(X+3,Y-16);ctx.fill()}
