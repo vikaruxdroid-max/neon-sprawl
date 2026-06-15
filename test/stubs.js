@@ -17,3 +17,8 @@ globalThis.document={getElementById(id){return _els[id]||(_els[id]=mkEl())},
   createElement(tag){return tag==="canvas"?{width:0,height:0,style:{},getContext:()=>mkCtx()}:mkEl()}};
 globalThis.window={addEventListener(){},devicePixelRatio:1,innerWidth:1280,innerHeight:800};
 globalThis.requestAnimationFrame=()=>0;
+// in-memory localStorage shim for save/load tests
+globalThis.localStorage={_d:Object.create(null),
+  getItem(k){return k in this._d?this._d[k]:null},
+  setItem(k,v){this._d[k]=String(v)},
+  removeItem(k){delete this._d[k]}};

@@ -98,7 +98,42 @@ function T_fullrun(){
   if(!f3)fails++;
   console.log("F3 hard gate eat at food=15:",f3?"PASS":"FAIL","got:"+(j3&&j3.t));
 }
-try{T_combat();T_economy();T_path();T_fullrun();
+// G: save/load round-trip — Map/Set/Uint8Array rebuild, transient ref stripping, reservation clearing, AI re-derives
+function T_saveload(){
+  newGame();ST.nextEv=1e9;
+  ST.res.scrap=42;ST.res.meal=7;ST.tick=TPD*2+150;
+  const p=ST.pawns[0];
+  p.stress=33;p.needs.food=18;p.credits=88;
+  p.job={t:"haul",it:ST.items[0]||{x:1,y:1},phase:0};
+  p.carry={res:"scrap",qty:3};
+  p.unre.set("9:9",999);
+  if(ST.items[0])ST.items[0].resv=p.id;
+  const s0=[...ST.structs.values()][0];s0.res=p.id;
+  ST.zone.add(K(12,12));
+  const want={scrap:42,meal:7,tick:TPD*2+150,structs:ST.structs.size,pawns:ST.pawns.length,
+    terLen:ST.ter.length,name:p.name,stress:33,food:18,rooms:ST.rooms.length};
+  const saved=saveGame();
+  ST.res.scrap=0;ST.res.meal=0;ST.pawns.length=0;ST.structs.clear();ST.zone.clear();
+  const loaded=loadGame();
+  const checks=[
+    ["G1 save+load return true",saved===true&&loaded===true],
+    ["G2 structs Map+size",ST.structs instanceof Map&&ST.structs.size===want.structs],
+    ["G3 ter Uint8Array",ST.ter instanceof Uint8Array&&ST.ter.length===want.terLen],
+    ["G4 zone Set restored",ST.zone instanceof Set&&ST.zone.has(K(12,12))],
+    ["G5 resources restored",ST.res.scrap===want.scrap&&ST.res.meal===want.meal],
+    ["G6 tick restored",ST.tick===want.tick],
+    ["G7 pawn count+identity",ST.pawns.length===want.pawns&&ST.pawns[0].name===want.name&&ST.pawns[0].stress===want.stress&&ST.pawns[0].needs.food===want.food],
+    ["G8 job stripped",ST.pawns[0].job===null],
+    ["G9 carry stripped",ST.pawns[0].carry===null],
+    ["G10 unre fresh Map",ST.pawns[0].unre instanceof Map&&ST.pawns[0].unre.size===0],
+    ["G11 reservations cleared",(!ST.items[0]||ST.items[0].resv===0)&&[...ST.structs.values()].every(s=>s.res===0)],
+    ["G12 rooms preserved",ST.rooms.length===want.rooms],
+    ["G13 structAt works post-load",structAt(s0.x,s0.y)!==null],
+    ["G14 AI re-derives job (no wedge)",(function(){ST.pawns[0].job=null;const j=chooseJob(ST.pawns[0]);return !!j})()]
+  ];
+  for(const[n,ok] of checks){if(!ok)fails++;console.log(n+":",ok?"PASS":"FAIL")}
+}
+try{T_combat();T_economy();T_path();T_fullrun();T_saveload();
   if(fails>0){console.error(fails+" TEST(S) FAILED");process.exit(1)}
   console.log("ALL TESTS PASS")}
 catch(err){console.error("HARNESS ERROR:",err);process.exit(1)}
