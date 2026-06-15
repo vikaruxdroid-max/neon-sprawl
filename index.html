@@ -138,6 +138,8 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   <button class="tb spd on" id="sp-1">1×</button>
   <button class="tb spd" id="sp-2">2×</button>
   <button class="tb spd" id="sp-3">3×</button>
+  <button class="tb" id="b-save">SAVE</button>
+  <button class="tb" id="b-load">LOAD</button>
   <button class="tb" id="b-all">SQUAD</button>
   <button class="tb" id="b-mute">SND</button>
   <button class="tb" id="b-help">?</button>
@@ -1100,7 +1102,7 @@ function statRows(){return "<table>"+
 function gameOver(){ST.phase="over";
   showModal("<h1>SIGNAL LOST</h1><div class='mh-sub'>COLONY TERMINATED</div>"+
     "<p>The last runner is down. The sprawl reclaims the block — neon flickering over empty barricades.</p>"+
-    statRows()+"<button class='tb big' id='m-restart'>REINITIALIZE</button>")}
+    statRows()+(hasSave()?"<button class='tb big' id='m-continue'>LOAD LAST SAVE</button>":"")+"<button class='tb big' id='m-restart'>REINITIALIZE</button>")}
 function win(){if(ST.phase!=="run")return;ST.phase="win";SFX.good();
   showModal("<h1>EXTRACTION</h1><div class='mh-sub'>BEACON LOCK CONFIRMED</div>"+
     "<p>A black VTOL drops through the smog and your crew climbs aboard. Behind you, the colony's neon keeps burning — somebody else's problem now.</p>"+
@@ -1812,6 +1814,7 @@ function showModal(html){$("modal").innerHTML="<div class='mbox'>"+html+"</div>"
 function hideModal(){$("modal").classList.remove("open")}
 $("modal").addEventListener("click",e=>{const id=e.target.id;
   if(id==="m-start"||id==="m-restart"){SFX.wake();SFX.ui();newGame()}
+  else if(id==="m-continue"){SFX.wake();SFX.ui();loadGame()}
   else if(id==="m-close"){SFX.ui();hideModal()}});
 
 function syncHUD(){
@@ -1947,6 +1950,8 @@ $("t-orders").onclick=()=>{SFX.ui();openSub("o")};
 $("t-zones").onclick=()=>{SFX.ui();openSub("z")};
 $("t-draft").onclick=toggleDraft;
 $("b-all").onclick=()=>{SFX.ui();ST.sel=ST.pawns.slice();renderInspect();syncHUD()};
+$("b-save").onclick=()=>{SFX.ui();saveGame()};
+$("b-load").onclick=()=>{SFX.ui();loadGame()};
 $("b-mute").onclick=function(){this.classList.toggle("on",SFX.toggleMute())};
 $("b-help").onclick=()=>{SFX.ui();showHelp()};
 $("cancelTool").onclick=()=>{SFX.ui();setTool(null)};
@@ -1980,8 +1985,54 @@ function showStart(){showModal(
   "<h1>NEON SPRAWL</h1><div class='mh-sub'>COLONY PROTOCOL</div>"+
   "<p>2087. Your crew of three runners just claimed a dead block on the edge of the sprawl. Scrap is currency, protein is life, and the gangs come hunting after dark.</p>"+
   "<p>Salvage. Build. Defend. Then raise an <span style='color:var(--cy)'>Extraction Beacon</span> and keep it powered for one full day to buy your way out.</p>"+
+  (hasSave()?"<button class='tb big' id='m-continue'>CONTINUE RUN</button>":"")+
   "<button class='tb big' id='m-start'>INITIALIZE COLONY</button>"+
   "<p style='color:var(--dim);font-size:10px'>Hit ? in the top bar for the field manual · v0.1</p>")}
+
+/* ---------- save / load ---------- */
+const SAVE_KEY="neonSprawlSave_v1";
+function hasSave(){try{return !!localStorage.getItem(SAVE_KEY)}catch(e){return false}}
+function snapPawn(p){return Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,unre:undefined,pi:0,pTx:-1,pTy:-1,claim:0})}
+function snapFoe(f){return Object.assign({},f,{path:null,tgt:null,pi:0,pTx:-1,pTy:-1})}
+function snapStruct(s){return Object.assign({},s,{res:0})}
+function snapItem(it){return Object.assign({},it,{resv:0})}
+function serializeState(){
+  return{v:1,tick:ST.tick,res:ST.res,grp:ST.grp,lastRaid:ST.lastRaid,nextEv:ST.nextEv,
+    storm:ST.storm,black:ST.black,stats:ST.stats,flags:ST.flags,
+    ter:Array.from(ST.ter),
+    structs:[...ST.structs.values()].map(snapStruct),
+    items:ST.items.map(snapItem),
+    pawns:ST.pawns.map(snapPawn),
+    foes:ST.foes.map(snapFoe),
+    zone:[...ST.zone],rooms:ST.rooms}}
+function applyState(d){
+  ST.tick=d.tick||0;ST.res=d.res||{scrap:0,comp:0,raw:0,meal:0};
+  ST.grp=d.grp||{};ST.lastRaid=d.lastRaid||0;ST.nextEv=(d.nextEv==null?1e9:d.nextEv);
+  ST.storm=d.storm||0;ST.black=d.black||0;
+  ST.stats=d.stats||{kills:0,built:0,deaths:0,salv:0,hauled:0,raids:0};ST.flags=d.flags||{};
+  ST.ter=new Uint8Array(d.ter||[]);
+  ST.structs=new Map((d.structs||[]).map(s=>[K(s.x,s.y),s]));
+  ST.items=d.items||[];
+  ST.pawns=(d.pawns||[]).map(p=>Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,unre:new Map()}));
+  ST.foes=(d.foes||[]).map(f=>Object.assign({},f,{path:null,tgt:null}));
+  ST.zone=new Set(d.zone||[]);ST.rooms=d.rooms||[];
+  ST.beams=[];ST.floats=[];ST.sel=[];
+  ST.phase="run";ST.paused=false;ST.speed=1;
+  powerRecalc()}
+function saveGame(){
+  if(ST.phase!=="run"){flashMsg("Nothing to save yet");return false}
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify(serializeState()));
+    flashMsg("Run saved — day "+dayN());banner("RUN SAVED","good");return true}
+  catch(e){flashMsg("Save failed: "+(e&&e.message||"storage error"));return false}}
+function loadGame(){
+  let raw;try{raw=localStorage.getItem(SAVE_KEY)}catch(e){flashMsg("Storage unavailable");return false}
+  if(!raw){flashMsg("No save found");return false}
+  let d;try{d=JSON.parse(raw)}catch(e){flashMsg("Save file corrupt");return false}
+  applyState(d);
+  drawTerrain();MOTES=null;
+  if(ST.pawns[0]){cam.x=ST.pawns[0].px*T-VW/cam.z/2;cam.y=ST.pawns[0].py*T-VH/cam.z/2;clampCam()}
+  hideModal();refreshSpd();syncHUD();renderRoster();renderInspect();
+  flashMsg("Run loaded — day "+dayN());banner("RUN LOADED","good");return true}
 
 /* ============================================================
    GAME START / MAIN LOOP
