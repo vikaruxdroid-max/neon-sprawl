@@ -112,6 +112,8 @@ function T_saveload(){
   ST.zone.add(K(12,12));
   const want={scrap:42,meal:7,tick:TPD*2+150,structs:ST.structs.size,pawns:ST.pawns.length,
     terLen:ST.ter.length,name:p.name,stress:33,food:18,rooms:ST.rooms.length};
+  if(ST.pawns[1])relAdj(p.id,ST.pawns[1].id,40);
+  want.rel=ST.pawns[1]?relGet(p.id,ST.pawns[1].id):0;
   const saved=saveGame();
   ST.res.scrap=0;ST.res.meal=0;ST.pawns.length=0;ST.structs.clear();ST.zone.clear();
   const loaded=loadGame();
@@ -129,7 +131,8 @@ function T_saveload(){
     ["G11 reservations cleared",(!ST.items[0]||ST.items[0].resv===0)&&[...ST.structs.values()].every(s=>s.res===0)],
     ["G12 rooms preserved",ST.rooms.length===want.rooms],
     ["G13 structAt works post-load",structAt(s0.x,s0.y)!==null],
-    ["G14 AI re-derives job (no wedge)",(function(){ST.pawns[0].job=null;const j=chooseJob(ST.pawns[0]);return !!j})()]
+    ["G14 AI re-derives job (no wedge)",(function(){ST.pawns[0].job=null;const j=chooseJob(ST.pawns[0]);return !!j})()],
+    ["G15 relationships restored",ST.pawns[1]?relGet(ST.pawns[0].id,ST.pawns[1].id)===want.rel:true]
   ];
   for(const[n,ok] of checks){if(!ok)fails++;console.log(n+":",ok?"PASS":"FAIL")}
 }
