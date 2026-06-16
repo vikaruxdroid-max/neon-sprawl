@@ -5,6 +5,7 @@
 let fails=0;ST.procgen=false;
 function T_combat(){
   newGame();ST.nextEv=1e9;
+  ST.pawns.length=1;                 // isolate combat primitives from the populace
   const p=ST.pawns[0];p.drafted=true;clearJob(p);p.sick=false;p.stress=0;p.needs.hyg=100;
   spawnFoeAt("ganger",(p.px|0)+4,(p.py|0),uid());
   let killed=false;

@@ -192,7 +192,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
    ============================================================ */
 
 /* ---------- helpers ---------- */
-const T=16, MW=56, MH=40, TPD=2400, TPS=10;     // tile px, map w/h, ticks/day, ticks/sec
+const T=16, MW=56, MH=40, TPD=2400, TPS=10, POP=18;  // tile px, map w/h, ticks/day, ticks/sec, starting agents
 function R(a,b){return a+Math.random()*(b-a)}
 function RI(a,b){return Math.floor(R(a,b+1))}
 function CH(a){return a[Math.floor(Math.random()*a.length)]}
@@ -874,8 +874,8 @@ function pawnTick(p){
           else if(ST.res.raw>0){ST.res.raw--;p.needs.food=Math.min(100,p.needs.food+55);
             addMod(p,"raw","Ate raw protein",-6,TPD*.4)}
           else{p.needs.food=Math.min(100,p.needs.food+40);addMod(p,"scraps","Scrounged scraps",-4,TPD*.3)}
-          const other=ST.pawns.find(q=>q.id!==p.id);
-          if(other&&Math.hypot(p.px-other.px,p.py-other.py)<6){relAdj(p.id,other.id,3);applyDrift(p,{soc:2})}
+          let other=null,od=1e9;for(const q of ST.pawns){if(q.id===p.id)continue;const dd=Math.hypot(p.px-q.px,p.py-q.py);if(dd<od){od=dd;other=q}}
+          if(other&&od<6){relAdj(p.id,other.id,3);applyDrift(p,{soc:2})}
           p.job=null;syncHUD()}}
       break}
     case "sleep":{
@@ -2194,6 +2194,12 @@ function newGame(){
   sta.name="Static";Object.assign(sta.pers,{ind:80,cau:65,soc:45,cur:25,amb:60,emp:50,imp:25,intg:75});sta.accent=tempCols(sta.pers)[0];sta.sched=mkSched(sta.pers,sta.tr);
   sta.mem=[{d:0,h:6,t:"holed up here with Vex — somebody's got to keep this block standing"},{d:0,h:6,t:"I grind steady and careful; Vex thinks I'm too slow about it"}];
   ST.pawns.push(sta);
+  // populace — scatter procedural agents across walkable cells until POP is reached
+  {let tries=0;while(ST.pawns.length<POP&&tries<4000){tries++;
+    const x=RI(3,MW-4),y=RI(3,MH-4);
+    if(colCost(x,y)<0)continue;
+    if(ST.pawns.some(q=>(q.px|0)===x&&(q.py|0)===y))continue;
+    ST.pawns.push(mkPawn(x,y))}}
   cam.z=clamp(Math.min(VW/(MW*T),VH/(MH*T))*1.9,1,2.2);
   cam.x=cx*T-VW/cam.z/2;cam.y=cy*T-VH/cam.z/2;clampCam();
   ST.lastRaid=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.rel={};relAdj(vex.id,sta.id,25);ST.heat=0;ST.heatWarn=false;
