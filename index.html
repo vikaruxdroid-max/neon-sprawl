@@ -192,7 +192,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
    ============================================================ */
 
 /* ---------- helpers ---------- */
-const T=16, MW=56, MH=40, TPD=2400, TPS=10, POP=18;  // tile px, map w/h, ticks/day, ticks/sec, starting agents
+const T=16, MW=56, MH=40, TPD=2400, TPS=10, POP=7;   // tile px, map w/h, ticks/day, ticks/sec, starting agents
 function R(a,b){return a+Math.random()*(b-a)}
 function RI(a,b){return Math.floor(R(a,b+1))}
 function CH(a){return a[Math.floor(Math.random()*a.length)]}
@@ -663,22 +663,6 @@ function mkSleep(p){let pod=null;
     if(!s.owner&&!pod)pod=s}
   if(pod){pod.owner=p.id;return{t:"sleep",s:pod,x:pod.x,y:pod.y}}
   return{t:"sleep",s:null,x:p.px|0,y:p.py|0}}
-function findJob(p){
-  if(p.needs.food<=22){const j=mkEat(p);if(j)return j}
-  if(p.needs.rest<=18)return mkSleep(p);
-  if(ST.res.raw>=2&&ST.res.meal<10){
-    const stn=nearestStruct(p,s=>s.type==="synth"&&!s.bp&&s.powered&&!s.res);
-    if(stn){stn.res=p.id;return{t:"cook",s:stn,prog:0}}}
-  const b=nearestStruct(p,s=>(s.bp||s.decon)&&!s.res);
-  if(b){b.res=p.id;return{t:"build",s:b,prog:0}}
-  const m=nearestStruct(p,s=>s.desig&&!s.res&&(s.type==="scrap"||s.type==="cache"));
-  if(m){m.res=p.id;return{t:"salvage",s:m}}
-  if(ST.zone.size>0){const it=nearestItem(p);
-    if(it){it.resv=p.id;return{t:"haul",it,phase:0,x:0,y:0}}}
-  if(p.needs.food<=45){const j=mkEat(p);if(j)return j}
-  if(p.needs.rest<=35)return mkSleep(p);
-  const w=randNear(p,5)||{x:p.px|0,y:p.py|0};
-  return{t:"idle",until:ST.tick+RI(25,70),x:w.x,y:w.y}}
 function scoreJobs(p){
   const food=p.needs.food,rest=p.needs.rest,hp=p.hp;
   const ind=p.pers.ind,cau=p.pers.cau,cur=p.pers.cur;
@@ -690,7 +674,7 @@ function scoreJobs(p){
   const hyg=p.needs.hyg??80,fun=p.needs.fun??70,socN=p.needs.socN??70,soc=p.pers.soc;
   const showStr=nearestStruct(p,s=>(s.type==="shower"||s.type==="toilet")&&!s.bp);
   const funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar")&&!s.bp);
-  const mate=ST.pawns.find(q=>q.id!==p.id);
+  let mate=null,_md=1e9;for(const q of ST.pawns){if(q.id===p.id)continue;const dd=DIST(p.px,p.py,q.px,q.py);if(dd<_md){_md=dd;mate=q}}
   const cred=p.credits??40;
   const workStr=nearestStruct(p,s=>s.type==="workstation"&&!s.bp);
   const medStr=nearestStruct(p,s=>s.type==="medbed"&&!s.bp);
@@ -1918,8 +1902,8 @@ function tryBuildRequest(p){
     return{...base,kind:"build",text:p.name+" asks: raise the "+DEF[bps[0].type].name+" or the "+DEF[bps[1].type].name+" first?",
       options:[{label:DEF[bps[0].type].name,apply:{build:+0.2}},{label:DEF[bps[1].type].name,apply:{build:+0.1}}]};
   const synth=[...ST.structs.values()].find(s=>s.type==="synth"&&!s.bp&&s.powered);
-  const other=ST.pawns.find(q=>q.id!==p.id);
-  if(synth&&other&&p.job&&p.job.t==="cook"&&other.job&&other.job.t==="cook"&&Math.random()<0.5)
+  const other=ST.pawns.find(q=>q.id!==p.id&&q.job&&q.job.t==="cook");
+  if(synth&&other&&p.job&&p.job.t==="cook"&&Math.random()<0.5)
     return{...base,kind:"conflict",text:p.name+" and "+other.name+" both want the synth station.",
       options:[{label:p.name+" first",apply:{cook:+0.15}},{label:other.name+" first",apply:{cook:-0.1}}]};
   return null}
@@ -1968,6 +1952,13 @@ function renderChecklist(){const ul=$("ck");let h="";
 function barHtml(lab,val,col){
   return "<div class='blab'><span>"+lab+"</span><span>"+Math.round(val)+"</span></div>"+
     "<div class='bar'><i style='width:"+clamp(val,0,100)+"%;background:"+col+"'></i></div>"}
+function relsOf(p){const out=[];
+  for(const k in ST.rel){const v=ST.rel[k];if(Math.abs(v)<8)continue;
+    const ids=k.split("|");if(ids[0]!=p.id&&ids[1]!=p.id)continue;
+    const oid=(ids[0]==p.id)?ids[1]:ids[0];
+    const o=ST.pawns.find(q=>q.id==oid);if(!o)continue;
+    out.push({o,v})}
+  out.sort((a,b)=>Math.abs(b.v)-Math.abs(a.v));return out}
 function renderInspect(){const el=$("inspect");
   ST.sel=ST.sel.filter(e=>e.kind==="pawn"?ST.pawns.includes(e):
     e.kind==="foe"?ST.foes.includes(e):structAt(e.x,e.y)===e);
@@ -1990,6 +1981,12 @@ function renderInspect(){const el=$("inspect");
     h+="<div class='sub'>STRESS "+(e.stress|0)+(e.addiction>0?" · ADDICTION "+(e.addiction|0):"")+"</div>";
     if(e.rep&&(e.rep.city||e.rep.gang))h+="<div class='sub'>REP city "+(e.rep.city|0)+" · gang "+(e.rep.gang|0)+"</div>";
     h+="<div class='sub'>SAL "+e.sk.sal+" · BLD "+e.sk.bld+" · COOK "+e.sk.cook+" · SHT "+e.sk.sht+"</div>";
+    {const rels=relsOf(e);
+     if(rels.length){h+="<div class='ordsec'>TIES</div>";
+       for(const tie of rels.slice(0,5)){const v=tie.v,col=v>0?"#39ff88":"#ff4757";
+         const lbl=v>=50?"ally":v>=15?"warm":v<=-50?"hostile":v<=-15?"rival":"·";
+         h+="<div class='sub' style='display:flex;justify-content:space-between;gap:8px'><span style='color:"+tie.o.accent+"'>"+tie.o.name+"</span><span style='color:"+col+"'>"+lbl+" "+(v>0?"+":"")+(v|0)+"</span></div>"}}}
+    if(e.mem&&e.mem.length)h+="<div class='sub' style='font-style:italic;opacity:.78'>\u201c"+e.mem[e.mem.length-1].t+"\u201d</div>";
     if(!e.drafted)h+="<div class='ordsec'>DIRECT ORDERS</div><div class='ordgrid'>"+
       "<button class='ob' data-o='work'><span>⚒</span>Work</button>"+
       "<button class='ob' data-o='sleep'><span>☾</span>Rest</button>"+
