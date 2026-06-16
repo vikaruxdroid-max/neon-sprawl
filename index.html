@@ -10,159 +10,306 @@
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --cy:#00e0c8; --mg:#ff3db0; --yl:#ffd86a; --gn:#2ee89a; --rd:#ff5a6a; --or:#ffb04a;
-  --bg:#04100c; --panel:rgba(6,22,17,.92); --bd:#173b30; --tx:#d9eee4; --dim:#86a89c;
+  /* Cyberpunk + bioluminescent surreal palette */
+  --cy:#00d4ff; --mg:#e040fb; --yl:#ffc947; --gn:#39ff88; --rd:#ff3d5a; --or:#ff8c42;
+  --vi:#a259ff; --am:#ffb347; /* violet + amber for bioluminescence */
+  --bg:#010408; --panel:rgba(4,10,22,.94); --bd:#0d2040; --tx:#cce8ff; --dim:#5a7a9a;
   --disp:"Chakra Petch",system-ui,sans-serif; --mono:"JetBrains Mono","Cascadia Mono",monospace;
+  --hud-h:44px;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   font-family:var(--mono);color:var(--tx);
   -webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
 #c{position:fixed;inset:0;display:block;touch-action:none;cursor:crosshair}
-.panel{background:var(--panel);border:1px solid var(--bd);border-radius:4px;z-index:10}
-.tb{background:#0b1322;border:1px solid var(--bd);color:var(--tx);padding:7px 10px;
-  font:inherit;font-size:11px;letter-spacing:.08em;cursor:pointer;border-radius:3px;white-space:nowrap}
-.tb:hover{border-color:var(--cy);color:#e8f6ff;box-shadow:0 0 8px rgba(0,229,255,.25)}
-.tb.on{border-color:var(--cy);color:var(--cy);background:#0a1c28;box-shadow:0 0 10px rgba(0,229,255,.3)}
-.tb.warnb{border-color:#5a2233}
-#hud{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:13px;
-  padding:0 14px;height:40px;font-size:12px;z-index:20;border:none;border-radius:0;
-  border-bottom:1px solid var(--bd);background:linear-gradient(180deg,rgba(4,16,12,.96),rgba(4,16,12,.55))}
-#hud b{color:#e8f6ff;font-weight:600}
-.res{display:flex;align-items:center;gap:5px;white-space:nowrap}
-.sw{display:inline-block;width:8px;height:8px;border-radius:2px}
+
+/* ── PANELS ── */
+.panel{background:var(--panel);border:1px solid var(--bd);border-radius:6px;z-index:10;
+  box-shadow:0 4px 24px rgba(0,0,0,.6)}
+.tb{background:rgba(8,18,36,.85);border:1px solid var(--bd);color:var(--tx);padding:6px 10px;
+  font:inherit;font-size:11px;letter-spacing:.07em;cursor:pointer;border-radius:4px;
+  white-space:nowrap;transition:border-color .12s,box-shadow .12s,color .12s}
+.tb:hover{border-color:var(--cy);color:#e8f6ff;box-shadow:0 0 10px rgba(0,212,255,.3)}
+.tb.on{border-color:var(--cy);color:var(--cy);background:rgba(0,212,255,.1);
+  box-shadow:0 0 12px rgba(0,212,255,.35),inset 0 0 6px rgba(0,212,255,.08)}
+.tb.warnb{border-color:rgba(255,61,90,.5)}
 .gap{flex:1}
-#h-pwr.bad{color:var(--rd)}
-#h-extract{color:var(--cy);letter-spacing:.1em}
-#checklist{display:none;position:fixed;left:8px;top:54px;width:236px;padding:8px 10px;font-size:11px;line-height:1.5}
-#checklist b{color:var(--cy);letter-spacing:.15em;font-size:10px}
-#checklist ul{margin:6px 0 0;padding:0 0 0 14px}
-#checklist li{color:var(--dim)}
-#checklist li.done{color:var(--gn);text-decoration:line-through;opacity:.65}
-#roster{position:fixed;right:8px;top:46px;width:auto;max-height:calc(100vh - 56px);overflow-y:auto;padding:0;background:none;border:none;display:flex;flex-direction:column;gap:7px;align-items:flex-end;z-index:11}
+
+/* ── HUD (single unified bar) ── */
+#hud{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:0;
+  height:var(--hud-h);z-index:20;border-bottom:1px solid var(--bd);
+  background:linear-gradient(180deg,rgba(2,8,22,.98) 0%,rgba(2,8,22,.82) 100%)}
+.hud-seg{display:flex;align-items:center;gap:8px;padding:0 14px;height:100%;
+  border-right:1px solid rgba(13,32,64,.8)}
+.hud-seg:last-child{border-right:none}
+.hud-label{font-size:9px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase}
+.hud-val{font-family:var(--disp);font-size:13px;font-weight:600;color:#e8f6ff;letter-spacing:.04em}
+.hud-val.danger{color:var(--rd);animation:pulse-red 1s ease-in-out infinite}
+.hud-val.warn{color:var(--yl)}
+.hud-pip{display:inline-flex;align-items:center;gap:3px;font-size:10px;white-space:nowrap}
+.hud-pip .dot{width:6px;height:6px;border-radius:1px;flex-shrink:0}
+.hud-goods{display:flex;align-items:center;gap:10px;padding:0 12px}
+.hud-day{font-family:var(--disp);font-size:11px;letter-spacing:.1em;color:var(--cy);
+  text-shadow:0 0 10px rgba(0,212,255,.5)}
+@keyframes pulse-red{0%,100%{opacity:1}50%{opacity:.55}}
+#hud.crisis{border-bottom-color:rgba(255,61,90,.6);
+  box-shadow:0 0 20px rgba(255,61,90,.25) inset}
+
+/* ── DIARY (replaces log) ── */
+#diary{position:fixed;left:8px;top:calc(var(--hud-h) + 6px);width:310px;
+  max-height:32vh;display:flex;flex-direction:column;
+  border-radius:8px;overflow:hidden;z-index:11}
+.diary-tabs{display:flex;gap:0;border-bottom:1px solid var(--bd);background:rgba(2,6,16,.9);flex-shrink:0}
+.dtab{font-family:var(--disp);font-size:9px;letter-spacing:.14em;color:var(--dim);
+  padding:5px 9px;cursor:pointer;transition:color .12s,border-bottom .12s;
+  border-bottom:2px solid transparent}
+.dtab.on{color:var(--cy);border-bottom-color:var(--cy)}
+.dtab:hover{color:var(--tx)}
+.diary-body{flex:1;overflow-y:auto;padding:5px 8px;background:rgba(4,10,22,.88)}
+.diary-body::-webkit-scrollbar{width:3px}
+.diary-body::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
+.dday{font-family:var(--disp);font-size:9px;letter-spacing:.22em;color:var(--vi);
+  text-transform:uppercase;padding:6px 0 3px;border-top:1px solid rgba(13,32,64,.6);
+  margin-top:4px}
+.dday:first-child{border-top:none;margin-top:0}
+.dent{display:flex;align-items:baseline;gap:6px;padding:2px 0;font-size:10px;line-height:1.4}
+.dent .dtime{color:var(--dim);font-size:9px;flex-shrink:0;letter-spacing:.04em}
+.dent .dtag{font-family:var(--disp);font-size:8px;letter-spacing:.1em;
+  padding:1px 5px;border-radius:3px;flex-shrink:0;border:1px solid currentColor;opacity:.85}
+.dent .dmsg{color:var(--tx);opacity:.88}
+.dtag.crime{color:#ff6b6b}.dtag.eco{color:#47d4b8}.dtag.social{color:var(--vi)}
+.dtag.health{color:#6bcfff}.dtag.district{color:var(--yl)}.dtag.info{color:var(--dim)}
+
+/* ── INSPECT ── */
+#inspect{position:fixed;left:8px;bottom:60px;width:310px;padding:14px 16px;
+  font-size:11px;display:none;line-height:1.55;z-index:30}
+#inspect h3{margin:0 0 3px;font-family:var(--disp);font-weight:700;font-size:18px;
+  color:#eafff4;letter-spacing:.02em}
+#inspect .sub{color:var(--dim);font-size:10px;margin-bottom:5px}
+.bar{height:5px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);
+  border-radius:3px;margin:2px 0 6px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:3px}
+.blab{display:flex;justify-content:space-between;font-size:10px;color:var(--dim)}
+#inspect .tb{margin-top:6px;margin-right:5px;padding:5px 9px}
+.ordsec{font-family:var(--disp);font-weight:600;font-size:9px;letter-spacing:.2em;
+  color:var(--dim);text-transform:uppercase;margin:11px 0 7px;
+  display:flex;align-items:center;gap:7px}
+.ordsec::after{content:"";flex:1;height:1px;background:var(--bd)}
+.ordgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
+.ob{font-family:var(--disp);font-weight:600;font-size:10px;
+  background:rgba(0,212,255,.06);border:1px solid var(--bd);color:var(--tx);
+  padding:8px 4px;border-radius:6px;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  transition:border-color .12s,background .12s}
+.ob span{font-size:14px;line-height:1}
+.ob:hover{border-color:var(--cy);color:#eafff4;background:rgba(0,212,255,.12)}
+.i-talk{background:rgba(162,89,255,.16)!important;border-color:rgba(162,89,255,.42)!important;color:#e7dcff!important}
+
+/* ── ROSTER ── */
+#roster{position:fixed;right:8px;top:calc(var(--hud-h) + 6px);width:auto;
+  max-height:calc(100vh - 70px);overflow-y:auto;padding:0;
+  background:none;border:none;display:flex;flex-direction:column;gap:6px;
+  align-items:flex-end;z-index:11}
 #roster::-webkit-scrollbar{display:none}
-#roster .rhdr{font-family:var(--disp);font-weight:600;color:var(--cy);letter-spacing:.16em;font-size:9px;text-align:center;width:54px}
-.rchip{width:54px;height:54px;position:relative;cursor:pointer;border-radius:9px;background:var(--panel);border:1px solid var(--bd);display:grid;place-items:center;transition:border-color .12s,box-shadow .12s}
-.rchip:hover{border-color:#2c5a48}
-.rchip.sel{border-color:#eafff4;box-shadow:0 0 0 1px #eafff4 inset,0 0 12px rgba(46,232,154,.22)}
-.rring{position:absolute;inset:3px;border-radius:50%;opacity:.9;pointer-events:none}
-.rnow{position:absolute;width:5px;height:5px;border-radius:50%;background:var(--mg);box-shadow:0 0 6px var(--mg);top:50%;left:50%;pointer-events:none}
-.rava{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-family:var(--disp);font-weight:700;font-size:13px;color:#04100c;position:relative;z-index:1}
-.rmood{position:absolute;bottom:4px;right:4px;width:8px;height:8px;border-radius:50%;border:1.5px solid #08130f;z-index:2}
-.rfly{position:absolute;right:62px;top:50%;transform:translateY(-50%);background:var(--panel);border:1px solid var(--bd);border-radius:6px;padding:6px 10px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s;display:flex;flex-direction:column;gap:2px;z-index:30}
+#roster .rhdr{font-family:var(--disp);font-weight:600;color:var(--cy);
+  letter-spacing:.16em;font-size:9px;text-align:center;width:54px;opacity:.7}
+.rchip{width:54px;height:54px;position:relative;cursor:pointer;border-radius:10px;
+  background:rgba(4,10,22,.9);border:1px solid var(--bd);
+  display:grid;place-items:center;transition:border-color .12s,box-shadow .12s}
+.rchip:hover{border-color:rgba(0,212,255,.4)}
+.rchip.sel{border-color:#00d4ff;box-shadow:0 0 0 1px rgba(0,212,255,.4) inset,0 0 14px rgba(0,212,255,.25)}
+.rring{position:absolute;inset:3px;border-radius:50%;opacity:.8;pointer-events:none}
+.rnow{position:absolute;width:5px;height:5px;border-radius:50%;
+  background:var(--mg);box-shadow:0 0 6px var(--mg);top:50%;left:50%;pointer-events:none}
+.rava{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;
+  font-family:var(--disp);font-weight:700;font-size:13px;color:#010408;position:relative;z-index:1}
+.rmood{position:absolute;bottom:4px;right:4px;width:7px;height:7px;
+  border-radius:50%;border:1.5px solid #010408;z-index:2}
+.rfly{position:absolute;right:62px;top:50%;transform:translateY(-50%);
+  background:var(--panel);border:1px solid var(--bd);border-radius:8px;
+  padding:7px 11px;white-space:nowrap;opacity:0;pointer-events:none;
+  transition:opacity .12s;display:flex;flex-direction:column;gap:2px;z-index:30}
 .rchip:hover .rfly{opacity:1}
 .rfly b{font-family:var(--disp);font-size:12px;letter-spacing:.02em}
 .rfly span{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
 .rfly em{font-style:normal;font-size:9px;color:var(--or);letter-spacing:.04em}
-#log{position:fixed;left:8px;top:48px;width:300px;max-height:24vh;overflow:hidden;
-  padding:8px 11px;font-size:11px;line-height:1.5}
-#log div{margin:1px 0;opacity:.92}
-#log .info{color:#9fb4d8}#log .warn{color:var(--yl)}#log .bad{color:var(--rd)}#log .good{color:var(--gn)}
-#inspect{position:fixed;left:8px;bottom:56px;width:300px;padding:12px 14px;font-size:11px;display:none;line-height:1.5;z-index:30}
-#inspect h3{margin:0 0 3px;font-family:var(--disp);font-weight:700;font-size:17px;color:#eafff4;letter-spacing:.02em}
-#inspect .sub{color:var(--dim);font-size:10px;margin-bottom:5px}
-.bar{height:6px;background:#10182b;border:1px solid #1c2a44;border-radius:2px;margin:2px 0 5px;overflow:hidden}
-.bar i{display:block;height:100%}
-.blab{display:flex;justify-content:space-between;font-size:10px;color:var(--dim)}
-#inspect .tb{margin-top:6px;margin-right:5px;padding:5px 9px}
-.ordsec{font-family:var(--disp);font-weight:600;font-size:9px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase;margin:11px 0 7px;display:flex;align-items:center;gap:7px}
-.ordsec::after{content:"";flex:1;height:1px;background:var(--bd)}
-.ordgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
-.ob{font-family:var(--disp);font-weight:600;font-size:10px;background:#0f2a22;border:1px solid var(--bd);color:var(--tx);padding:8px 4px;border-radius:5px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;transition:border-color .12s,background .12s}
-.ob span{font-size:14px;line-height:1}
-.ob:hover{border-color:var(--cy);color:#eafff4;background:#11332b}
-.i-talk{background:rgba(160,107,255,.16)!important;border-color:rgba(160,107,255,.42)!important;color:#e7dcff!important}
-#chat{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:380px;max-width:calc(100vw - 28px);height:min(70vh,520px);display:none;flex-direction:column;background:var(--panel);border:1px solid var(--bd);border-radius:11px;box-shadow:0 0 40px rgba(0,0,0,.7);z-index:80;overflow:hidden}
+
+/* ── STATS PANEL ── */
+#stats-panel{display:none;position:fixed;right:8px;bottom:62px;width:270px;
+  max-height:60vh;overflow-y:auto;padding:12px 14px;font-size:11px;line-height:1.5;z-index:30}
+#stats-panel h4{color:var(--cy);letter-spacing:.12em;font-size:9px;
+  margin:8px 0 5px;text-transform:uppercase;
+  display:flex;align-items:center;gap:6px}
+#stats-panel h4::after{content:"";flex:1;height:1px;background:var(--bd)}
+#stats-panel .srow{display:flex;justify-content:space-between;color:var(--dim);margin-bottom:3px}
+#stats-panel .srow b{color:var(--tx)}
+#stats-panel .sbad{color:var(--rd)}
+#stats-panel .sgood{color:var(--gn)}
+
+/* ── REQUESTS ── */
+#requests{position:fixed;left:8px;top:calc(var(--hud-h) + 32vh + 18px);
+  width:310px;max-height:28vh;overflow-y:auto;padding:4px 6px;display:none;z-index:11}
+#requests .rq-hdr{color:var(--cy);font-size:9px;letter-spacing:.18em;margin-bottom:4px;
+  padding-bottom:3px;border-bottom:1px solid var(--bd)}
+.rq-card{background:rgba(6,12,28,.9);border:1px solid var(--bd);border-radius:5px;
+  padding:8px 10px;margin-bottom:5px;font-size:11px;line-height:1.45}
+.rq-card.rq-warn{border-color:rgba(255,140,66,.4)}
+.rq-card.rq-urgent{border-color:rgba(255,61,90,.5)}
+.rq-name{font-size:9px;letter-spacing:.1em;margin-bottom:3px;color:var(--dim)}
+.rq-text{color:#c8d8f0;margin-bottom:7px}
+.rq-opts{display:flex;gap:5px;flex-wrap:wrap}
+.rq-opts .tb{padding:4px 9px;font-size:10px}
+@keyframes rq-expire{0%{border-color:rgba(255,140,66,.4)}100%{border-color:rgba(255,61,90,.6)}}
+
+/* ── CHAT ── */
+#chat{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:390px;max-width:calc(100vw - 28px);height:min(72vh,540px);
+  display:none;flex-direction:column;background:rgba(4,10,22,.97);
+  border:1px solid rgba(0,212,255,.25);border-radius:12px;
+  box-shadow:0 0 50px rgba(0,0,0,.8),0 0 20px rgba(0,212,255,.08);z-index:80;overflow:hidden}
 #chat.open{display:flex}
-#chat .ch-hd{display:flex;align-items:center;gap:8px;padding:11px 13px;border-bottom:1px solid var(--bd)}
+#chat .ch-hd{display:flex;align-items:center;gap:8px;padding:12px 14px;
+  border-bottom:1px solid var(--bd)}
 #chat .ch-hd h4{margin:0;font-family:var(--disp);font-size:14px;letter-spacing:.04em;flex:1}
-#chat .ch-x{cursor:pointer;color:var(--dim);font-size:15px;line-height:1;padding:2px 5px}
+#chat .ch-x{cursor:pointer;color:var(--dim);font-size:16px;line-height:1;padding:2px 6px}
 #chat .ch-x:hover{color:var(--tx)}
-#chat .ch-log{flex:1;overflow-y:auto;padding:11px 13px;display:flex;flex-direction:column;gap:8px}
-#chat .cm{font-size:12px;line-height:1.45;padding:7px 10px;border-radius:8px;max-width:86%;white-space:pre-wrap;word-break:break-word}
-#chat .cm.u{align-self:flex-end;background:rgba(0,224,200,.14);border:1px solid rgba(0,224,200,.32);color:var(--tx)}
-#chat .cm.a{align-self:flex-start;background:rgba(160,107,255,.13);border:1px solid rgba(160,107,255,.3);color:var(--tx)}
+#chat .ch-log{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+#chat .cm{font-size:12px;line-height:1.45;padding:8px 11px;border-radius:10px;
+  max-width:86%;white-space:pre-wrap;word-break:break-word}
+#chat .cm.u{align-self:flex-end;background:rgba(0,212,255,.12);
+  border:1px solid rgba(0,212,255,.28);color:var(--tx)}
+#chat .cm.a{align-self:flex-start;background:rgba(162,89,255,.11);
+  border:1px solid rgba(162,89,255,.28);color:var(--tx)}
 #chat .cm.sys{align-self:center;color:var(--dim);font-size:10px;background:none;border:none;text-align:center}
-#chat .cm.act{align-self:center;background:rgba(46,232,154,.13);border:1px solid rgba(46,232,154,.36);color:#bdffe0;font-size:11px;font-family:var(--disp);letter-spacing:.02em;text-align:center}
-#chat .ch-in{display:flex;gap:6px;padding:10px 13px;border-top:1px solid var(--bd)}
-#chat .ch-in input{flex:1;background:#04100c;border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:12px;padding:8px 9px;border-radius:6px;outline:none}
-#chat .ch-in input:focus{border-color:var(--cy)}
-#chat .ch-in button{background:var(--cy);color:#04100c;border:none;font-family:var(--disp);font-size:12px;font-weight:700;padding:8px 13px;border-radius:6px;cursor:pointer}
-#chat .ch-in button:disabled{opacity:.4;cursor:default}
-#aimeter{position:fixed;right:13px;bottom:12px;display:none;font-family:var(--mono);font-size:10px;color:var(--dim);background:rgba(6,22,17,.86);border:1px solid var(--bd);border-radius:6px;padding:4px 9px;z-index:55;pointer-events:none;letter-spacing:.02em}
-#toolbar{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);display:flex;gap:6px;
-  padding:6px;max-width:96vw;overflow-x:auto}
-#submenu{position:fixed;bottom:52px;left:50%;transform:translateX(-50%);display:none;gap:6px;
-  padding:6px;max-width:96vw;overflow-x:auto}
+#chat .cm.act{align-self:center;background:rgba(57,255,136,.1);
+  border:1px solid rgba(57,255,136,.32);color:#bdffe0;font-size:11px;
+  font-family:var(--disp);letter-spacing:.02em;text-align:center}
+#chat .ch-in{display:flex;gap:6px;padding:10px 14px;border-top:1px solid var(--bd)}
+#chat .ch-in input{flex:1;background:rgba(2,8,20,.8);border:1px solid var(--bd);
+  color:var(--tx);font-family:var(--mono);font-size:12px;padding:8px 10px;
+  border-radius:7px;outline:none}
+#chat .ch-in input:focus{border-color:rgba(0,212,255,.5)}
+#chat .ch-in button{background:var(--cy);color:#010408;border:none;
+  font-family:var(--disp);font-size:12px;font-weight:700;
+  padding:8px 14px;border-radius:7px;cursor:pointer}
+#chat .ch-in button:disabled{opacity:.35;cursor:default}
+#aimeter{position:fixed;right:13px;bottom:12px;display:none;font-family:var(--mono);
+  font-size:10px;color:var(--dim);background:rgba(4,10,22,.9);
+  border:1px solid var(--bd);border-radius:6px;padding:4px 9px;z-index:55;
+  pointer-events:none;letter-spacing:.02em}
+
+/* ── TOOLBAR ── */
+#toolbar{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);
+  display:flex;gap:5px;padding:5px;max-width:96vw;overflow-x:auto;
+  background:rgba(4,10,22,.95);border:1px solid var(--bd);border-radius:8px;
+  box-shadow:0 -4px 20px rgba(0,0,0,.5)}
+#submenu{position:fixed;bottom:54px;left:50%;transform:translateX(-50%);
+  display:none;gap:5px;padding:5px;max-width:96vw;overflow-x:auto;
+  background:rgba(4,10,22,.95);border:1px solid var(--bd);border-radius:8px}
 #submenu.open{display:flex}
 #submenu .cost{color:var(--or);font-size:10px;margin-left:4px}
-#banner{position:fixed;top:16%;left:50%;transform:translateX(-50%);font-size:21px;letter-spacing:.4em;
-  color:var(--cy);text-shadow:0 0 18px rgba(0,229,255,.8);opacity:0;transition:opacity .35s;
-  pointer-events:none;z-index:40;white-space:nowrap}
-#banner.bad{color:var(--rd);text-shadow:0 0 18px rgba(255,71,87,.8)}
-#banner.good{color:var(--gn);text-shadow:0 0 18px rgba(57,255,136,.8)}
-#banner.warn{color:var(--yl);text-shadow:0 0 18px rgba(255,216,74,.8)}
+#cancelTool{position:fixed;bottom:62px;left:50%;transform:translateX(-50%);
+  display:none;z-index:21;padding:9px 14px;font-size:12px}
+
+/* ── BANNER ── */
+#banner{position:fixed;top:15%;left:50%;transform:translateX(-50%);
+  font-family:var(--disp);font-size:18px;font-weight:600;letter-spacing:.45em;
+  color:var(--cy);text-shadow:0 0 22px rgba(0,212,255,.9);
+  opacity:0;transition:opacity .3s;pointer-events:none;z-index:40;white-space:nowrap}
+#banner.bad{color:var(--rd);text-shadow:0 0 22px rgba(255,61,90,.9)}
+#banner.good{color:var(--gn);text-shadow:0 0 22px rgba(57,255,136,.9)}
+#banner.warn{color:var(--yl);text-shadow:0 0 22px rgba(255,201,71,.9)}
 #banner.show{opacity:1}
-#requests{position:fixed;left:8px;top:calc(48px + 24vh + 10px);width:300px;max-height:30vh;
-  overflow-y:auto;padding:4px 6px;display:none;z-index:11}
-#requests .rq-hdr{color:var(--cy);font-size:10px;letter-spacing:.15em;margin-bottom:4px;
-  padding-bottom:3px;border-bottom:1px solid var(--bd)}
-.rq-card{background:#080d18;border:1px solid var(--bd);border-radius:3px;
-  padding:7px 9px;margin-bottom:5px;font-size:11px;line-height:1.45}
-.rq-card.rq-warn{border-color:var(--or)}
-.rq-card.rq-urgent{border-color:var(--rd)}
-.rq-name{font-size:10px;letter-spacing:.08em;margin-bottom:3px}
-.rq-text{color:#c8d8f0;margin-bottom:6px}
-.rq-opts{display:flex;gap:5px;flex-wrap:wrap}
-.rq-opts .tb{padding:4px 8px;font-size:10px}
-@keyframes rq-expire{0%{border-color:var(--or)}100%{border-color:var(--rd)}}
-#cancelTool{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);display:none;z-index:21;padding:9px 14px;font-size:12px}
-#modal{position:fixed;inset:0;background:rgba(2,4,9,.86);display:none;align-items:center;
-  justify-content:center;z-index:50}
+
+/* ── MODAL ── */
+#modal{position:fixed;inset:0;background:rgba(1,4,8,.88);display:none;
+  align-items:center;justify-content:center;z-index:50;
+  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
 #modal.open{display:flex}
-.mbox{width:min(580px,92vw);max-height:88vh;overflow-y:auto;padding:24px 28px;border:1px solid var(--bd);
-  background:#070b14;box-shadow:0 0 40px rgba(0,229,255,.12);border-radius:6px}
-.mbox h1{margin:0;font-size:30px;letter-spacing:.3em;color:var(--cy);text-shadow:0 0 22px rgba(0,229,255,.7)}
+.mbox{width:min(580px,92vw);max-height:88vh;overflow-y:auto;padding:26px 30px;
+  border:1px solid rgba(0,212,255,.25);background:rgba(4,10,22,.98);
+  box-shadow:0 0 60px rgba(0,212,255,.12);border-radius:10px}
+.mbox h1{margin:0;font-size:28px;letter-spacing:.3em;color:var(--cy);
+  text-shadow:0 0 24px rgba(0,212,255,.7)}
 .mbox .mh-sub{color:var(--mg);letter-spacing:.45em;font-size:11px;margin:4px 0 16px}
 .mbox p{font-size:12px;line-height:1.65;color:#9fb4d8}
 .mbox table{font-size:11px;border-collapse:collapse;width:100%;margin:8px 0}
-.mbox td{padding:3px 6px;border-bottom:1px solid #131c30}
+.mbox td{padding:3px 6px;border-bottom:1px solid #0d1a30}
 .mbox td:first-child{color:var(--cy);white-space:nowrap}
-.mbox .big{padding:12px 22px;font-size:13px;letter-spacing:.2em;border-color:var(--cy);color:var(--cy);margin-top:12px}
+.mbox .big{padding:12px 24px;font-size:13px;letter-spacing:.2em;
+  border-color:var(--cy);color:var(--cy);margin-top:12px}
 .mbox .stat{color:#e8f6ff}
+
+/* ── MISC ── */
+#checklist{display:none}
 @media (max-width:700px){
-  #hud{font-size:11px;gap:7px;padding:5px 7px}
-  #checklist{width:188px;font-size:10px}
-  #log{width:188px;font-size:10px;max-height:24vh}
-  #inspect{width:236px;bottom:96px}
+  #hud{font-size:10px}
+  #diary{width:220px;font-size:10px}
+  #inspect{width:240px;bottom:96px}
   #toolbar{bottom:6px}
-  #submenu{bottom:48px}
+  #submenu{bottom:50px}
   .mbox h1{font-size:22px}
 }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="hud" class="panel">
-  <b id="h-day">DAY 1 06:00</b>
-  <span class="res"><i class="sw" style="background:#00e5ff"></i>POP <b id="h-pop">7</b></span>
-  <span class="res"><i class="sw" style="background:#39ff88"></i>CR <b id="h-cred">0</b></span>
-  <span class="res"><i class="sw" style="background:#ff9f2d"></i>EVICTED <b id="h-home">0</b></span>
-  <span class="res"><i class="sw" style="background:#ff4757"></i>HEAT <b id="h-heat">0</b></span>
-  <span id="h-extract" style="display:none">EXTRACT <b id="h-exv">0%</b></span>
-  <span class="gap"></span>
-  <button class="tb spd" id="sp-p">II</button>
-  <button class="tb spd on" id="sp-1">1×</button>
-  <button class="tb spd" id="sp-2">2×</button>
-  <button class="tb spd" id="sp-3">3×</button>
-  <button class="tb" id="b-save">SAVE</button>
-  <button class="tb" id="b-load">LOAD</button>
-  <button class="tb" id="b-all">SQUAD</button>
-  <button class="tb" id="b-mute">SND</button>
-  <button class="tb" id="b-help">?</button>
+
+<!-- UNIFIED HUD -->
+<div id="hud">
+  <!-- Left: time + district vitals -->
+  <div class="hud-seg">
+    <span class="hud-day" id="h-day">DAY 1 · 06:00</span>
+  </div>
+  <div class="hud-seg">
+    <span class="hud-label">POP</span><span class="hud-val" id="h-pop">7</span>
+    <span class="hud-label" style="margin-left:8px">CR</span><span class="hud-val" id="h-cred">0</span>
+    <span class="hud-label" style="margin-left:8px">DIST</span><span class="hud-val" id="h-income">0</span>
+    <span class="hud-label" style="margin-left:8px">EVICT</span><span class="hud-val" id="h-home">0</span>
+    <span class="hud-label" style="margin-left:8px">HEAT</span><span class="hud-val" id="h-heat">0</span>
+  </div>
+  <!-- Center: goods inline -->
+  <div class="hud-goods">
+    <span class="hud-pip"><span class="dot" style="background:#47c8ff"></span><span id="g-data" style="color:var(--dim)">0</span></span>
+    <span class="hud-pip"><span class="dot" style="background:#39ff88"></span><span id="g-chem" style="color:var(--dim)">0</span></span>
+    <span class="hud-pip"><span class="dot" style="background:#ff8c42"></span><span id="g-parts" style="color:var(--dim)">0</span></span>
+    <span class="hud-pip"><span class="dot" style="background:#c98bff"></span><span id="g-stims" style="color:var(--dim)">0</span></span>
+    <span class="hud-pip"><span class="dot" style="background:#7aa2ff"></span><span id="g-gear" style="color:var(--dim)">0</span></span>
+  </div>
+  <div class="gap"></div>
+  <!-- Right: controls -->
+  <div class="hud-seg" style="border-right:none;gap:4px">
+    <button class="tb spd" id="sp-p">⏸</button>
+    <button class="tb spd on" id="sp-1">1×</button>
+    <button class="tb spd" id="sp-2">2×</button>
+    <button class="tb spd" id="sp-3">3×</button>
+    <span style="width:1px;background:var(--bd);height:20px;margin:0 4px"></span>
+    <button class="tb" id="b-save">SAVE</button>
+    <button class="tb" id="b-load">LOAD</button>
+    <button class="tb" id="b-all">SQUAD</button>
+    <button class="tb" id="b-stats">DISTRICT</button>
+    <button class="tb" id="b-mute">SND</button>
+    <button class="tb" id="b-help">?</button>
+  </div>
 </div>
-<div id="checklist" class="panel"><b>PRIORITY DIRECTIVES</b><ul id="ck"></ul></div>
-<div id="log" class="panel"></div>
+
+<!-- DIARY (replaces log) -->
+<div id="diary" class="panel">
+  <div class="diary-tabs">
+    <span class="dtab on" data-cat="all">ALL</span>
+    <span class="dtab" data-cat="crime">CRIME</span>
+    <span class="dtab" data-cat="eco">ECO</span>
+    <span class="dtab" data-cat="social">SOCIAL</span>
+    <span class="dtab" data-cat="health">HEALTH</span>
+    <span class="dtab" data-cat="district">DISTRICT</span>
+  </div>
+  <div class="diary-body" id="diary-body"></div>
+</div>
+
+<div id="checklist" class="panel"><ul id="ck"></ul></div>
+<div id="stats-panel" class="panel"></div>
+<!-- keep #log hidden for compatibility — diary is the visible log now -->
+<div id="log" style="display:none"></div>
 <div id="roster" class="panel"></div>
 <div id="inspect" class="panel"></div>
 <div id="chat">
@@ -173,12 +320,12 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 <div id="aimeter"></div>
 <div id="requests" class="panel"></div>
 <div id="submenu" class="panel"></div>
-<div id="toolbar" class="panel">
+<div id="toolbar">
   <button class="tb" id="t-build">BUILD</button>
   <button class="tb" id="t-orders">ORDERS</button>
   <button class="tb" id="t-draft" style="display:none">DRAFT [R]</button>
 </div>
-<button id="cancelTool" class="tb warnb">✕ CANCEL TOOL</button>
+<button id="cancelTool" class="tb warnb">✕ CANCEL</button>
 <div id="banner"></div>
 <div id="modal"></div>
 <script>
@@ -205,22 +352,38 @@ function $(id){return document.getElementById(id)}
 /* ---------- audio ---------- */
 const SFX=(()=>{let ac=null,mut=false;
   function ctx(){if(!ac){try{ac=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}
-    if(ac&&ac.state==="suspended")ac.resume(); return ac}
-  function tone(f,d,type,v,slide){const a=ctx();if(!a||mut)return;
-    const o=a.createOscillator(),g=a.createGain();o.type=type||"square";o.frequency.value=f;
-    if(slide)o.frequency.exponentialRampToValueAtTime(slide,a.currentTime+d);
-    g.gain.value=v||.04;g.gain.exponentialRampToValueAtTime(.0001,a.currentTime+d);
-    o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+d)}
+    if(ac&&ac.state==="suspended")ac.resume();return ac}
+  function tone(freq,dur,type,vol,slide,vibHz,vibAmt){
+    const a=ctx();if(!a||mut)return;
+    const o=a.createOscillator(),g=a.createGain();
+    o.type=type||"square";o.frequency.value=freq;
+    if(slide)o.frequency.exponentialRampToValueAtTime(slide,a.currentTime+dur);
+    if(vibHz){const lfo=a.createOscillator(),lfoG=a.createGain();
+      lfo.frequency.value=vibHz;lfoG.gain.value=vibAmt||20;
+      lfo.connect(lfoG);lfoG.connect(o.frequency);lfo.start();lfo.stop(a.currentTime+dur)}
+    g.gain.setValueAtTime(vol||.04,a.currentTime);
+    g.gain.exponentialRampToValueAtTime(.0001,a.currentTime+dur);
+    o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+dur)}
+  function noise(dur,vol,hi){
+    const a=ctx();if(!a||mut)return;
+    const buf=a.createBuffer(1,Math.floor(a.sampleRate*dur),a.sampleRate);
+    const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1);
+    const src=a.createBufferSource(),filt=a.createBiquadFilter(),g=a.createGain();
+    filt.type=hi?"highpass":"lowpass";filt.frequency.value=hi?2000:400;
+    src.buffer=buf;src.connect(filt);filt.connect(g);g.connect(a.destination);
+    g.gain.setValueAtTime(vol||.06,a.currentTime);
+    g.gain.exponentialRampToValueAtTime(.0001,a.currentTime+dur);
+    src.start();src.stop(a.currentTime+dur)}
   return{
     wake(){ctx()},
-    shoot(){tone(880,.07,"square",.025,220)},
-    foeshoot(){tone(300,.09,"sawtooth",.03,90)},
-    hit(){tone(160,.06,"triangle",.045)},
-    build(){tone(520,.09,"square",.03,820)},
-    ui(){tone(660,.04,"square",.018)},
-    alert(){tone(220,.28,"sawtooth",.05,110)},
-    good(){tone(540,.14,"sine",.05,1080)},
-    die(){tone(140,.4,"sawtooth",.055,40)},
+    shoot(){noise(.04,.08,true);tone(1200,.06,"square",.02,400)},
+    foeshoot(){noise(.05,.06,false);tone(180,.09,"sawtooth",.025,80)},
+    hit(){noise(.08,.055,false);tone(120,.07,"triangle",.04)},
+    build(){[440,554,659,880].forEach((f,i)=>setTimeout(()=>tone(f,.12,"square",.022,f*1.5),i*55))},
+    ui(){tone(1100,.03,"square",.012,800)},
+    alert(){[0,1,2].forEach(i=>setTimeout(()=>tone(220,.14,"sawtooth",.04,180),i*160))},
+    good(){[523,659,784].forEach((f,i)=>setTimeout(()=>tone(f,.18,"sine",.028),i*18))},
+    die(){tone(320,.5,"sawtooth",.05,55,4,30)},
     toggleMute(){mut=!mut;return mut}
   }})();
 
@@ -232,26 +395,25 @@ const DEF={
   wall:  {name:"Plasteel Wall", cost:{},          hp:220, blocks:1, work:60,  cat:"b", desc:"Cheap, sturdy barrier."},
   door:  {name:"Blast Door",    cost:{},          hp:170, blocks:2, work:90,  cat:"b", desc:"Citizens pass; controls flow."},
   pod:   {name:"Sleep Pod",     cost:{},          hp:80,  blocks:0, work:120, cat:"b", desc:"A bed — assign a resident."},
-  synth: {name:"Synth Station", cost:{scrap:20,comp:2},  hp:100, blocks:1, work:160, pw:2, cat:"b", desc:"Cooks meals from synth-protein."},
-  vat:   {name:"Algae Vat",     cost:{scrap:25,comp:2},  hp:100, blocks:1, work:180, pw:3, cat:"b", desc:"Grows synth-protein over time."},
-  gen:   {name:"Fusion Cell",   cost:{scrap:30,comp:3},  hp:120, blocks:1, work:200, pwGen:12, cat:"b", desc:"Generates 12 power."},
-  lamp:  {name:"Neon Lamp",     cost:{},   hp:40,  blocks:0, work:30,  pw:1, cat:"b", desc:"Light + small mood aura at night."},
-  turret:{name:"Auto-Turret",   cost:{scrap:30,comp:4},  hp:180, blocks:1, work:220, pw:4, cat:"b", desc:"Fires on hostiles in range."},
-  beacon:{name:"Extraction Beacon", cost:{scrap:80,comp:12}, hp:240, blocks:1, work:420, pw:8, cat:"b", desc:"Keep powered one full day to escape the sprawl."},
+  lamp:  {name:"Neon Lamp",     cost:{},   hp:40,  blocks:0, work:30,  cat:"b", desc:"Light + small mood aura at night."},
   fridge:     {name:"Cooler Unit",  cost:{}, hp:60, blocks:1, work:90,  cat:"b", desc:"Home/vendor food source."},
   toilet:     {name:"San Unit",     cost:{}, hp:40, blocks:1, work:80,  cat:"b", desc:"Hygiene fixture."},
   shower:     {name:"Mist Shower",  cost:{}, hp:40, blocks:1, work:80,  cat:"b", desc:"Hygiene fixture."},
   tv:         {name:"Holoscreen",   cost:{}, hp:30, blocks:0, work:80,  cat:"b", desc:"Entertainment, leisure."},
   gym:        {name:"Flex Rig",     cost:{}, hp:60, blocks:1, work:120, cat:"b", desc:"Exercise, stress relief."},
-  workstation:{name:"Workstation",  cost:{}, hp:60, blocks:1, work:140, cat:"b", desc:"Corp terminal — paid work."},
-  counter:    {name:"Shop Counter", cost:{}, hp:80, blocks:1, work:120, cat:"b", desc:"Vendor — food/goods + clerk job."},
-  bar:        {name:"Bar Counter",  cost:{}, hp:80, blocks:1, work:120, cat:"b", desc:"Drinks, food, socializing, deals."},
+  workstation:{name:"Workstation",  cost:{}, hp:60, blocks:1, work:140, cat:"b", desc:"Corp terminal — produces Data.", prod:"data", prodRate:180, wage:9},
+  counter:    {name:"Shop Counter", cost:{}, hp:80, blocks:1, work:120, cat:"b", desc:"Vendor — sells goods, earns district income.", vendor:true},
+  bar:        {name:"Bar Counter",  cost:{}, hp:80, blocks:1, work:120, cat:"b", desc:"Drinks, food, socializing, sells Stims.", vendor:true, sells:"stims"},
   medbed:     {name:"Med Bay",      cost:{}, hp:80, blocks:0, work:160, cat:"b", desc:"Treat injury and disease."},
-  dealer:     {name:"Dealer Spot",  cost:{}, hp:40, blocks:0, work:100, cat:"b", desc:"Substances, off the books."}
+  dealer:     {name:"Dealer Spot",  cost:{}, hp:40, blocks:0, work:100, cat:"b", desc:"Sells Stims off the books, earns district income.", vendor:true, sells:"stims", illegal:true},
+  chemlab:    {name:"Chem Lab",     cost:{income:80}, hp:70, blocks:1, work:150, cat:"b", desc:"Produces Chem raw material.", prod:"chem", prodRate:220, wage:9},
+  workshop:   {name:"Workshop",     cost:{income:80}, hp:80, blocks:1, work:150, cat:"b", desc:"Produces Parts raw material.", prod:"parts", prodRate:200, wage:9},
+  stimlab:    {name:"Stim Lab",     cost:{income:120},hp:70, blocks:1, work:160, cat:"b", desc:"Refines Chem + Data → Stims. High margin, raises heat.", refine:{in:["chem","data"],out:"stims"}, wage:11},
+  gearshop:   {name:"Gear Shop",    cost:{income:100},hp:80, blocks:1, work:160, cat:"b", desc:"Refines Parts + Data → Gear. Steady, clean income.", refine:{in:["parts","data"],out:"gear"}, vendor:true, wage:10},
+  housing:    {name:"Housing Unit", cost:{income:150},hp:60, blocks:0, work:180, cat:"b", desc:"Adds one home slot — allows the district to support one more citizen."}
 };
-const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","workstation","counter","bar","medbed","dealer"];
-const RESCOL={scrap:"#ff9f2d",comp:"#39ff88",raw:"#b8ff5e",meal:"#00e5ff"};
-const RESNAME={scrap:"scrap",comp:"components",raw:"protein",meal:"meals"};
+const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","workstation","chemlab","workshop","stimlab","gearshop","counter","bar","medbed","dealer","housing"];
+
 
 const WEAP={
   pistol:{name:"Slug Pistol", dmg:[8,13], rng:8.5, cd:9, acc:0},
@@ -280,16 +442,18 @@ const ACC=["#00e5ff","#39ff88","#ffd84a","#ff9ff3","#7aa2ff","#ff9f2d"];
 /* ---------- game state ---------- */
 const ST={
   phase:"menu", tick:0, speed:1, paused:false,
-  res:{scrap:0,comp:0,raw:0,meal:0},
   ter:new Uint8Array(MW*MH),
   structs:new Map(),
-  items:[], pawns:[], foes:[], beams:[], floats:[],
-  zone:new Set(),
-  grp:{}, rel:{}, lastRaid:0, nextEv:1e9, storm:0, black:0,
-  pwG:0, pwU:0, pwOk:true,
+  pawns:[], foes:[], beams:[], floats:[],
+  grp:{}, rel:{}, nextEv:1e9, lastCrackdown:0,
   sel:[],
-  stats:{kills:0,built:0,deaths:0,salv:0,hauled:0,raids:0},
-  flags:{}
+  stats:{kills:0,built:0,deaths:0,raids:0},
+  flags:{},
+  goods:{data:0,chem:0,parts:0,stims:0,gear:0},
+  income:0,
+  debtDays:0,
+  crisis:false,
+  gangs:[]
 };
 function dayN(){return Math.floor(ST.tick/TPD)+1}
 function hourN(){return ((ST.tick%TPD)/100+6)%24}   // day starts 06:00
@@ -380,33 +544,10 @@ function los(x0,y0,x1,y1){const dx=x1-x0,dy=y1-y0;
     if(s&&!s.bp){const b=DEF[s.type].blocks;if(b===1||b===2)return false}}
   return true}
 
-/* ---------- items ---------- */
-function dropItem(x,y,res,qty){if(qty<=0)return;
-  let cx=x,cy=y;
-  if(colCost(cx,cy)<0){let best=null,bd=99;             // spiral to nearest open cell
-    for(let r=1;r<5&&!best;r++)for(let oy=-r;oy<=r;oy++)for(let ox=-r;ox<=r;ox++){
-      const X=x+ox,Y=y+oy;if(!INB(X,Y)||colCost(X,Y)<0)continue;
-      const d=Math.abs(ox)+Math.abs(oy);if(d<bd){bd=d;best={x:X,y:Y}}}
-    if(best){cx=best.x;cy=best.y}}
-  for(const it of ST.items)if(it.x===cx&&it.y===cy&&it.res===res){it.qty+=qty;return}
-  ST.items.push({id:uid(),x:cx,y:cy,res,qty,resv:0})}
-function removeItem(it){const i=ST.items.indexOf(it);if(i>=0)ST.items.splice(i,1);it.gone=true}
-
-/* ---------- zones ---------- */
-function nearestZoneCell(px,py){let best=null,bd=1e9;
-  for(const k of ST.zone){const c=k.split(",");const x=+c[0],y=+c[1];
-    if(colCost(x,y)<0)continue;
-    const d=DIST(px,py,x+.5,y+.5);if(d<bd){bd=d;best={x,y}}}
-  return best}
-
 /* ---------- economy ---------- */
-function afford(cost){for(const k in cost)if(ST.res[k]<cost[k])return false;return true}
-function pay(cost){for(const k in cost)ST.res[k]-=cost[k]}
-function refund(cost,frac){for(const k in cost){const v=Math.floor(cost[k]*frac);if(v>0)ST.res[k]+=v}}
-function wealth(){let w=ST.res.scrap+ST.res.comp*6+ST.res.raw+ST.res.meal*2;
-  for(const s of ST.structs.values()){if(s.bp||DEF[s.type].nat)continue;
-    const c=DEF[s.type].cost||{};w+=(c.scrap||0)+(c.comp||0)*6}
-  return w}
+function afford(cost){if(cost.income&&ST.income<cost.income){flashMsg("Need "+cost.income+"c district income");return false}return true}
+function pay(cost){if(cost.income)ST.income-=cost.income}
+function refund(cost,frac){if(cost.income){const v=Math.floor((cost.income||0)*frac);if(v>0)ST.income+=v}}
 
 /* ---------- placement / construction ---------- */
 function entityOn(x,y){for(const p of ST.pawns)if((p.px|0)===x&&(p.py|0)===y)return true;
@@ -415,54 +556,47 @@ function canPlace(type,x,y){if(!INB(x,y))return false;if(structAt(x,y))return fa
   if(DEF[type].blocks!==0&&entityOn(x,y))return false;return true}
 function placeBp(type,x,y){const d=DEF[type];
   if(!canPlace(type,x,y))return false;
-  if(!afford(d.cost)){flashMsg("Insufficient resources for "+d.name);return false}
-  pay(d.cost);
   addStruct({id:uid(),kind:"s",type,x,y,hp:1,maxHp:d.hp,bp:true,prog:0,need:d.work,
-    res:0,desig:false,decon:false,owner:0,cd:0,charge:0,vt:0,aim:0,powered:false});
+    res:0,desig:false,decon:false,owner:0});
   syncHUD();return true}
-function cancelBp(s){refund(DEF[s.type].cost||{},1);removeStruct(s);syncHUD()}
+function cancelBp(s){removeStruct(s);syncHUD()}
 function finishBuild(s){s.bp=false;s.hp=s.maxHp;s.prog=0;ST.stats.built++;
   SFX.build();powerRecalc();
-  if(DEF[s.type].blocks!==0)nudgeOff(s.x,s.y);
-  if(s.type==="beacon"){log("Extraction Beacon online. Keep it powered for one full day.","good");banner("BEACON CONSTRUCTED","good")}}
+  if(s.type==="housing"){
+    // register a new home slot near the housing unit — uses struct location as virtual bed
+    ST.cityHomes.push({x0:s.x-1,y0:s.y-1,w:3,h:3,bed:{x:s.x,y:s.y},door:{x:s.x,y:s.y+1},virtual:true});
+    log("New home registered — district can now support one more citizen.","good");
+    float(s.x+.5,s.y+.5,"HOME +1","#39ff88")}
+  if(DEF[s.type].blocks!==0)nudgeOff(s.x,s.y)}
 function nudgeOff(x,y){const all=ST.pawns.concat(ST.foes);
   for(const e of all){if((e.px|0)!==x||(e.py|0)!==y)continue;
-    for(let k=0;k<8;k++){const X=x+DIRS[k][0],Y=y+DIRS[k][1];
-      if(INB(X,Y)&&colCost(X,Y)>=0){e.px=X+.5;e.py=Y+.5;e.path=null;break}}}}
-function deconFinish(s){
-  if(DEF[s.type].nat){dropItem(s.x,s.y,"scrap",RI(2,5))}
-  else{refund(DEF[s.type].cost||{},.5)}
-  removeStruct(s);powerRecalc();syncHUD()}
-function salvageFinish(s){ST.stats.salv++;
-  if(s.type==="scrap"){dropItem(s.x,s.y,"scrap",RI(8,13));
-    if(Math.random()<.32)dropItem(s.x,s.y,"comp",RI(1,2))}
-  else{const r=Math.random();
-    if(r<.4)dropItem(s.x,s.y,"raw",RI(6,10));
-    else if(r<.7)dropItem(s.x,s.y,"comp",RI(2,4));
-    else dropItem(s.x,s.y,"scrap",RI(6,10))}
-  removeStruct(s)}
+    let placed=false;
+    for(let r=1;r<=5&&!placed;r++)
+      for(let dy=-r;dy<=r&&!placed;dy++)for(let dx=-r;dx<=r&&!placed;dx++){
+        if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;
+        const X=x+dx,Y=y+dy;
+        if(INB(X,Y)&&colCost(X,Y)>=0){e.px=X+.5;e.py=Y+.5;e.path=null;e.job=null;placed=true}}}}
+function deconFinish(s){removeStruct(s);powerRecalc();syncHUD();if(typeof drawTerrain==="function")drawTerrain()}
 function damageStruct(s,d){if(s.bp){cancelBp(s);return}
   s.hp-=d;
   if(s.hp<=0){removeStruct(s);powerRecalc();
-    if(!DEF[s.type].nat){log(DEF[s.type].name+" destroyed.","bad");
-      if(s.type==="beacon")banner("BEACON DESTROYED","bad")}}}
+    if(!DEF[s.type].nat)log(DEF[s.type].name+" destroyed.","bad")}}
 
 /* ---------- power ---------- */
-function powerRecalc(){let g=0,u=0;const blackout=ST.black>ST.tick;
-  for(const s of ST.structs.values()){if(s.bp)continue;const d=DEF[s.type];
-    if(d.pwGen)g+=blackout?0:d.pwGen;if(d.pw)u+=d.pw}
-  ST.pwG=g;ST.pwU=u;ST.pwOk=g>=u;
-  for(const s of ST.structs.values()){const d=DEF[s.type];
-    s.powered=!s.bp&&(!d.pw||ST.pwOk)&&!(d.pwGen&&blackout)}}
+function powerRecalc(){}  // city is always powered — no generator system
 
 /* ---------- map generation ---------- */
 function addBuilt(type,x,y,owner){if(!INB(x,y))return;
   addStruct({id:uid(),kind:"s",type,x,y,hp:DEF[type].hp,maxHp:DEF[type].hp,bp:false,prog:0,need:0,
-    res:0,desig:false,decon:false,owner:owner||0,cd:0,charge:0,vt:0,aim:0,powered:false})}
+    res:0,desig:false,decon:false,owner:owner||0})}
 function roomTheme(furn){if(!furn)return"den";
   const t=furn.map(f=>f.t);
+  if(t.includes("stimlab"))return"toxic";
+  if(t.includes("chemlab"))return"toxic";
   if(t.includes("dealer"))return"toxic";
   if(t.includes("medbed"))return"med";
+  if(t.includes("workshop"))return"work";
+  if(t.includes("gearshop"))return"work";
   if(t.includes("workstation"))return"work";
   if(t.includes("counter")||t.includes("bar"))return"exchange";
   return"den";}
@@ -474,33 +608,9 @@ function placeRoom(x0,y0,w,h,door,furn){
   if(furn)for(const f of furn)addBuilt(f.t,x0+f.x,y0+f.y,f.o)
   const theme=roomTheme(furn);
   (ST.rooms||(ST.rooms=[])).push({x0,y0,w,h,theme});
-  for(let x=x0;x<x0+w;x++)for(let y=y0;y<y0+h;y++){const st=structAt(x,y);if(st){st.inRoom=true;st.rth=theme}}}
-function buildCity(){
-  placeRoom(19,12,6,5,{x:21,y:16},[{t:"pod",x:1,y:1},{t:"synth",x:2,y:1},{t:"fridge",x:3,y:1},{t:"shower",x:4,y:1},{t:"toilet",x:4,y:2},{t:"tv",x:1,y:2}]);
-  placeRoom(33,12,6,5,{x:35,y:16},[{t:"pod",x:1,y:1},{t:"synth",x:2,y:1},{t:"fridge",x:3,y:1},{t:"shower",x:4,y:1},{t:"toilet",x:4,y:2},{t:"tv",x:1,y:2}]);
-  placeRoom(19,22,6,5,{x:21,y:22},[{t:"workstation",x:1,y:1},{t:"workstation",x:3,y:1},{t:"gym",x:4,y:3}]);
-  placeRoom(33,22,6,5,{x:35,y:22},[{t:"counter",x:2,y:1},{t:"counter",x:3,y:1}]);
-  placeRoom(26,17,5,5,{x:28,y:21},[{t:"medbed",x:1,y:1},{t:"medbed",x:3,y:1}])}
-const DTPL=[
-  {w:6,h:5,furn:[{t:"pod",x:1,y:1},{t:"synth",x:2,y:1},{t:"fridge",x:3,y:1},{t:"shower",x:4,y:1},{t:"toilet",x:4,y:2},{t:"tv",x:1,y:2}]},
-  {w:6,h:5,furn:[{t:"pod",x:1,y:1},{t:"synth",x:2,y:1},{t:"fridge",x:3,y:1},{t:"shower",x:4,y:1},{t:"toilet",x:4,y:2},{t:"tv",x:1,y:2}]},
-  {w:7,h:5,furn:[{t:"bar",x:1,y:1},{t:"bar",x:2,y:1},{t:"bar",x:3,y:1},{t:"tv",x:5,y:1}]},
-  {w:6,h:5,furn:[{t:"dealer",x:1,y:1},{t:"dealer",x:4,y:1},{t:"pod",x:1,y:3}]},
-  {w:6,h:5,furn:[{t:"workstation",x:1,y:1},{t:"workstation",x:3,y:1},{t:"gym",x:4,y:3}]}];
-function overlapsCore(x0,y0,w,h){return !(x0+w<17||x0>40||y0+h<11||y0>27)}
-function footprintClear(x0,y0,w,h){
-  for(let x=x0-1;x<=x0+w;x++)for(let y=y0-1;y<=y0+h;y++){
-    if(!INB(x,y))return false;if(structAt(x,y))return false}
-  return true}
-function placeDistrict(){
-  let placed=0,guard=0,target=RI(4,7);
-  while(placed<target&&guard++<500){
-    const tpl=placed===0?DTPL[3]:CH(DTPL);
-    const x0=RI(2,MW-tpl.w-3),y0=RI(2,MH-tpl.h-3);
-    if(overlapsCore(x0,y0,tpl.w,tpl.h))continue;
-    if(!footprintClear(x0,y0,tpl.w,tpl.h))continue;
-    placeRoom(x0,y0,tpl.w,tpl.h,{x:x0+(tpl.w>>1),y:y0+tpl.h-1},tpl.furn);
-    placed++}}
+  for(let x=x0;x<x0+w;x++)for(let y=y0;y<y0+h;y++){const st=structAt(x,y);if(st){st.inRoom=true;st.rth=theme}}
+  if(typeof drawTerrain==="function")drawTerrain();  // keep static canvas in sync
+}
 function genCity(){
   ST.cityHomes=[];
   // residential row — one home per citizen (bed + hygiene + screen)
@@ -517,23 +627,10 @@ function genCity(){
   placeRoom(20,25,7,5,{x:23,y:29},[{t:"dealer",x:1,y:1},{t:"dealer",x:5,y:1},{t:"counter",x:3,y:1},{t:"pod",x:1,y:3},{t:"pod",x:5,y:3}]);
 }
 function genMap(){
-  ST.ter=new Uint8Array(MW*MH);ST.structs.clear();ST.items.length=0;ST.zone.clear();ST.rooms=[];
-  const cx=MW/2,cy=MH/2;
+  ST.ter=new Uint8Array(MW*MH);ST.structs.clear();ST.rooms=[];
   for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){
     const h=hash2(x,y);ST.ter[x+y*MW]=h<.62?0:(h<.88?1:2)}
-  genCity();                                          // planned city block
-  const inBldg=(X,Y)=>ST.rooms.some(rm=>X>=rm.x0&&X<rm.x0+rm.w&&Y>=rm.y0&&Y<rm.y0+rm.h);
-  let placed=0,guard=0;                               // scavengeable scrap in the streets
-  while(placed<12&&guard++<800){const X=RI(2,MW-3),Y=RI(2,MH-3);
-    if(structAt(X,Y)||inBldg(X,Y))continue;
-    addStruct({id:uid(),kind:"s",type:"scrap",x:X,y:Y,hp:1,maxHp:1,bp:false,prog:0,need:0,
-      res:0,desig:false,decon:false,owner:0,cd:0,charge:0,vt:0,aim:0,powered:false});placed++}
-  placed=0;guard=0;                                   // a few supply caches
-  while(placed<4&&guard++<400){const X=RI(2,MW-3),Y=RI(2,MH-3);
-    if(structAt(X,Y)||inBldg(X,Y))continue;
-    addStruct({id:uid(),kind:"s",type:"cache",x:X,y:Y,hp:1,maxHp:1,bp:false,prog:0,need:0,
-      res:0,desig:false,decon:false,owner:0,cd:0,charge:0,vt:0,aim:0,powered:false});placed++}
-  dropItem(cx|0,cy|0,"raw",8);dropItem((cx+1)|0,cy|0,"meal",4);dropItem((cx-1)|0,cy|0,"scrap",12)}
+  genCity()}
 
 /* ---------- pawns ---------- */
 function mkPawn(x,y,spec){const t1=CH(TRAITS);let t2=CH(TRAITS);while(t2===t1)t2=CH(TRAITS);
@@ -551,10 +648,10 @@ function mkPawn(x,y,spec){const t1=CH(TRAITS);let t2=CH(TRAITS);while(t2===t1)t2
     px:x+.5,py:y+.5,hp:100,drafted:false,needs:{food:R(80,95),rest:R(70,90),hyg:R(70,90),fun:R(60,85),socN:R(60,85)},
     mood:60,mods:[],weapon:WEAP[CH(["pistol","pistol","smg"])],cd:0,
     job:null,path:null,pi:0,pTx:-1,pTy:-1,claim:0,dazed:0,dz:null,sleeping:false,
-    carry:null,forced:0,order:null,unre:new Map(),flee:0,hurtT:-999,
+    carry:null,forced:0,order:null,unre:new Map(),flee:0,hurtT:-999,assigned:null,
     pers,sched:mkSched(pers,[t1,t2]),stress:0,addiction:0,rep:{corp:0,gang:0,neighbors:0,city:0},
     bias:{eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1},
-    drift:{day:0,used:0},credits:R(18,38),
+    drift:{day:0,used:0},credits:R(28,50),
     mem:[{d:0,h:6,t:"ended up on this dead block after the last squat got torched"}],
     homeless:false}}
 function trMul(p,k){let m=1;for(const t of p.tr)if(t[k]!==undefined)m*=t[k];return m}
@@ -588,10 +685,9 @@ function moodCalc(p){
   for(const md of p.mods)m+=md.v;
   if(p.needs.food<25)m-=8;
   if(p.needs.rest<25)m-=8;
-  if(ST.storm>ST.tick)m-=15;
   if(lightLevel(hourN())>.3){                       // neon lamp aura at night
     for(const s of ST.structs.values())
-      if(s.type==="lamp"&&s.powered&&DIST(p.px,p.py,s.x+.5,s.y+.5)<4.5){m+=3;break}}
+      if(s.type==="lamp"&&DIST(p.px,p.py,s.x+.5,s.y+.5)<4.5){m+=3;break}}
   {let aff=0,nn=0;for(const o of ST.pawns){if(o===p)continue;
       if(DIST(p.px,p.py,o.px,o.py)<6){aff+=relGet(p.id,o.id);nn++}}
     if(nn){aff/=nn;if(aff>20)m+=5;else if(aff<-20)m-=5}}
@@ -637,11 +733,6 @@ function nearestStruct(p,fn){let best=null,bd=1e9;
     if(unre(p,s.x,s.y))continue;
     const d=DIST(p.px,p.py,s.x+.5,s.y+.5);if(d<bd){bd=d;best=s}}
   return best}
-function nearestItem(p){let best=null,bd=1e9;
-  for(const it of ST.items){if(it.resv)continue;if(unre(p,it.x,it.y))continue;
-    if(ST.zone.has(K(it.x,it.y)))continue;                 // already in stockpile
-    const d=DIST(p.px,p.py,it.x+.5,it.y+.5);if(d<bd){bd=d;best=it}}
-  return best}
 function mkEat(p){
   const home=(!p.homeless)&&homeFixture(p,"fridge");
   const src=home||nearestStruct(p,s=>(s.type==="fridge"||s.type==="counter"||s.type==="bar")&&!s.bp);
@@ -658,33 +749,48 @@ function scoreJobs(p){
   const food=p.needs.food,rest=p.needs.rest,hp=p.hp;
   const ind=p.pers.ind,cau=p.pers.cau,cur=p.pers.cur;
   const foe=foeNear(p,10),night=lightLevel(hourN())>0.3,inj=hp<40;
-  const stn=nearestStruct(p,s=>s.type==="synth"&&!s.bp&&s.powered&&!s.res);
   const bpStr=nearestStruct(p,s=>(s.bp||s.decon)&&!s.res);
-  const salvStr=nearestStruct(p,s=>s.desig&&!s.res&&(s.type==="scrap"||s.type==="cache"));
-  const haulItem=ST.zone.size>0?nearestItem(p):null;
   const hyg=p.needs.hyg??80,fun=p.needs.fun??70,socN=p.needs.socN??70,soc=p.pers.soc;
   const showStr=(!p.homeless&&(homeFixture(p,"shower")||homeFixture(p,"toilet")))||nearestStruct(p,s=>(s.type==="shower"||s.type==="toilet")&&!s.bp);
   const funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar")&&!s.bp);
-  let mate=null,_md=1e9;for(const q of ST.pawns){if(q.id===p.id)continue;const dd=DIST(p.px,p.py,q.px,q.py);if(dd<_md){_md=dd;mate=q}}
+  let mate=null,_md=1e9;for(const q of ST.pawns){if(q.id===p.id)continue;
+    if(relGet(p.id,q.id)<-40)continue;  // don't socialize toward rivals/enemies
+    const dd=DIST(p.px,p.py,q.px,q.py);if(dd<_md){_md=dd;mate=q}}
   const cred=p.credits??40;
-  const workStr=nearestStruct(p,s=>s.type==="workstation"&&!s.bp);
+  const isWorkable=s=>!s.bp&&(DEF[s.type].prod||DEF[s.type].refine||DEF[s.type].vendor);
+  const assignedStr=p.assigned?ST.structs.get(p.assigned):null;
+  const workStr=ST.tick>(p.workCd||0)?((assignedStr&&!assignedStr.bp)?assignedStr:nearestStruct(p,isWorkable)):null;
   const medStr=nearestStruct(p,s=>s.type==="medbed"&&!s.bp);
   const dlrStr=nearestStruct(p,s=>s.type==="dealer"&&!s.bp);
   const robTgt=nearestStruct(p,s=>s.type==="counter"&&!s.bp);
+  const gearStr=!p.hasGear&&(p.credits||0)>=15&&(ST.goods.gear||0)>0?
+    nearestStruct(p,s=>s.type==="gearshop"&&!s.bp):null;
+  const stealTgt=p.pers.intg<35&&(p.credits||0)<15&&(p.addiction||0)>20?
+    ST.pawns.find(q=>q.id!==p.id&&(q.credits||0)>20&&DIST(p.px,p.py,q.px,q.py)<10&&relGet(p.id,q.id)>-60):null;
+  const gang=pawnGang(p);
+  const onTurf=gang&&gang.turf.has(K(p.px|0,p.py|0));
+  const turfBonus=onTurf?20:0;
+  const isContracted=p.contract&&workStr&&p.contract.fixtureKey===K(workStr.x,workStr.y);
   const base={
     eat:clamp(80-food,0,100),sleep:clamp(70-rest,0,100),
-    cook:ST.res.raw>=2&&ST.res.meal<10&&stn?45:0,
-    build:bpStr?50:0,salvage:salvStr?40:0,haul:haulItem?30:0,
+    build:bpStr?50:0,
     idle:10,
     hygiene:showStr?clamp(70-hyg,0,100):0,recreate:funStr?clamp(60-fun,0,100):0,socialize:mate?clamp(60-socN,0,100):0,
-    work:(workStr&&ST.tick>(p.workCd||0))?clamp(60-cred*0.6,0,100):0,treat:p.sick&&medStr?80:0,substance:dlrStr?clamp((p.addiction||0)*0.6+((p.stress||0)>40?((p.stress||0)-40)*0.4:0),0,100):0,crime:(robTgt&&cred<20)?clamp(30-cred*1.1,0,100):0};
+    work:(workStr&&ST.tick>(p.workCd||0))?clamp((isContracted?95:p.assigned?80:60)-cred*0.6,0,100):0,treat:p.sick&&medStr?80:0,
+    substance:dlrStr?clamp((p.addiction||0)*0.6+((p.stress||0)>40?((p.stress||0)-40)*0.4:0),0,100):0,
+    crime:(robTgt&&cred<20)?clamp(30-cred*1.1+turfBonus,0,100):0,
+    steal:stealTgt?clamp(35-(cred*1.2)+turfBonus,0,100):0,
+    buygear:gearStr?clamp(40-(cred*0.5),0,70):0};
   const pw={
-    eat:0.5+cau/100,sleep:0.5+cau/100,cook:0.5+ind/100,build:0.5+ind/100,
-    salvage:0.5+ind/100+0.1*(cur/100),haul:0.5+ind/100,
+    eat:0.5+cau/100,sleep:0.5+cau/100,build:0.5+ind/100,
     idle:0.5+(100-ind)/100,
-    hygiene:1,recreate:0.5+cur/100,socialize:0.5+soc/100,work:0.5+ind/100,treat:0.5+cau/100,substance:0.3+p.pers.imp/150+(100-p.pers.intg)/200,crime:(100-p.pers.intg)/100*(0.4+p.pers.imp/150)};
-  const sm={eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1,treat:1,substance:1,crime:1};
-  if(foe){sm.build*=0.6;sm.salvage*=0.6;sm.haul*=0.6;sm.sleep*=0.3;sm.eat*=0.8;sm.work*=0.4}
+    hygiene:1,recreate:0.5+cur/100,socialize:0.5+soc/100,work:0.5+ind/100,treat:0.5+cau/100,
+    substance:0.3+p.pers.imp/150+(100-p.pers.intg)/200,
+    crime:(100-p.pers.intg)/100*(0.4+p.pers.imp/150),
+    steal:(100-p.pers.intg)/100*(0.3+p.pers.imp/120),
+    buygear:0.5+p.pers.ind/150};
+  const sm={eat:1,sleep:1,build:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1,treat:1,substance:1,crime:1,steal:1,buygear:1};
+  if(foe){sm.build*=0.6;sm.sleep*=0.3;sm.eat*=0.8;sm.work*=0.4}
   if(p.sched){const S=p.sched,hr=hourN();
     sm.sleep*=inWin(hr,S.sleepAt,S.wake)?1.9:(rest<18?0.7:0.12);
     sm.work*=inWin(hr,S.workStart,S.workEnd)?1.6:0.6;
@@ -696,10 +802,7 @@ function scoreJobs(p){
   const acts=[
     {k:"eat",    mk:()=>mkEat(p)},
     {k:"sleep",  mk:()=>mkSleep(p)},
-    {k:"cook",   mk:()=>stn?{t:"cook",s:stn,prog:0}:null},
     {k:"build",  mk:()=>bpStr?{t:"build",s:bpStr,prog:0}:null},
-    {k:"salvage",mk:()=>salvStr?{t:"salvage",s:salvStr}:null},
-    {k:"haul",   mk:()=>haulItem?{t:"haul",it:haulItem,phase:0,x:0,y:0}:null},
     {k:"hygiene", mk:()=>showStr?{t:"hygiene",s:showStr,prog:0}:null},
     {k:"recreate",mk:()=>funStr?{t:"recreate",s:funStr,prog:0}:null},
     {k:"socialize",mk:()=>mate?{t:"socialize",oid:mate.id,prog:0}:null},
@@ -707,38 +810,39 @@ function scoreJobs(p){
     {k:"treat",  mk:()=>medStr?{t:"treat",s:medStr,prog:0}:null},
     {k:"substance",mk:()=>dlrStr?{t:"substance",s:dlrStr,prog:0}:null},
     {k:"crime",  mk:()=>robTgt?{t:"crime",s:robTgt,prog:0}:null},
+    {k:"steal",  mk:()=>stealTgt?{t:"steal",oid:stealTgt.id,prog:0}:null},
+    {k:"buygear",mk:()=>gearStr?{t:"buygear",s:gearStr,prog:0}:null},
     {k:"idle",   mk:()=>{const w=randNear(p,5)||{x:p.px|0,y:p.py|0};return{t:"idle",until:ST.tick+RI(25,70),x:w.x,y:w.y}}}];
   if(p.cmd){const a=acts.find(x=>x.k===p.cmd);p.cmd=null;
     if(a){const cj=a.mk();
-      if(cj){if(cj.t==="cook"&&cj.s)cj.s.res=p.id;if(cj.t==="build"&&cj.s)cj.s.res=p.id;
-        if(cj.t==="salvage"&&cj.s)cj.s.res=p.id;if(cj.t==="haul"&&cj.it)cj.it.resv=p.id;return cj}}}
+      if(cj){if(cj.t==="build"&&cj.s)cj.s.res=p.id;return cj}}}
   let bestU=-1,bestMk=null;
   for(const a of acts){
     const u=base[a.k]*pw[a.k]*(bias[a.k]||1)*sm[a.k];
     if(u>bestU){bestU=u;bestMk=a.mk}}
   const j=bestMk?bestMk():null;
   if(!j)return{t:"idle",until:ST.tick+RI(25,70),x:p.px|0,y:p.py|0};
-  if(j.t==="cook"&&j.s)j.s.res=p.id;
   if(j.t==="build"&&j.s)j.s.res=p.id;
-  if(j.t==="salvage"&&j.s)j.s.res=p.id;
-  if(j.t==="haul"&&j.it)j.it.resv=p.id;
   return j}
 function chooseJob(p){
   if(p.needs.food<=22){const j=mkEat(p);if(j)return j}
   if(p.needs.rest<=18)return mkSleep(p);
   return scoreJobs(p)}
 function clearJob(p){const j=p.job;
-  if(j){if(j.s&&j.s.res===p.id)j.s.res=0;
-    if(j.it&&j.it.resv===p.id)j.it.resv=0;
-    if(p.carry){dropItem(p.px|0,p.py|0,p.carry.res,p.carry.qty);p.carry=null}}
+  if(j&&j.s&&j.s.res===p.id)j.s.res=0;
   p.job=null;p.path=null;p.sleeping=false}
 function jobLabel(p){if(p.drafted)return p.order?"Moving (drafted)":"Standing guard";
   if(p.dazed>ST.tick)return "Dazed — wandering";
   if(p.flee>ST.tick)return "Fleeing!";
   const j=p.job;if(!j)return "Thinking…";
   switch(j.t){case "eat":return "Getting food";case "sleep":return p.sleeping?"Sleeping":"Heading to rest";
-    case "cook":return "Synthesizing meals";case "build":return j.s&&j.s.decon?"Deconstructing":"Constructing";
-    case "salvage":return "Salvaging";case "haul":return p.carry?"Hauling to stockpile":"Collecting salvage";
+    case "build":return j.s&&j.s.decon?"Deconstructing":"Constructing";
+    case "hygiene":return "Cleaning up";case "recreate":return "Unwinding";
+    case "socialize":return "Socializing";case "work":return "Working";
+    case "treat":return "At the clinic";case "substance":return "Using";
+    case "crime":return "Running a job";case "rob":return "Robbing someone";
+    case "steal":return "Scoping a mark";
+    case "buygear":return "Getting kitted out";
     default:return "Idling"}}
 
 /* combat helpers (pawn side) */
@@ -754,7 +858,7 @@ function fireAt(p,f){p.cd=p.weapon.cd;
   const d=DIST(p.px,p.py,f.px,f.py);
   beam(p.px,p.py,f.px,f.py,"#7df9ff");SFX.shoot();gainXp(p,"sht");
   if(Math.random()<accOf(p,d))damageFoe(f,RI(p.weapon.dmg[0],p.weapon.dmg[1]))}
-function damagePawn(p,d){p.hp-=d;p.hurtT=ST.tick;SFX.hit();applyDrift(p,{cau:3});
+function damagePawn(p,d){const dmg=Math.round(d*(p.hasGear?0.75:1));p.hp-=dmg;p.hurtT=ST.tick;SFX.hit();applyDrift(p,{cau:3});
   const watcher=ST.pawns.find(q=>q.id!==p.id&&DIST(q.px,q.py,p.px,p.py)<8);
   if(watcher)relAdj(watcher.id,p.id,-2);
   addMod(p,"pain","In pain",-8,TPD*.4);
@@ -767,10 +871,48 @@ function killPawn(p,why){const i=ST.pawns.indexOf(p);if(i<0)return;
   for(const o of ST.pawns){addMod(o,"loss","Lost a crewmate",-16,TPD*2.5);applyDrift(o,{cau:6,soc:-3})}
   ST.sel=ST.sel.filter(e=>e!==p);renderInspect();
   if(ST.pawns.length===0&&ST.phase==="run")gameOver()}
-function homeCell(){return nearestZoneCell(MW/2,MH/2)||{x:MW/2|0,y:MH/2|0}}
+function homeCell(p){const h=p&&p.home;return h?{x:h.door.x,y:h.door.y}:{x:MW/2|0,y:MH/2|0}}
+function openHomes(){return ST.cityHomes.filter(h=>!ST.pawns.some(p=>p.home===h))}
+function pawnGang(p){return ST.gangs.find(g=>g.crewIds.includes(p.id))||null}
+function tileInTurf(x,y){return ST.gangs.some(g=>g.turf.has(K(x,y)))}
+function gangTick(){
+  for(const g of ST.gangs){if(!g.crewIds.length)continue;
+    const newTurf=new Set();
+    const members=g.crewIds.map(id=>ST.pawns.find(p=>p.id===id)).filter(Boolean);
+    for(const m of members){const mx=m.px|0,my=m.py|0;
+      for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){
+        if(dx*dx+dy*dy>20)continue;
+        const X=mx+dx,Y=my+dy;if(INB(X,Y)&&colCost(X,Y)>=0)newTurf.add(K(X,Y))}}
+    for(const k of g.turf){if(!newTurf.has(k)&&Math.random()<0.2)g.turf.delete(k)}
+    for(const k of newTurf)g.turf.add(k);
+    if(g.gangHeat>0)g.gangHeat=Math.max(0,(g.gangHeat||0)-0.5)}
+  // gang war: detect overlapping turf between two gangs
+  if(ST.gangs.length>=2){
+    for(let i=0;i<ST.gangs.length;i++)for(let j=i+1;j<ST.gangs.length;j++){
+      const a=ST.gangs[i],b=ST.gangs[j];
+      let overlap=0;for(const k of a.turf)if(b.turf.has(k))overlap++;
+      if(overlap>15){
+        a.tension=(a.tension||0)+overlap*.05;b.tension=(b.tension||0)+overlap*.05;
+        ST.heat=Math.min(100,(ST.heat||0)+0.3);
+        // escalate to fight when tension peaks
+        if((a.tension||0)>70&&Math.random()<0.3){
+          const aM=a.crewIds.map(id=>ST.pawns.find(p=>p.id===id)).filter(Boolean);
+          const bM=b.crewIds.map(id=>ST.pawns.find(p=>p.id===id)).filter(Boolean);
+          if(aM.length&&bM.length){
+            const fa=CH(aM),fb=CH(bM);
+            const dmg=RI(8,18);damagePawn(fa,dmg);damagePawn(fb,dmg);
+            relAdj(fa.id,fb.id,-30);a.gangHeat=Math.min(100,(a.gangHeat||0)+20);
+            b.gangHeat=Math.min(100,(b.gangHeat||0)+20);
+            ST.heat=Math.min(100,(ST.heat||0)+10);
+            a.tension=0;b.tension=0;
+            float(fa.px,fa.py,"GANG WAR","#ff3d5a");
+            log(a.name+" and "+b.name+" clashed over contested turf — violence in the sprawl.","bad");
+            banner("GANG CONFLICT","bad");SFX.alert()}}
+      }else{a.tension=Math.max(0,(a.tension||0)-1);b.tension=Math.max(0,(b.tension||0)-1)}}}}
 
 /* per-tick pawn logic */
 function pawnTick(p){
+  if(!p.sleeping&&colCost(p.px|0,p.py|0)<0)nudgeOff(p.px|0,p.py|0);
   const hd=100/(TPD*0.95)*trMul(p,"hung");
   const rd=100/(TPD*1.5)*trMul(p,"rest");
   p.needs.food=Math.max(0,p.needs.food-hd);
@@ -789,10 +931,22 @@ function pawnTick(p){
     p.hp=Math.min(100,p.hp+0.1);
   if(ST.procgen!==false&&!p.sick&&ST.tick%60===0&&Math.random()<0.002+(p.needs.hyg<35?(35-p.needs.hyg)/35*0.12:0)){
     p.sick=true;addMod(p,"sick","Infection",-10,TPD);float(p.px,p.py,"INFECTED","#ff4757");log(p.name+" caught an infection.","warn")}
+  if(p.sick&&ST.tick%60===0){  // contagion: spread to nearby citizens
+    const spreadRate=0.008*(p.needs.hyg<30?3:1);  // dirty carrier spreads 3x
+    for(const q of ST.pawns){if(q===p||q.sick)continue;
+      const d=DIST(p.px,p.py,q.px,q.py);if(d>3)continue;
+      // bar and clinic are social hotspots — double spread rate there
+      const atHotspot=nearestStruct(p,s=>(s.type==="bar"||s.type==="medbed")&&!s.bp&&
+        DIST(p.px,p.py,s.x+.5,s.y+.5)<3);
+      if(Math.random()<spreadRate*(atHotspot?2:1)){
+        q.sick=true;q.sickSource=p.id;
+        addMod(q,"sick","Infection",-10,TPD);float(q.px,q.py,"INFECTED","#ff4757");
+        remember(q,"caught something — probably from "+p.name);
+        log(q.name+" caught an infection from "+p.name+".","warn")}}}
   if(p.sick){
     if(ST.tick%40===0)p.hp-=1;
     if(p.hp<=0){killPawn(p,"died of an untreated infection");return}
-    if(p.needs.hyg>60&&p.hp>60&&ST.tick%80===0&&Math.random()<0.05){p.sick=false;log(p.name+" shook off the infection.","good")}}
+    if(p.needs.hyg>60&&p.hp>60&&ST.tick%80===0&&Math.random()<0.05){p.sick=false;p.quarantine=false;log(p.name+" shook off the infection.","good")}}
   if(ST.tick%100===0){
     let sp=-3;
     if(p.sick)sp+=3;
@@ -803,6 +957,12 @@ function pawnTick(p){
     if(p.needs.socN<15)sp+=1.5;
     if(p.homeless)sp+=2.5;
     if(p.addiction>40)sp+=(p.addiction-40)/25;
+    // territory effects
+    const pg=pawnGang(p);const px=p.px|0,py=p.py|0;
+    const inOwnTurf=pg&&pg.turf.has(K(px,py));
+    const inRivalTurf=!inOwnTurf&&ST.gangs.some(g=>!g.crewIds.includes(p.id)&&g.turf.has(K(px,py)));
+    if(inOwnTurf)sp-=1.5;  // gang member relaxed on home turf
+    if(inRivalTurf)sp+=2;   // outsider tense in gang turf
     p.stress=clamp((p.stress||0)+sp,0,100);
     if(p.addiction>0)p.addiction=Math.max(0,p.addiction-0.5)}
   if((ST.tick+p.id)%40===0)moodCalc(p);
@@ -817,7 +977,34 @@ function pawnTick(p){
     if(!p.dz||((p.px|0)===p.dz.x&&(p.py|0)===p.dz.y))p.dz=randNear(p,4);
     if(p.dz&&gotoCell(p,p.dz.x,p.dz.y,0)==="fail")p.dz=null;
     return}
-  // drafted: manual control + auto-engage
+  // relationship-driven behaviors (every 80 ticks, non-drafted non-dazed)
+  if(ST.tick%80===0&&!p.drafted&&p.dazed<ST.tick){
+    for(const q of ST.pawns){if(q===p||q.hp<=0)continue;
+      const rel=relGet(p.id,q.id);
+      const dist=DIST(p.px,p.py,q.px,q.py);
+      // enemy escalation: two enemies close + stress → fight
+      if(rel<-65&&dist<4&&(p.stress>40||q.stress>40)&&Math.random()<0.12){
+        const dmg=RI(4,10);
+        damagePawn(p,dmg);damagePawn(q,dmg);
+        relAdj(p.id,q.id,-25);ST.heat=Math.min(100,(ST.heat||0)+6);
+        addMod(p,"fight","Got in a fight",-8,TPD*.3);addMod(q,"fight","Got in a fight",-8,TPD*.3);
+        remember(p,"threw down with "+q.name+" in the sprawl");
+        remember(q,"threw down with "+p.name+" in the sprawl");
+        for(const w of ST.pawns){if(w===p||w===q)continue;
+          if(DIST(w.px,w.py,p.px,p.py)<8){relAdj(w.id,p.id,-5);relAdj(w.id,q.id,-5);
+            remember(w,"watched "+p.name+" and "+q.name+" beat each other up")}}
+        float(p.px,p.py,"FIGHT!","#ff4757");log(p.name+" and "+q.name+" came to blows.","warn");
+        clearJob(p);clearJob(q);break}
+      // ally mutual aid: ally is sick/starving nearby → offer 5c if can afford
+      if(rel>50&&dist<8&&(q.sick||(q.needs.food||0)<25)&&(p.credits||0)>25&&Math.random()<0.18){
+        const gift=5;p.credits-=gift;q.credits=(q.credits||0)+gift;
+        relAdj(p.id,q.id,4);
+        remember(p,"slipped "+q.name+" some credits when they were struggling");
+        remember(q,p.name+" looked out for me when I needed it — good people");
+        float(p.px,p.py,"-"+gift+"c help","#39ff88")}}}
+  // quarantine: if flagged, stay home
+  if(p.quarantine&&p.sick){const h=p.home;
+    if(h&&((p.px|0)<h.x0||(p.px|0)>=h.x0+h.w)){clearJob(p);p.cmd="sleep"}}
   if(p.drafted){p.sleeping=false;
     if(p.order){const r=gotoCell(p,p.order.x,p.order.y,0);
       if(r!=="mov")p.order=null;return}
@@ -831,7 +1018,7 @@ function pawnTick(p){
     if(tgt&&p.cd<=0)fireAt(p,tgt);
     return}
   // fleeing
-  if(p.flee>ST.tick){const c=homeCell();gotoCell(p,c.x,c.y,1);return}
+  if(p.flee>ST.tick){const c=homeCell(p);gotoCell(p,c.x,c.y,1);return}
   // sleeping wake conditions
   if(p.sleeping&&ST.tick%20===0&&foeNear(p,7)){
     p.sleeping=false;clearJob(p);addMod(p,"rude","Combat woke me",-4,TPD*.3)}
@@ -861,16 +1048,6 @@ function pawnTick(p){
           addMod(p,pod?"pod":"floor",pod?"Slept in a pod":"Slept rough",pod?4:-7,TPD*.6);
           clearJob(p)}}
       break}
-    case "cook":{const s=j.s;
-      if(structAt(s.x,s.y)!==s||s.bp||!s.powered||ST.res.raw<2||ST.res.meal>=10){
-        if(s.res===p.id)s.res=0;p.job=null;break}
-      const r=gotoCell(p,s.x,s.y,1);
-      if(r==="fail"){markUnre(p,s.x,s.y);s.res=0;p.job=null;break}
-      if(r==="arr"){j.prog+=workSpd(p,p.sk.cook);
-        if(ST.tick%25===0)gainXp(p,"cook");
-        if(j.prog>=90){ST.res.raw-=2;ST.res.meal++;
-          float(s.x+.5,s.y+.5,"+1 MEAL","#00e5ff");s.res=0;p.job=null;syncHUD()}}
-      break}
     case "build":{const s=j.s;
       if(structAt(s.x,s.y)!==s||(!s.bp&&!s.decon)){p.job=null;break}
       const r=gotoCell(p,s.x,s.y,1);
@@ -885,35 +1062,6 @@ function pawnTick(p){
   if(co)relAdj(p.id,co.id,2);
   p.job=null}}}
       break}
-    case "salvage":{const s=j.s;
-      if(structAt(s.x,s.y)!==s||!s.desig){p.job=null;break}
-      const r=gotoCell(p,s.x,s.y,1);
-      if(r==="fail"){markUnre(p,s.x,s.y);s.res=0;p.job=null;break}
-      if(r==="arr"){s.prog+=workSpd(p,p.sk.sal);
-        if(ST.tick%25===0)gainXp(p,"sal");
-        if(s.prog>=DEF[s.type].work){const sx=s.x,sy=s.y;salvageFinish(s);applyDrift(p,{ind:1,cur:1});p.job=null;
-          if(ST.zone.size){const it=ST.items.find(i=>!i.resv&&!i.gone&&
-            Math.abs(i.x-sx)<=2&&Math.abs(i.y-sy)<=2);
-            if(it){it.resv=p.id;p.job={t:"haul",it,phase:0,x:0,y:0}}}}}
-      break}
-    case "haul":{
-      if(j.phase===0){const it=j.it;
-        if(!it||it.gone||it.resv!==p.id){p.job=null;break}
-        const r=gotoCell(p,it.x,it.y,0);
-        if(r==="fail"){markUnre(p,it.x,it.y);it.resv=0;p.job=null;break}
-        if(r==="arr"){p.carry={res:it.res,qty:it.qty};removeItem(it);
-          const c=nearestZoneCell(p.px,p.py);
-          if(!c){dropItem(p.px|0,p.py|0,p.carry.res,p.carry.qty);p.carry=null;p.job=null;break}
-          j.phase=1;j.x=c.x;j.y=c.y}}
-      else{const r=gotoCell(p,j.x,j.y,0);
-        if(r==="fail"){const c=nearestZoneCell(p.px,p.py);
-          if(c&&(c.x!==j.x||c.y!==j.y)){j.x=c.x;j.y=c.y}
-          else{dropItem(p.px|0,p.py|0,p.carry.res,p.carry.qty);p.carry=null;p.job=null}
-          break}
-        if(r==="arr"){ST.res[p.carry.res]+=p.carry.qty;ST.stats.hauled++;
-          float(p.px,p.py,"+"+p.carry.qty+" "+RESNAME[p.carry.res].toUpperCase(),RESCOL[p.carry.res]);
-          p.carry=null;p.job=null;syncHUD()}}
-      break}
     case "hygiene":{const s=j.s;
       if(structAt(s.x,s.y)!==s||s.bp){p.job=null;break}
       const r=gotoCell(p,s.x,s.y,1);
@@ -924,7 +1072,19 @@ function pawnTick(p){
       if(structAt(s.x,s.y)!==s||s.bp){p.job=null;break}
       const r=gotoCell(p,s.x,s.y,1);
       if(r==="fail"){markUnre(p,s.x,s.y);p.job=null;break}
-      if(r==="arr"){j.prog++;if(j.prog>=50){p.needs.fun=100;addMod(p,"fun","Unwound",3,TPD*.4);p.job=null}}
+      if(r==="arr"){j.prog++;if(j.prog>=50){
+        p.needs.fun=100;
+        const atBar=s.type==="bar";
+        if(atBar&&(p.credits||0)>=5){
+          p.credits-=5;p.needs.socN=Math.min(100,(p.needs.socN||0)+40);
+          // boost relationships with everyone at the bar
+          for(const q of ST.pawns){if(q===p)continue;
+            if(DIST(p.px,p.py,q.px,q.py)<5){relAdj(p.id,q.id,5);
+              addMod(q,"drinks","Had drinks together",2,TPD*.3)}}
+          addMod(p,"drinks","Night at the bar",5,TPD*.5);
+          remember(p,"had a good night at the bar — feels more connected to the block")}
+        else addMod(p,"fun","Unwound",3,TPD*.4);
+        p.job=null}}
       break}
     case "socialize":{const o=ST.pawns.find(q=>q.id===j.oid);
       if(!o||o===p){p.job=null;break}
@@ -937,8 +1097,28 @@ function pawnTick(p){
       const r=gotoCell(p,s.x,s.y,1);
       if(r==="fail"){markUnre(p,s.x,s.y);p.job=null;break}
       if(r==="arr"){j.prog++;
-        if(j.prog>=120){const pay=RI(10,15);p.credits=(p.credits||0)+pay;p.workCd=ST.tick+RI(280,440);
-          float(s.x+.5,s.y+.5,"+"+pay+"c","#ffd84a");addMod(p,"paid","Got paid",4,TPD*.4);applyDrift(p,{ind:1});p.job=null}}
+        const d=DEF[s.type];
+        const thresh=d.prodRate||(d.refine?160:120);
+        if(j.prog>=thresh){
+          const wage=(p.contract&&p.contract.fixtureKey===K(s.x,s.y))?p.contract.wage:(d.wage||RI(10,15));
+          let didWork=true;
+          // raw material production (workstation/chemlab/workshop)
+          if(d.prod){ST.goods[d.prod]=(ST.goods[d.prod]||0)+1;
+            float(s.x+.5,s.y+.5,"+1 "+d.prod.toUpperCase(),"#39ff88");
+            addMod(p,"shift","Produced "+d.prod,3,TPD*.3)}
+          // refinery (stimlab: chem+data→stims; gearshop: parts+data→gear)
+          else if(d.refine){const ins=d.refine.in;const out=d.refine.out;
+            const can=ins.every(k=>(ST.goods[k]||0)>0);
+            if(can){ins.forEach(k=>ST.goods[k]--);ST.goods[out]=(ST.goods[out]||0)+1;
+              float(s.x+.5,s.y+.5,"+1 "+out.toUpperCase(),"#c98bff");
+              addMod(p,"crafted","Refined "+out,4,TPD*.4)}
+            else{float(s.x+.5,s.y+.5,"NO INPUTS","#ff4757");didWork=false;
+              p.credits=(p.credits||0)+Math.round(wage*0.4);}}  // standby pay
+          // vendor clerk earns district income cut passively via vendorTick
+          else if(d.vendor){addMod(p,"clerking","Ran the counter",2,TPD*.3)}
+          if(didWork)p.credits=(p.credits||0)+wage;
+          p.workCd=ST.tick+(didWork?RI(240,380):RI(80,120));  // retry faster if no inputs
+          applyDrift(p,{ind:didWork?1:0});p.job=null;syncHUD()}}
       break}
     case "treat":{const s=j.s;
       if(structAt(s.x,s.y)!==s||s.bp){p.job=null;break}
@@ -965,8 +1145,11 @@ function pawnTick(p){
       if(r==="fail"){markUnre(p,s.x,s.y);p.job=null;break}
       if(r==="arr"){j.prog++;
         if(j.prog>=50){
-          ST.heat=(ST.heat||0)+12;applyDrift(p,{intg:-2,cau:-1});
-          if(Math.random()<0.65){const take=RI(20,45);p.credits=(p.credits||0)+take;
+          const cg=pawnGang(p);const onCTurf=cg&&cg.turf.has(K(p.px|0,p.py|0));
+          if(onCTurf)cg.gangHeat=Math.min(100,(cg.gangHeat||0)+15);
+          else ST.heat=(ST.heat||0)+12;
+          applyDrift(p,{intg:-2,cau:-1});
+          if(Math.random()<(p.hasGear?0.80:0.65)){const take=RI(20,45);p.credits=(p.credits||0)+take;
             p.rep.city=clamp((p.rep.city||0)-10,-100,100);p.rep.gang=clamp((p.rep.gang||0)+8,-100,100);
             float(s.x+.5,s.y+.5,"+"+take+"c STOLEN","#ff4757");addMod(p,"score","Pulled off a job",6,TPD*.4)}
           else{p.credits=Math.max(0,(p.credits||0)-10);p.stress=Math.min(100,(p.stress||0)+20);
@@ -983,7 +1166,10 @@ function pawnTick(p){
           const take=Math.min((v.credits||0),RI(15,40));
           if(take<=0){p.job=null;break}
           v.credits=(v.credits||0)-take;p.credits=(p.credits||0)+take;
-          ST.heat=(ST.heat||0)+10;applyDrift(p,{intg:-2,cau:-1});
+          const rg=pawnGang(p);const onRTurf=rg&&rg.turf.has(K(p.px|0,p.py|0));
+          if(onRTurf)rg.gangHeat=Math.min(100,(rg.gangHeat||0)+12);
+          else ST.heat=(ST.heat||0)+10;
+          applyDrift(p,{intg:-2,cau:-1});
           p.rep.city=clamp((p.rep.city||0)-8,-100,100);p.rep.gang=clamp((p.rep.gang||0)+6,-100,100);
           remember(p,"robbed "+v.name+" for "+take+" creds in the sprawl");
           float(p.px,p.py,"+"+take+"c ROBBED","#ff4757");
@@ -995,13 +1181,52 @@ function pawnTick(p){
           log(p.name+" robbed "+v.name+" of "+take+" credits.","bad");
           p.job=null;syncHUD()}}
       break}
+    case "buygear":{const s=j.s;
+      if(structAt(s.x,s.y)!==s||s.bp||(ST.goods.gear||0)===0||(p.credits||0)<15){p.job=null;break}
+      const r=gotoCell(p,s.x,s.y,1);
+      if(r==="fail"){markUnre(p,s.x,s.y);p.job=null;break}
+      if(r==="arr"){j.prog++;
+        if(j.prog>=25){p.credits=(p.credits||0)-15;ST.goods.gear--;ST.income+=6;
+          p.hasGear=true;p.gearExpiry=ST.tick+TPD*3;
+          addMod(p,"gear","Bought some gear",4,TPD*.5);
+          float(s.x+.5,s.y+.5,"KITTED","#7aa2ff");
+          remember(p,"bought gear at the shop — feeling more solid");
+          p.job=null;syncHUD()}}
+      break}
+    case "steal":{const v=ST.pawns.find(q=>q.id===j.oid);
+      if(!v||v===p||v.hp<=0||(v.credits||0)<5){p.job=null;break}
+      const r=gotoCell(p,v.px|0,v.py|0,1);
+      if(r==="fail"){p.job=null;break}
+      if(r==="arr"){j.prog++;
+        if(j.prog>=30){
+          const take=clamp(RI(8,14),0,v.credits||0);
+          v.credits=(v.credits||0)-take;p.credits=(p.credits||0)+take;
+          applyDrift(p,{intg:-1});
+          // victim notices based on stress + awareness (30% base)
+          const caught=Math.random()<0.30+(v.stress>50?0.15:0)+(relGet(p.id,v.id)<-20?0.15:0);
+          if(caught){
+            v.stress=Math.min(100,(v.stress||0)+18);
+            relAdj(p.id,v.id,-40);ST.heat=(ST.heat||0)+8;
+            float(p.px,p.py,"CAUGHT!","#ff2d95");
+            addMod(v,"robbed","Caught "+p.name+" stealing",-10,TPD*.5);
+            remember(v,"caught "+p.name+" lifting credits off me — "+take+"c gone");
+            remember(p,"got caught lifting from "+v.name+" — bad move");
+            log(p.name+" was caught stealing from "+v.name+".","warn");
+            // witnesses
+            for(const w of ST.pawns){if(w===p||w===v)continue;
+              if(DIST(w.px,w.py,p.px,p.py)<6){relAdj(w.id,p.id,-8);
+                remember(w,"saw "+p.name+" pick "+v.name+"'s pocket")}}}
+          else{
+            float(p.px,p.py,"+"+take+"c","#c98bff");
+            remember(p,"skimmed "+take+"c off "+v.name+" — clean")}
+          p.job=null;syncHUD()}}
+      break}
   }
 }
 
 /* ---------- foes ---------- */
 function damageFoe(f,d){f.hp-=d;
   if(f.hp<=0&&!f.gone){f.gone=true;ST.stats.kills++;
-    if(Math.random()<.3)dropItem(f.px|0,f.py|0,"scrap",RI(2,4));
     const g=ST.grp[f.group];if(g){g.alive--;
       if(!g.ret&&g.alive>0&&g.alive/g.n0<=.34){g.ret=true;
         log("The raiders are breaking off!","good")}}
@@ -1015,20 +1240,6 @@ function edgeCell(){for(let i=0;i<60;i++){const side=RI(0,3);let x,y;
   else if(side===2){x=1;y=RI(1,MH-2)}else{x=MW-2;y=RI(1,MH-2)}
   if(foeCost(x,y)>=0&&foeCost(x,y)<5)return{x,y}}
   return{x:1,y:1}}
-function spawnRaid(){const day=dayN();
-  const pts=0.9+day*0.75+wealth()/550;
-  let n=clamp(Math.round(pts),2,14);
-  if(ST.stats.raids===0)n=Math.min(n,3);
-  const gid=uid();ST.grp[gid]={n0:n,alive:n,ret:false,t0:ST.tick};
-  const e=edgeCell();
-  for(let i=0;i<n;i++){
-    const r=Math.random();
-    const kind=day<4?(r<.65?"ganger":"gunner"):(r<.5?"ganger":(r<.85?"gunner":"bruiser"));
-    const x=clamp(e.x+RI(-3,3),1,MW-2),y=clamp(e.y+RI(-3,3),1,MH-2);
-    spawnFoeAt(kind,foeCost(x,y)>=0?x:e.x,foeCost(x,y)>=0?y:e.y,gid)}
-  ST.stats.raids++;ST.lastRaid=ST.tick;
-  log("Raid inbound — "+n+" hostiles approaching from the sprawl.","bad");
-  banner("RAID INBOUND","bad");SFX.alert()}
 function acquire(f){let best=null,bd=1e9;
   for(const p of ST.pawns){const d=DIST(f.px,f.py,p.px,p.py);
     if(d<bd){bd=d;best={kind:"pawn",e:p}}}
@@ -1087,51 +1298,41 @@ function foeTick(f){
     return}
   foeGoto(f,Math.floor(tx),Math.floor(ty),t.kind==="s"?1:0)}
 
-/* ---------- turrets ---------- */
-function turretTick(s){if(s.bp||!s.powered)return;
-  if(s.cd>0){s.cd--;return}
-  let best=null,bd=1e9;
-  for(const f of ST.foes){if(f.hp<=0)continue;
-    const d=DIST(s.x+.5,s.y+.5,f.px,f.py);
-    if(d<=9.5&&d<bd&&los(s.x+.5,s.y+.5,f.px,f.py)){bd=d;best=f}}
-  if(!best)return;
-  s.cd=6;s.aim=Math.atan2(best.py-(s.y+.5),best.px-(s.x+.5));
-  beam(s.x+.5,s.y+.5,best.px,best.py,"#ffd84a");SFX.shoot();
-  if(Math.random()<clamp(.85-bd*.03,.3,.85))
-    damageFoe(best,RI(6,10))}
-
 /* ---------- effects ---------- */
 function beam(x0,y0,x1,y1,col){ST.beams.push({x0,y0,x1,y1,col,ttl:6,t0:6})}
 function float(x,y,txt,col){ST.floats.push({x,y,txt,col,ttl:46,t0:46})}
 
 /* ---------- events ---------- */
-function anyGen(){for(const s of ST.structs.values())if(s.type==="gen"&&!s.bp)return true;return false}
 function scheduleEv(){ST.nextEv=ST.tick+Math.floor(R(.55,1.05)*TPD)}
 function fireEvent(){
   const r=Math.random();
-  let ev=r<.20?"pod":r<.38?"wander":r<.52?"storm":r<.64?"blackout":r<.78?"mugging":r<.90?"medbill":"gigdrought";
-  if(ev==="wander"&&ST.pawns.length>=6)ev="pod";
-  if(ev==="blackout"&&!anyGen())ev="storm";
+  // economy-aware event injection: override random events when economy conditions are met
+  const hasStimlab=[...ST.structs.values()].find(s=>s.type==="stimlab"&&!s.bp);
+  const stimsLow=(ST.goods.stims||0)===0&&(ST.goods.chem||0)===0;
+  const stimsHot=(ST.goods.stims||0)>=3&&ST.heat>40;
+  const surplusChem=(ST.goods.chem||0)>=8;
+  let ev=r<.18?"brawl":r<.36?"wander":r<.52?"mugging":r<.70?"medbill":r<.84?"gigdrought":
+    r<.91?"supply_windfall":"shortage";
+  // override with economy events when conditions are met
+  if(stimsLow&&hasStimlab&&Math.random()<0.4)ev="shortage";
+  if(stimsHot&&Math.random()<0.35)ev="enforcer_raid";
+  if(surplusChem&&Math.random()<0.3)ev="black_market";
+  if(ev==="wander"&&openHomes().length===0)ev="brawl";
   switch(ev){
-    case "pod":{const cx=clamp((MW/2|0)+RI(-9,9),2,MW-3),cy=clamp((MH/2|0)+RI(-7,7),2,MH-3);
-      const picks=["scrap","comp","raw"];
-      for(let i=0;i<RI(2,3);i++){const res=CH(picks);
-        const qty=res==="comp"?RI(2,5):RI(7,14);
-        dropItem(clamp(cx+RI(-1,1),1,MW-2),clamp(cy+RI(-1,1),1,MH-2),res,qty)}
-      float(cx+.5,cy+.5,"SUPPLY DROP","#39ff88");
-      log("A smuggler drop pod streaks in — salvage near the center of the map.","good");
-      banner("SUPPLY DROP","good");SFX.good();break}
-    case "wander":{const e=edgeCell();
-      const p=mkPawn(e.x,e.y,CH(["sal","bld","cook","sht"]));
+    case "brawl":{const a=CH(ST.pawns),b=CH(ST.pawns.filter(p=>p!==a));
+      if(a&&b){const dmg=RI(6,18);a.hp=Math.max(1,a.hp-dmg);b.hp=Math.max(1,b.hp-dmg);
+        a.stress=Math.min(100,(a.stress||0)+12);b.stress=Math.min(100,(b.stress||0)+12);
+        relAdj(a.id,b.id,-20);ST.heat=Math.min(100,(ST.heat||0)+8);
+        float(a.px,a.py,"BRAWL","#ff4757");
+        log(a.name+" and "+b.name+" got into it on the block — heat rising.","warn");banner("STREET BRAWL","warn");SFX.alert()}break}
+    case "wander":{const open=openHomes();if(!open.length)break;
+      const e=edgeCell();
+      const p=mkPawn(e.x,e.y,CH(["sal","bld","sht"]));
+      const home=open[0];p.home=home;
+      const bedS=structAt(home.bed.x,home.bed.y);if(bedS&&bedS.type==="pod")bedS.owner=p.id;
       ST.pawns.push(p);
-      log(p.name+" wandered out of the sprawl and joined the crew.","good");
-      banner("WANDERER JOINS","good");SFX.good();break}
-    case "storm":{ST.storm=ST.tick+Math.floor(TPD*.5);
-      log("A net storm rolls over the district. Everyone is on edge. (mood −15)","warn");
-      banner("NET STORM","warn");SFX.alert();break}
-    case "blackout":{ST.black=ST.tick+Math.floor(TPD*.3);powerRecalc();
-      log("Grid blackout — fusion cells offline for a few hours.","warn");
-      banner("BLACKOUT","warn");SFX.alert();break}
+      log(p.name+" drifted into the district from the sprawl — there's a home for them here.","good");
+      banner("NEW ARRIVAL","good");SFX.good();break}
     case "mugging":{const p=CH(ST.pawns);if(p){const loss=RI(15,35);
       p.credits=(p.credits||0)-loss;p.stress=Math.min(100,(p.stress||0)+15);
       float(p.px,p.py,"MUGGED -"+loss+"c","#ff4757");
@@ -1142,7 +1343,34 @@ function fireEvent(){
       log(p.name+" got hit with an unexpected medical bill ("+bill+"c).","warn");banner("MEDICAL BILL","warn");SFX.alert();remember(p,"got slammed with a "+bill+"c medical bill out of nowhere")}break}
     case "gigdrought":{const p=CH(ST.pawns);if(p){p.workCd=ST.tick+RI(600,1100);p.stress=Math.min(100,(p.stress||0)+8);
       float(p.px,p.py,"LAID OFF","#ff9f2d");
-      log(p.name+" lost their gig — no work for a while.","warn");banner("GIG DROUGHT","warn");SFX.alert();remember(p,"lost my gig — no work coming in for a while")}break}}
+      log(p.name+" lost their gig — no work for a while.","warn");banner("GIG DROUGHT","warn");SFX.alert();remember(p,"lost my gig — no work coming in for a while")}break}
+    case "shortage":{// stims/chem drought — addicted citizens get desperate
+      const addicted=ST.pawns.filter(p=>(p.addiction||0)>20);
+      addicted.forEach(p=>{p.stress=Math.min(100,(p.stress||0)+18);addMod(p,"withdrawal","Supply ran dry",-12,TPD*.5)});
+      log("Stim supply dried up on the block — addicted citizens are getting edgy.","warn");
+      banner("SUPPLY DROUGHT","warn");SFX.alert();break}
+    case "enforcer_raid":{// corps hit the stimlab
+      const sl=[...ST.structs.values()].find(s=>s.type==="stimlab"&&!s.bp);
+      if(sl){const fine=RI(40,80);ST.income=Math.max(0,(ST.income||0)-fine);
+        ST.goods.stims=0;ST.heat=Math.max(0,(ST.heat||0)-20);
+        log("Corp enforcers hit the Stim Lab — seized the stock and fined the district "+fine+"c.","bad");
+        banner("STIMLAB RAIDED","bad");SFX.alert();
+        ST.pawns.forEach(p=>{if(DIST(p.px,p.py,sl.x+.5,sl.y+.5)<10){p.stress=Math.min(100,(p.stress||0)+15);
+          remember(p,"enforcers raided the stim lab — lost everything, block's on edge")}})}
+      break}
+    case "black_market":{// surplus chem attracts a buyer — quick income, but risky
+      const sale=RI(30,60);const risk=Math.random()<0.3;
+      if(risk){ST.heat=Math.min(100,(ST.heat||0)+18);
+        log("Black market deal went sideways — heat up but no payout.","warn");banner("DEAL GONE BAD","warn");SFX.alert()}
+      else{ST.income=(ST.income||0)+sale;ST.goods.chem=Math.max(0,(ST.goods.chem||0)-4);
+        log("Black market buyer moved "+sale+"c for surplus chem. District pockets the cut.","good");
+        banner("BLACK MARKET SALE","good");SFX.good()}
+      break}
+    case "supply_windfall":{// random supply drop — small goods bonus
+      const wg=CH(["data","chem","parts"]);const qty=RI(3,6);
+      ST.goods[wg]=(ST.goods[wg]||0)+qty;
+      log("A scavenger crew sold "+qty+" units of "+wg+" to the district at a good rate.","good");
+      banner("SUPPLY WINDFALL","good");SFX.good();break}}
   scheduleEv()}
 
 /* ---------- win / lose ---------- */
@@ -1154,14 +1382,11 @@ function statRows(){return "<table>"+
   "<tr><td>Nodes salvaged</td><td class='stat'>"+ST.stats.salv+"</td></tr>"+
   "<tr><td>Runners lost</td><td class='stat'>"+ST.stats.deaths+"</td></tr></table>"}
 function gameOver(){ST.phase="over";
-  showModal("<h1>SIGNAL LOST</h1><div class='mh-sub'>COLONY TERMINATED</div>"+
-    "<p>The last runner is down. The sprawl reclaims the block — neon flickering over empty barricades.</p>"+
-    statRows()+(hasSave()?"<button class='tb big' id='m-continue'>LOAD LAST SAVE</button>":"")+"<button class='tb big' id='m-restart'>REINITIALIZE</button>")}
-function win(){if(ST.phase!=="run")return;ST.phase="win";SFX.good();
-  showModal("<h1>EXTRACTION</h1><div class='mh-sub'>BEACON LOCK CONFIRMED</div>"+
-    "<p>A black VTOL drops through the smog and your crew climbs aboard. Behind you, the colony's neon keeps burning — somebody else's problem now.</p>"+
-    statRows()+"<button class='tb big' id='m-restart'>RUN IT AGAIN</button>")}
-
+  const condemned=ST.crisis&&ST.pawns.length>0;
+  showModal("<h1>SIGNAL LOST</h1><div class='mh-sub'>"+(condemned?"DISTRICT CONDEMNED":"COLONY TERMINATED")+"</div>"+
+    "<p>"+(condemned?"District finances collapsed — enforcers moved in and cleared the block.":"The last runner is down. The sprawl reclaims the block.")+"</p>"+
+    statRows()+(hasSave()?"<button class='tb big' id='m-continue'>LOAD LAST SAVE</button>":"")+
+    "<button class='tb big' id='m-restart'>REINITIALIZE</button>")}
 /* ---------- master tick ---------- */
 function updateFlags(){}  // survival checklist retired — sandbox city has no win-objectives
 function tick(){ST.tick++;
@@ -1171,34 +1396,105 @@ function tick(){ST.tick++;
   // (roguelike vat-protein production + beacon-extraction win removed — the city has neither)
   for(let i=ST.pawns.length-1;i>=0;i--)pawnTick(ST.pawns[i]);
   for(const f of ST.foes)if(!f.gone&&f.hp>0)foeTick(f);
-  for(const s of ST.structs.values())if(s.type==="turret")turretTick(s);
   if(ST.foes.length)ST.foes=ST.foes.filter(f=>!f.gone&&f.hp>0);
   for(let i=ST.beams.length-1;i>=0;i--)if(--ST.beams[i].ttl<=0)ST.beams.splice(i,1);
   for(let i=ST.floats.length-1;i>=0;i--)if(--ST.floats[i].ttl<=0)ST.floats.splice(i,1);
-  if(ST.tick%25===0&&ST.items.length&&ST.zone.size){
-    for(let i=ST.items.length-1;i>=0;i--){const it=ST.items[i];
-      if(it.resv)continue;
-      if(ST.zone.has(K(it.x,it.y))){ST.res[it.res]+=it.qty;ST.stats.hauled++;
-        float(it.x+.5,it.y+.5,"+"+it.qty+" "+RESNAME[it.res].toUpperCase(),RESCOL[it.res]);
-        it.gone=true;ST.items.splice(i,1);syncHUD()}}}
   if(ST.tick>=ST.nextEv)fireEvent();
+  if(ST.tick%120===0){  // vendor sales cycle — auto-sell goods, district takes 40% cut
+    const PRICES={stims:18,gear:14,data:6,chem:5,parts:5};
+    const ILLEGAL={stims:true};
+    for(const s of ST.structs.values()){if(s.bp||!DEF[s.type].vendor)continue;
+      const sells=DEF[s.type].sells;
+      let good=null;
+      if(sells&&(ST.goods[sells]||0)>0)good=sells;
+      else if(!sells){
+        if((ST.goods.gear||0)>0)good="gear";
+        else if((ST.goods.data||0)>0)good="data";}
+      if(!good)continue;
+      ST.goods[good]--;
+      const price=PRICES[good]||8;
+      const cut=Math.round(price*0.4);
+      ST.income+=cut;
+      if(ILLEGAL[good])ST.heat=Math.min(100,(ST.heat||0)+2);
+      // citizen effects: stims → nearest stressed citizen gets fun/stress boost
+      // gear → nearest ungeared citizen gets gear buff
+      if(good==="stims"){
+        let best=null,bd=1e9;
+        for(const p of ST.pawns){const d=DIST(s.x+.5,s.y+.5,p.px,p.py);
+          if(d<bd&&(p.stress>20||(p.needs.fun||0)<50)){bd=d;best=p}}
+        if(best&&bd<8){
+          best.needs.fun=Math.min(100,(best.needs.fun||0)+40);
+          best.stress=Math.max(0,(best.stress||0)-30);
+          best.addiction=Math.min(100,(best.addiction||0)+(Math.random()<0.3?4:0));
+          addMod(best,"stims","Grabbed some stims",5,TPD*.4);
+          float(s.x+.5,s.y+.5,"STIMS","#c98bff")}}
+      else if(good==="gear"){
+        let best=null,bd=1e9;
+        for(const p of ST.pawns){const d=DIST(s.x+.5,s.y+.5,p.px,p.py);
+          if(d<bd&&!p.hasGear){bd=d;best=p}}
+        if(best&&bd<10){
+          best.hasGear=true;best.gearExpiry=ST.tick+TPD*3;
+          addMod(best,"gear","Got kitted out",3,TPD*.5);
+          float(s.x+.5,s.y+.5,"GEARED","#7aa2ff")}}
+      else float(s.x+.5,s.y+.5,"SOLD +"+cut+"c","#39ff88")}}
   if(ST.tick%30===0){updateFlags();genRequests();expireRequests()}
-  if(ST.tick%TPD===0&&ST.tick>0)for(const q of ST.pawns){q.credits=(q.credits||0)-34;
-    if(q.credits<0&&!q.homeless){q.homeless=true;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad");remember(q,"couldn't make rent — got evicted, sleeping rough now")}
-    else if(q.credits>=0&&q.homeless){q.homeless=false;log(q.name+" cleared their back rent.","good")}}
+  if(ST.tick%200===0&&ST.gangs.length)gangTick();
+  if(ST.tick%TPD===0&&ST.tick>0){
+    // gear expiry check
+    for(const p of ST.pawns){if(p.hasGear&&ST.tick>=(p.gearExpiry||0)){p.hasGear=false;p.gearExpiry=0}}
+    // rent + eviction
+    for(const q of ST.pawns){q.credits=(q.credits||0)-(ST.crisis?50:34);
+      if(q.credits<0&&!q.homeless){q.homeless=true;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad");remember(q,"couldn't make rent — got evicted, sleeping rough now")}
+      else if(q.credits>=0&&q.homeless){q.homeless=false;log(q.name+" cleared their back rent.","good")}}
+    // soft collapse: track debt days
+    if(ST.income<0){ST.debtDays=(ST.debtDays||0)+1;
+      if(ST.debtDays===3&&!ST.crisis){ST.crisis=true;
+        banner("DISTRICT IN CRISIS","bad");log("District finances collapsed — enforcers moving in, rents spiking.","bad");
+        ST.heat=Math.min(100,(ST.heat||0)+30)}
+      if(ST.debtDays>=5){gameOver();return}}
+    else{ST.debtDays=0;
+      if(ST.crisis){ST.crisis=false;ST.heat=Math.max(0,(ST.heat||0)-20);
+        banner("CRISIS RESOLVED","good");log("District finances stabilized.","good")}}
+    // end-of-day report petition (once a day, surfaced to overseer)
+    const dayIncome=Math.round(ST.income||0);
+    const sick=ST.pawns.filter(p=>p.sick).length;
+    const evicted=ST.pawns.filter(p=>p.homeless).length;
+    const recentCrime=DIARY_ENTRIES.filter(e=>e.day===dayN()&&(e.cat==="crime")).length;
+    const summary=
+      "Day "+dayN()+" report: district income "+dayIncome+"c · "+
+      (evicted?"⚠ "+evicted+" evicted · ":"")+
+      (sick?"⚕ "+sick+" sick · ":"")+
+      (recentCrime?recentCrime+" crime incidents · ":"")+
+      ST.pawns.length+" citizens.";
+    log(summary,"info");
+    const id=uid(),exp=ST.tick+Math.floor(TPD*.8);
+    ST.requests.push({id,agentId:"district",agentName:"DISTRICT",created:ST.tick,expires:exp,
+      status:"pending",kind:"dayreport",
+      text:summary,
+      options:[{label:"Acknowledged"}]});
+    renderRequests();}
   if(ST.tick%100===0){
     if(ST.heat>0)ST.heat=Math.max(0,ST.heat-1);
+    // gang heat decay
+    for(const g of ST.gangs)if(g.gangHeat>0)g.gangHeat=Math.max(0,(g.gangHeat||0)-0.5);
     if(ST.heat>60&&!ST.heatWarn){ST.heatWarn=true;log("Enforcers are taking notice of the sprawl.","warn")}
     if(ST.heat<40)ST.heatWarn=false;
-    if(ST.heat>60&&ST.tick-ST.lastRaid>TPD*0.4&&Math.random()<0.25){
-      let tgt=null,hi=-1;for(const q of ST.pawns){const g=q.rep?(q.rep.gang||0):0;if(g>hi){hi=g;tgt=q}}
+    if(ST.heat>60&&ST.tick-ST.lastCrackdown>TPD*0.4&&Math.random()<0.25){
+      // prefer to target the hottest gang member if gangs exist
+      let tgt=null,hi=-1;
+      const hotGang=ST.gangs.length?ST.gangs.reduce((a,b)=>(b.gangHeat||0)>(a.gangHeat||0)?b:a,ST.gangs[0]):null;
+      if(hotGang&&(hotGang.gangHeat||0)>30){
+        for(const id of hotGang.crewIds){const q=ST.pawns.find(p=>p.id===id);
+          if(q&&(q.rep?.gang||0)>hi){hi=q.rep?.gang||0;tgt=q}}}
+      if(!tgt)for(const q of ST.pawns){const g=q.rep?(q.rep.gang||0):0;if(g>hi){hi=g;tgt=q}}
       if(tgt){const fine=Math.round(Math.min(70,Math.max(20,(tgt.credits||0)*0.4+20)));
         tgt.credits=(tgt.credits||0)-fine;tgt.stress=Math.min(100,(tgt.stress||0)+25);
         if(tgt.rep){tgt.rep.gang=clamp((tgt.rep.gang||0)-20,-100,100);tgt.rep.city=clamp((tgt.rep.city||0)-5,-100,100)}
+        const tg=pawnGang(tgt);if(tg)tg.gangHeat=Math.max(0,(tg.gangHeat||0)-20);
         tgt.dazed=ST.tick+200;clearJob(tgt);
         float(tgt.px,tgt.py,"BUSTED -"+fine+"c","#ff4757");
         log("Enforcers swept the sprawl — "+tgt.name+" was detained and fined "+fine+"c.","bad");banner("ENFORCER CRACKDOWN","bad")}
-      ST.lastRaid=ST.tick;ST.heat=Math.max(0,ST.heat-45)}}
+      ST.lastCrackdown=ST.tick;ST.heat=Math.max(0,ST.heat-45)}}
   if(ST.tick%10===0){syncHUD();renderRoster()}
   if(ST.tick%25===0){renderInspect();renderRequests()}}
 
@@ -1226,22 +1522,63 @@ function lightLevel(h){
   return (1-(h-4.5)/2)*.78}
 
 function drawTerrain(){const g=tctx;
-  g.fillStyle="#051310";g.fillRect(0,0,MW*T,MH*T);
-  const FLO=["#2ee89a","#00e0c8","#a06bff"];
+  g.fillStyle="#010408";g.fillRect(0,0,MW*T,MH*T);
+  // bioluminescent palette for surreal nature elements
+  const SPORE=["#a259ff","#6b3fa8","#ff47c8","#5c2d9c"]; // violet/magenta spores
+  const MUSH_CAP=["#c084fc","#f0abfc","#e879f9","#7c3aed"]; // mushroom caps
+  const BIO_GLOW=["#a855f7","#d946ef","#ec4899"]; // bioluminescent glow
   for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){
-    const t=ST.ter[x+y*MW],X=x*T,Y=y*T,h=hash2(x*3,y*7),h2=hash2(x*7,y*13);
-    g.fillStyle=t===3?"#04100c":t===1?"#071c15":"#0a2219";
-    g.fillRect(X,Y,T,T);
-    if(h2<.45){g.fillStyle="rgba(22,64,48,.4)";g.fillRect(X+((h*10)|0),Y+((h2*10)|0)+2,3,2)}
-    if((x+y)%2===0){g.fillStyle="rgba(0,0,0,.16)";g.fillRect(X,Y,T,1)}
-    if(t!==3&&h>.85){const c=FLO[(h2*3)|0],cx=X+T/2,cy=Y+T/2;
-      const rg=g.createRadialGradient(cx,cy-1,0,cx,cy-1,9);
-      rg.addColorStop(0,c);rg.addColorStop(1,"rgba(0,0,0,0)");
-      g.globalAlpha=.6;g.fillStyle=rg;g.beginPath();g.arc(cx,cy-1,9,0,7);g.fill();g.globalAlpha=1;
-      g.fillStyle="#0e2820";g.fillRect(cx-1,cy-1,2,5);
-      g.fillStyle=c;g.beginPath();g.ellipse(cx,cy-2,4,2.5,0,0,7);g.fill();
-      g.fillStyle="#eafff4";g.fillRect(cx-1,cy-3,2,1)}}
-  g.strokeStyle="rgba(0,224,200,.18)";g.strokeRect(.5,.5,MW*T-1,MH*T-1)}
+    const t=ST.ter[x+y*MW],X=x*T,Y=y*T;
+    const h=hash2(x*3,y*7),h2=hash2(x*7,y*13),h3=hash2(x*11,y*5);
+    // base concrete — slightly varied darkness
+    const shade=t===3?"#010305":t===1?"#020509":"#030710";
+    g.fillStyle=shade;g.fillRect(X,Y,T,T);
+    // cracked concrete texture — thin fracture lines
+    if(t!==3){
+      if(h>.72){g.strokeStyle="rgba(0,8,20,.9)";g.lineWidth=.5;
+        g.beginPath();g.moveTo(X+h*T,Y);g.lineTo(X+(h2*T)|0,Y+T);g.stroke()}
+      if(h2>.68&&h>.45){g.strokeStyle="rgba(0,8,20,.8)";g.lineWidth=.5;
+        g.beginPath();g.moveTo(X,Y+h3*T);g.lineTo(X+T,Y+(h*T)|0);g.stroke()}}
+    // bioluminescent seep through cracks — violet/magenta
+    if(t!==3&&h3>.82){
+      const sCol=SPORE[(h2*4)|0];
+      const sx=X+(h*T*.8)|0,sy=Y+(h2*T*.8)|0;
+      const sg=g.createRadialGradient(sx,sy,0,sx,sy,5);
+      sg.addColorStop(0,sCol.replace(")",",0.35)").replace("rgb","rgba"));
+      sg.addColorStop(1,"rgba(0,0,0,0)");
+      g.globalAlpha=.5;g.fillStyle=sg;g.beginPath();g.arc(sx,sy,5,0,7);g.fill();g.globalAlpha=1;
+      // glowing pixel at the brightest point
+      g.fillStyle="rgba(200,150,255,.6)";g.fillRect(sx,sy,1,1)}
+    // subtle grid lines — infrastructure feel
+    if((x+y)%2===0){g.fillStyle="rgba(0,0,0,.12)";g.fillRect(X,Y,T,1)}
+    // mushroom clusters — surreal nature on walkable tiles
+    if(t!==3&&hash2(x*17,y*19)>.88){
+      const cx=X+T/2,cy=Y+T/2;
+      const count=2+((h3*3)|0); // 2-4 mushrooms per cluster
+      for(let i=0;i<count;i++){
+        const mx=cx+(((h*(i+1)*7)%1)-.5)*T*.7,my=cy+(((h2*(i+1)*5)%1)-.3)*T*.5;
+        const mh=T*.22+(h2*i*.15); // stem height variation
+        const capW=T*.18+(h*i*.08),capC=MUSH_CAP[((h+h2+i)%1*4)|0];
+        // stem — thin, slight lean
+        g.strokeStyle="rgba(140,100,180,.65)";g.lineWidth=1.2;
+        g.beginPath();g.moveTo(mx,my);g.lineTo(mx+(h-.5)*2,my-mh);g.stroke();
+        // cap
+        const cr=g.createRadialGradient(mx,my-mh,0,mx,my-mh,capW);
+        cr.addColorStop(0,capC);cr.addColorStop(.6,capC.replace(")",",0.7)").replace("#","rgba(").replace(/([0-9a-f]{2})/gi,(m,p,o)=>o>0&&o%2===0&&o<7?parseInt(m,16)+",":""));
+        cr.addColorStop(1,"rgba(0,0,0,0)");
+        g.globalAlpha=.72;g.fillStyle=capC;
+        g.beginPath();g.ellipse(mx,my-mh,capW,capW*.45,0,0,7);g.fill();
+        // bioluminescent underside glow
+        const gg=g.createRadialGradient(mx,my-mh+2,0,mx,my-mh+2,capW*.8);
+        gg.addColorStop(0,BIO_GLOW[(i%3)].replace(")",",0.22)").replace("rgb","rgba"));
+        gg.addColorStop(1,"rgba(0,0,0,0)");
+        g.fillStyle=gg;g.beginPath();g.ellipse(mx,my-mh+2,capW*.8,capW*.3,0,0,7);g.fill();
+        g.globalAlpha=1}}}
+  // infrastructure grid overlay — very faint
+  g.strokeStyle="rgba(0,20,50,.25)";g.lineWidth=.4;
+  for(let x=0;x<=MW;x++){g.beginPath();g.moveTo(x*T,0);g.lineTo(x*T,MH*T);g.stroke()}
+  for(let y=0;y<=MH;y++){g.beginPath();g.moveTo(0,y*T);g.lineTo(MW*T,y*T);g.stroke()}
+  g.strokeStyle="rgba(0,212,255,.06)";g.strokeRect(.5,.5,MW*T-1,MH*T-1)}
 
 function rr(x,y,w,h,col){ctx.fillStyle=col;ctx.fillRect(x,y,w,h)}
 const PODTH={
@@ -1287,30 +1624,8 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T,d=DEF[s.type];
     case "pod":rr(X+1,Y+3,T-2,T-6,"#15202f");rr(X+2,Y+4,T-4,T-8,"#0d1521");
       rr(X+3,Y+5,4,T-10,"#27405c");
       ctx.strokeStyle=s.owner?"#39ff88":"#23364f";ctx.strokeRect(X+1.5,Y+3.5,T-3,T-7);break;
-    case "synth":rr(X+1,Y+2,T-2,T-4,"#1b2233");
-      rr(X+3,Y+4,T-6,5,s.powered?"#ff2d95":"#3a2030");
-      rr(X+3,Y+11,3,2,"#0a0e16");rr(X+8,Y+11,5,2,"#0a0e16");break;
-    case "vat":{rr(X+2,Y+1,T-4,T-2,"#1b2a26");
-      const lvl=(T-6)*clamp(s.vt/600,0,1);
-      rr(X+4,Y+T-3-lvl,T-8,lvl,s.powered?"#39ff88":"#1d4b34");
-      ctx.strokeStyle="#2f4a40";ctx.strokeRect(X+2.5,Y+1.5,T-5,T-3);break}
-    case "gen":{rr(X+1,Y+1,T-2,T-2,"#262d3f");
-      const pulse=s.powered?(.6+.4*Math.sin(ST.tick*.2)):.15;
-      ctx.fillStyle="rgba(255,216,74,"+pulse.toFixed(2)+")";
-      ctx.fillRect(X+5,Y+5,T-10,T-10);break}
     case "lamp":rr(X+T/2-1,Y+4,2,T-6,"#3a4763");
-      ctx.fillStyle=s.powered?"#00e5ff":"#1c3a44";ctx.fillRect(X+T/2-3,Y+2,6,4);break;
-    case "turret":{rr(X+2,Y+2,T-4,T-4,"#262d3f");
-      ctx.save();ctx.translate(X+T/2,Y+T/2);ctx.rotate(s.aim||0);
-      ctx.fillStyle="#9fb4d8";ctx.fillRect(0,-1.5,9,3);ctx.restore();
-      ctx.fillStyle=s.powered?"#ffd84a":"#5a4a1c";
-      ctx.fillRect(X+T/2-2,Y+T/2-2,4,4);break}
-    case "beacon":{rr(X+5,Y+1,6,T-2,"#27314a");
-      const a=.4+.4*Math.sin(ST.tick*.15);
-      ctx.fillStyle=s.powered?"rgba(0,229,255,"+a.toFixed(2)+")":"#1c3a44";
-      ctx.fillRect(X+6,Y+2,4,4);
-      if(s.charge>0){ctx.fillStyle="#00e5ff";
-        ctx.fillRect(X+2,Y+T-3,(T-4)*clamp(s.charge/TPD,0,1),2)}break}
+      ctx.fillStyle="#00e5ff";ctx.fillRect(X+T/2-3,Y+2,6,4);break;
     case "fridge":rr(X+3,Y+1,T-6,T-2,"#2a3340");rr(X+4,Y+2,T-8,5,"#34404f");rr(X+4,Y+8,T-8,6,"#2f3a47");rr(X+10,Y+3,1,3,"#9fb4d8");rr(X+10,Y+9,1,3,"#9fb4d8");rr(X+5,Y+2,2,1,"#39ff88");break;
     case "toilet":rr(X+5,Y+2,6,3,"#3a4658");rr(X+5,Y+5,6,6,"#5d6c85");rr(X+4,Y+10,8,3,"#2a3340");break;
     case "shower":rr(X+3,Y+2,T-6,T-3,"#1c2735");rr(X+T/2-1,Y+2,2,2,"#9fb4d8");rr(X+T/2-2,Y+6,1,1,"#00e5ff");rr(X+T/2+1,Y+8,1,1,"#00e5ff");rr(X+T/2,Y+10,1,1,"#00e5ff");break;
@@ -1321,6 +1636,19 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T,d=DEF[s.type];
     case "bar":rr(X+2,Y+6,T-4,7,"#231a2b");rr(X+2,Y+5,T-4,2,"#3a2030");rr(X+2,Y+5,T-4,1,"#ff2d95");rr(X+4,Y+2,1,3,"#39ff88");rr(X+7,Y+2,1,3,"#00e5ff");rr(X+10,Y+2,1,3,"#ffd84a");break;
     case "medbed":rr(X+2,Y+5,T-4,8,"#1c2a2a");rr(X+3,Y+6,T-6,5,"#2f4a40");rr(X+T/2-2,Y+7,4,1,"#39ff88");rr(X+T/2-1,Y+6,2,3,"#39ff88");rr(X+3,Y+5,T-6,1,"#00e5ff");break;
     case "dealer":rr(X+5,Y+6,6,7,"#1a1420");rr(X+5,Y+6,6,2,"#3a2030");rr(X+6,Y+9,4,2,"#ff2d95");rr(X+7,Y+4,2,2,"#231a2b");break;
+    case "housing":rr(X+2,Y+2,T-4,T-4,"#1a2435");rr(X+4,Y+4,T-8,T-8,"#0d1521");
+      ctx.fillStyle="#39ff88";ctx.fillRect(X+T/2-1,Y+3,2,4);ctx.fillRect(X+3,Y+T/2-1,4,2);
+      ctx.fillStyle="#00e5ff";ctx.fillRect(X+T-5,Y+T/2-1,2,2);break;
+    case "chemlab":rr(X+2,Y+2,T-4,T-4,"#1a2020");rr(X+5,Y+5,3,5,"#39ff88");rr(X+9,Y+5,3,5,"#39ff88");
+      rr(X+5,Y+4,7,2,"#2f4a3a");ctx.fillStyle="#b8ff5e";ctx.fillRect(X+6,Y+9,1,3);ctx.fillRect(X+10,Y+9,1,3);break;
+    case "workshop":rr(X+2,Y+2,T-4,T-4,"#1f1c12");rr(X+3,Y+9,4,4,"#3a3318");rr(X+10,Y+7,3,2,"#ff9f2d");
+      rr(X+6,Y+4,5,3,"#4a3d1a");ctx.fillStyle="#ffd84a";ctx.fillRect(X+4,Y+12,3,2);break;
+    case "stimlab":rr(X+2,Y+2,T-4,T-4,"#1c1020");rr(X+6,Y+4,5,8,"#3a1a40");
+      rr(X+5,Y+3,7,2,"#2a1530");ctx.fillStyle="#c98bff";ctx.fillRect(X+7,Y+6,3,4);
+      ctx.fillStyle="#ff2d95";ctx.fillRect(X+8,Y+11,2,2);break;
+    case "gearshop":rr(X+2,Y+2,T-4,T-4,"#12181f");rr(X+4,Y+8,T-8,5,"#1b2840");
+      rr(X+5,Y+4,T-10,4,"#0d1a2a");ctx.fillStyle="#7aa2ff";ctx.fillRect(X+6,Y+5,5,2);
+      ctx.fillStyle="#39ff88";ctx.fillRect(X+11,Y+9,2,2);break;
   }
   if(s.desig){ctx.strokeStyle="#ff9f2d";ctx.strokeRect(X+.5,Y+.5,T-1,T-1)}
   if(s.decon){ctx.strokeStyle="#ff4757";ctx.beginPath();
@@ -1377,7 +1705,7 @@ function renderRoster(){
     h+="</div>";
   }
   el.innerHTML=h;
-  const hb=$("h-heat");if(hb){hb.textContent=ST.heat|0;hb.style.color=ST.heat>60?"var(--rd)":ST.heat>30?"var(--or)":"var(--dim)"}}
+  const hb=$("h-heat");if(hb){hb.textContent=ST.heat|0;hb.className="hud-val"+(ST.heat>60?" danger":ST.heat>30?" warn":"");}}
 const _rEl=$("roster");
 if(_rEl)_rEl.addEventListener("click",function(e){
   const row=e.target.closest&&e.target.closest(".rchip");if(!row)return;
@@ -1416,39 +1744,94 @@ function drawTaskGlyph(x,y,t){
     default:dot(x-2.5,y,1);dot(x,y,1);dot(x+2.5,y,1);                                                    // idle ...
   }
 }
+// ── 8-BIT FACE RENDERER ──
+// Face is drawn in a 7x7 pixel grid centered at (cx,cy), scaled by px size
+// Each face expression is defined as pixel coords relative to top-left of 7x7 grid
+const FACE={
+  // [eyes_L, eyes_R, mouth_pixels...]  — each entry is [col,row]
+  happy:   {e:[[1,1],[5,1]],        m:[[1,4],[2,5],[3,5],[4,5],[5,4]]},
+  good:    {e:[[1,1],[5,1]],        m:[[2,4],[3,5],[4,4]]},
+  neutral: {e:[[1,1],[5,1]],        m:[[1,4],[2,4],[3,4],[4,4],[5,4]]},
+  sad:     {e:[[1,2],[5,2]],        m:[[1,5],[2,4],[3,4],[4,4],[5,5]]},
+  angry:   {e:[[1,2],[5,2],[1,1],[5,1]],m:[[1,5],[2,4],[3,4],[4,4],[5,5],[0,1],[6,1]]},
+  scared:  {e:[[1,1],[5,1],[2,1],[4,1]],m:[[2,4],[3,5],[4,4]]},  // wide eyes
+  dazed:   {e:[[1,1],[5,1],[1,2],[5,2]],m:[[2,4],[3,4],[4,4]]},  // X eyes
+  sick:    {e:[[1,1],[3,1],[5,1]],   m:[[1,5],[2,4],[3,4],[4,4],[5,5]]},  // jagged
+  sleep:   {e:[[1,2],[2,2],[4,2],[5,2]],m:[[2,4],[3,4],[4,4]]}, // closed lines
+  hooked:  {e:[[1,1],[5,1]],         m:[[1,4],[2,4],[4,4],[5,4]]},  // gap mouth
+};
+function drawFace(cx,cy,expr,col,ps){
+  // ps = pixel size (1 at normal zoom, bigger when selected)
+  const f=FACE[expr]||FACE.neutral;
+  // dark face background circle
+  ctx.globalAlpha=0.85;
+  ctx.fillStyle="rgba(0,0,0,0.7)";
+  ctx.beginPath();ctx.arc(cx,cy,ps*3.8,0,7);ctx.fill();
+  // pixel grid origin: top-left of 7x7 box
+  const ox=cx-ps*3.5,oy=cy-ps*3.5;
+  ctx.globalAlpha=1;ctx.fillStyle=col;
+  // eyes
+  for(const [c,r] of f.e)ctx.fillRect(ox+c*ps,oy+r*ps,ps,ps);
+  // mouth
+  for(const [c,r] of f.m)ctx.fillRect(ox+c*ps,oy+r*ps,ps,ps);}
+
+function faceExpr(p){
+  if(p.sleeping)return"sleep";
+  if(p.dazed>ST.tick)return"dazed";
+  if(p.sick)return"sick";
+  if(p.flee>ST.tick)return"scared";
+  if((p.addiction||0)>40)return"hooked";
+  if((p.stress||0)>70||(p.mood||50)<22)return"angry";
+  if((p.stress||0)>45||(p.mood||50)<35)return"sad";
+  if((p.mood||50)>70)return"happy";
+  if((p.mood||50)>55)return"good";
+  return"neutral";}
+
 function drawPawn(p){const X=p.px*T,Y=p.py*T;
   const sel=ST.sel.includes(p),ac=animaColor(p),slp=p.sleeping;
   const pls=0.5+0.5*Math.sin(performance.now()*0.0028+(p.px+p.py)*0.5);
-  const rad=(slp?8:12)+(slp?0:pls*3);
+  const rad=(slp?8:12)+(slp?0:pls*2.5);
   const ga=(slp?ac.glowA*0.5:ac.glowA)*(0.72+0.28*pls);
+  // outer glow
   const rg=ctx.createRadialGradient(X,Y,0,X,Y,rad);
-  rg.addColorStop(0,ac.col);rg.addColorStop(0.5,ac.col);rg.addColorStop(1,"rgba(0,0,0,0)");
+  rg.addColorStop(0,ac.col);rg.addColorStop(0.45,ac.col);rg.addColorStop(1,"rgba(0,0,0,0)");
   ctx.globalAlpha=ga;ctx.fillStyle=rg;ctx.beginPath();ctx.arc(X,Y,rad,0,7);ctx.fill();ctx.globalAlpha=1;
-  if(sel){ctx.strokeStyle="#eafff4";ctx.lineWidth=1.3;ctx.beginPath();ctx.arc(X,Y,9,0,7);ctx.stroke();ctx.lineWidth=1}
-  ctx.fillStyle=ac.col;ctx.beginPath();ctx.arc(X,Y,slp?2.8:3.8,0,7);ctx.fill();
-  ctx.fillStyle=ac.core;ctx.beginPath();ctx.arc(X,Y,slp?1.3:1.9,0,7);ctx.fill();
-  ctx.fillStyle="rgba(255,255,255,.92)";ctx.beginPath();ctx.arc(X-0.6,Y-0.6,slp?0.7:1,0,7);ctx.fill();
-  ctx.strokeStyle=p.accent;ctx.globalAlpha=slp?0.5:0.82;ctx.lineWidth=1.3;ctx.beginPath();ctx.arc(X,Y,slp?5.2:6.8,0,7);ctx.stroke();ctx.lineWidth=1;ctx.globalAlpha=1;
-  if(slp){ctx.fillStyle="#aef3ff";ctx.font="7px monospace";ctx.fillText("z",X+6,Y-7)}
-  if(p.carry){ctx.fillStyle=RESCOL[p.carry.res];ctx.fillRect(X-2,Y-13,4,4)}
-  if(p.drafted){ctx.fillStyle="#ff4757";ctx.beginPath();
-    ctx.moveTo(X,Y-12);ctx.lineTo(X-3,Y-16);ctx.lineTo(X+3,Y-16);ctx.fill()}
+  // selection ring
+  if(sel){ctx.strokeStyle="rgba(234,255,244,.9)";ctx.lineWidth=1.4;ctx.beginPath();ctx.arc(X,Y,10,0,7);ctx.stroke();ctx.lineWidth=1}
+  // solid orb body
+  ctx.fillStyle=ac.col;ctx.beginPath();ctx.arc(X,Y,slp?4:5.5,0,7);ctx.fill();
+  // accent ring
+  ctx.strokeStyle=p.accent;ctx.globalAlpha=slp?0.45:0.78;ctx.lineWidth=1.4;
+  ctx.beginPath();ctx.arc(X,Y,slp?5.5:7.5,0,7);ctx.stroke();ctx.lineWidth=1;ctx.globalAlpha=1;
+  // ── 8-bit face ──
+  const ps=sel?1.2:1;  // slightly bigger pixel when selected
+  const expr=faceExpr(p);
+  const faceCol=expr==="angry"?"#ff6b6b":expr==="sick"?"#a8ff78":expr==="happy"?"#ffd700":
+    expr==="dazed"?"#c98bff":expr==="scared"?"#ffa500":"#ffffff";
+  drawFace(X,Y-0.5,expr,faceCol,ps);
+  // draft indicator (red chevron above)
+  if(p.drafted){ctx.fillStyle="#ff3d5a";ctx.beginPath();
+    ctx.moveTo(X,Y-13);ctx.lineTo(X-3.5,Y-17);ctx.lineTo(X+3.5,Y-17);ctx.fill()}
+  // sleeping zzz
+  if(slp){ctx.fillStyle="#aef3ff";ctx.font="7px monospace";ctx.fillText("z",X+7,Y-8)}
+  // status badges (above pawn, more compact)
   const _bdg=[];
-  if(p.flee>ST.tick)_bdg.push(["!","#ffd84a"]);
-  else if(p.mood<22||p.stress>75)_bdg.push(["!","#ff4757"]);
-  if(p.sick)_bdg.push(["+","#ff4757"]);
-  if(p.dazed>ST.tick)_bdg.push(["?","#b06fff"]);
-  if(p.addiction>40)_bdg.push(["*","#c98bff"]);
-  if(p.homeless)_bdg.push(["⌂","#ff9f2d"]);
-  if(_bdg.length){ctx.font="7px monospace";ctx.textAlign="center";
-    const _x0=X-(_bdg.length-1)*3.5;
-    for(let _i=0;_i<_bdg.length;_i++){ctx.fillStyle=_bdg[_i][1];ctx.fillText(_bdg[_i][0],_x0+_i*7,Y-10)}
+  if(p.homeless)_bdg.push(["H","#ff8c42"]);
+  if(p.addiction>50)_bdg.push(["~","#c98bff"]);
+  if(_bdg.length){ctx.font="6px monospace";ctx.textAlign="center";
+    const _x0=X-(_bdg.length-1)*4;
+    for(let _i=0;_i<_bdg.length;_i++){ctx.fillStyle=_bdg[_i][1];ctx.fillText(_bdg[_i][0],_x0+_i*8,Y-14)}
     ctx.textAlign="left"}
-  {if(!slp){const _t=p.dazed>ST.tick?"dazed":(p.job?p.job.t:"idle");drawTaskGlyph(X,Y+14,_t)}}
-  if(sel||ST.tick-p.hurtT<60){ctx.fillStyle="#101626";ctx.fillRect(X-7,Y+8,14,2);
-    ctx.fillStyle="#39ff88";ctx.fillRect(X-7,Y+8,14*clamp(p.hp/100,0,1),2)}
-  if(sel){ctx.fillStyle=p.accent;ctx.font="7px monospace";ctx.textAlign="center";
-    ctx.fillText(p.name.split(" ")[0],X,Y-18);ctx.textAlign="left"}}
+  // task glyph below
+  if(!slp){const _t=p.dazed>ST.tick?"dazed":(p.job?p.job.t:"idle");drawTaskGlyph(X,Y+15,_t)}
+  // HP bar (always show when selected or recently hurt)
+  if(sel||ST.tick-p.hurtT<60){
+    ctx.fillStyle="rgba(0,0,0,0.6)";ctx.fillRect(X-8,Y+9,16,3);
+    const hpCol=p.hp>60?"#39ff88":p.hp>30?"#ffc947":"#ff3d5a";
+    ctx.fillStyle=hpCol;ctx.fillRect(X-8,Y+9,16*clamp(p.hp/100,0,1),3)}
+  // name when selected
+  if(sel){ctx.fillStyle=p.accent;ctx.font="bold 7px monospace";ctx.textAlign="center";
+    ctx.fillText(p.name.split(" ")[0],X,Y-20);ctx.textAlign="left"}}
 function drawFoe(f){const X=f.px*T,Y=f.py*T;
   ctx.fillStyle="rgba(0,0,0,.4)";ctx.beginPath();ctx.ellipse(X,Y+5,5,2,0,0,7);ctx.fill();
   const big=f.fk==="bruiser",w=big?9:7,h=big?11:9;
@@ -1462,8 +1845,7 @@ function drawFoe(f){const X=f.px*T,Y=f.py*T;
     ctx.fillStyle="#ff4757";ctx.fillRect(X-7,Y+8,14*clamp(f.hp/f.maxHp,0,1),2)}}
 
 function toolColor(){if(!TOOL)return "#00e5ff";
-  return TOOL.k==="salv"?"#ff9f2d":(TOOL.k==="decon"||TOOL.k==="cancel")?"#ff4757":
-    (TOOL.k==="zadd"||TOOL.k==="zdel")?"#39ff88":"#00e5ff"}
+  return TOOL.k==="salv"?"#ff9f2d":(TOOL.k==="decon"||TOOL.k==="cancel")?"#ff4757":"#00e5ff"}
 function drawToolOverlay(){
   if(PT.marq){const m=PT.marq;
     ctx.strokeStyle=m.rect?toolColor():"#00e5ff";ctx.setLineDash([4,3]);
@@ -1481,20 +1863,23 @@ function nightPass(){const la=lightLevel(hourN());if(la<=.02)return;
   const z=cam.z;
   octx.setTransform(1,0,0,1,0,0);octx.clearRect(0,0,oc.width,oc.height);
   octx.globalCompositeOperation="source-over";
-  octx.fillStyle="rgba(7,11,32,"+la.toFixed(2)+")";octx.fillRect(0,0,oc.width,oc.height);
+  // deeper blue-black night sky
+  octx.fillStyle="rgba(1,2,12,"+la.toFixed(2)+")";octx.fillRect(0,0,oc.width,oc.height);
   octx.globalCompositeOperation="destination-out";
-  function light(wx,wy,r,a){
+  function light(wx,wy,r,a,warm){
     const sx=(wx*T-cam.x)*z*dpr,sy=(wy*T-cam.y)*z*dpr,sr=r*T*z*dpr;
     if(sx<-sr||sy<-sr||sx>oc.width+sr||sy>oc.height+sr)return;
     const g=octx.createRadialGradient(sx,sy,0,sx,sy,sr);
-    g.addColorStop(0,"rgba(255,255,255,"+a+")");g.addColorStop(1,"rgba(255,255,255,0)");
+    // warm lamps punch more amber into the darkness
+    const col=warm?"rgba(255,200,80,"+a+")":"rgba(255,255,255,"+a+")";
+    g.addColorStop(0,col);g.addColorStop(1,"rgba(255,255,255,0)");
     octx.fillStyle=g;octx.beginPath();octx.arc(sx,sy,sr,0,7);octx.fill()}
   for(const s of ST.structs.values()){if(s.bp)continue;
-    if(s.type==="lamp"&&s.powered)light(s.x+.5,s.y+.5,5,.95);
-    else if((s.type==="gen"||s.type==="synth"||s.type==="vat")&&s.powered)light(s.x+.5,s.y+.5,2.2,.6);
-    else if(s.type==="beacon"&&s.powered)light(s.x+.5,s.y+.5,5+Math.sin(ST.tick*.1),.8)}
-  for(const p of ST.pawns)light(p.px,p.py,1.7,.55);
-  for(const b of ST.beams)light(b.x0,b.y0,2,.5*b.ttl/b.t0);
+    if(s.type==="lamp")light(s.x+.5,s.y+.5,5.5,.98,true);  // warm amber
+    // screens cast cool blue-white
+    if(s.type==="tv"||s.type==="workstation")light(s.x+.5,s.y+.5,2.5,.45,false);}
+  for(const p of ST.pawns)light(p.px,p.py,1.8,.6,false);
+  for(const b of ST.beams)light(b.x0,b.y0,2.2,.55*b.ttl/b.t0,false);
   ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(oc,0,0)}
 
 function menuBg(){ctx.setTransform(dpr,0,0,dpr,0,0);
@@ -1504,9 +1889,10 @@ function menuBg(){ctx.setTransform(dpr,0,0,dpr,0,0);
   for(let x=-140+o;x<VW+40;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x-100,VH);ctx.stroke()}}
 
 let MOTES=null;
-function initMotes(){const FLO=["#2ee89a","#00e0c8","#a06bff"],a=[];
-  for(let i=0;i<46;i++)a.push({x:Math.random()*MW*T,y:Math.random()*MH*T,c:FLO[i%3],
-    r:0.6+Math.random()*1.1,sp:0.06+Math.random()*0.14,ph:Math.random()*6.28,b:0.4+Math.random()*0.5});
+function initMotes(){const SPORE=["#a259ff","#d946ef","#7c3aed","#e879f9","#ff47c8"],a=[];
+  for(let i=0;i<60;i++)a.push({x:Math.random()*MW*T,y:Math.random()*MH*T,
+    c:SPORE[i%5],r:0.4+Math.random()*.9,sp:0.04+Math.random()*.1,
+    ph:Math.random()*6.28,b:0.25+Math.random()*.45,drift:(Math.random()-.5)*.02});
   return a;}
 function render(){
   ctx.setTransform(dpr,0,0,dpr,0,0);
@@ -1520,23 +1906,24 @@ function render(){
   const x1=clamp(Math.ceil((cam.x+VW/z)/T)+1,0,MW),y1=clamp(Math.ceil((cam.y+VH/z)/T)+1,0,MH);
   // drifting spore-motes
   if(!MOTES)MOTES=initMotes();
-  for(const mo of MOTES){mo.y-=mo.sp;mo.ph+=0.05;if(mo.y<0){mo.y=MH*T;mo.x=Math.random()*MW*T}
+  for(const mo of MOTES){mo.y-=mo.sp;mo.x+=mo.drift||0;mo.ph+=0.04;
+    if(mo.y<0){mo.y=MH*T;mo.x=Math.random()*MW*T}
+    if(mo.x<0)mo.x=MW*T;if(mo.x>MW*T)mo.x=0;
     if(mo.x<x0*T||mo.x>x1*T||mo.y<y0*T||mo.y>y1*T)continue;
     ctx.globalAlpha=(0.3+0.25*Math.sin(mo.ph))*mo.b;ctx.fillStyle=mo.c;
     ctx.beginPath();ctx.arc(mo.x,mo.y,mo.r,0,7);ctx.fill()}
   ctx.globalAlpha=1;
+  // gang territory tint (drawn over terrain, under structures)
+  if(ST.gangs.length){
+    for(const g of ST.gangs){if(!g.turf.size)continue;
+      ctx.globalAlpha=0.11;ctx.fillStyle=g.color;
+      for(const k of g.turf){const c=k.split(",");const gx=+c[0],gy=+c[1];
+        if(gx<x0||gx>=x1||gy<y0||gy>=y1)continue;
+        ctx.fillRect(gx*T,gy*T,T,T);}
+      ctx.globalAlpha=1;}
+    ctx.globalAlpha=1;}
   // stockpile zone
   ctx.fillStyle="rgba(0,229,255,.05)";ctx.strokeStyle="rgba(0,229,255,.18)";
-  for(const k of ST.zone){const c=k.split(",");const x=+c[0],y=+c[1];
-    if(x<x0||x>=x1||y<y0||y>=y1)continue;
-    ctx.fillRect(x*T,y*T,T,T);ctx.strokeRect(x*T+.5,y*T+.5,T-1,T-1)}
-  // items (hidden in fog)
-  for(const it of ST.items){if(it.x<x0||it.x>=x1||it.y<y0||it.y>=y1)continue;
-    const X=it.x*T+T/2,Y=it.y*T+T/2;
-    ctx.fillStyle="#0c1018";ctx.fillRect(X-4,Y-3,8,7);
-    ctx.fillStyle=RESCOL[it.res];ctx.fillRect(X-3,Y-2,6,5);
-    if(z>1.05){ctx.fillStyle="#dfe9f7";ctx.font="6px monospace";ctx.textAlign="center";
-      ctx.fillText(it.qty,X,Y+10);ctx.textAlign="left"}}
   // bio-pod canopies (drawn under the room glints below)
   for(const rm of (ST.rooms||[])){if(rm.x0+rm.w<x0||rm.x0>x1||rm.y0+rm.h<y0||rm.y0>y1)continue;drawPod(rm)}
   // structures (scrap/cache hidden in fog; player-built always visible)
@@ -1563,11 +1950,6 @@ function render(){
   nightPass();
   // screen-space effects
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  if(ST.storm>ST.tick){
-    ctx.fillStyle="rgba(255,45,149,"+(0.04+0.03*Math.sin(ST.tick*.7)).toFixed(3)+")";
-    ctx.fillRect(0,0,VW,VH);
-    if(Math.random()<.08){ctx.fillStyle="rgba(255,45,149,.22)";
-      ctx.fillRect(0,Math.random()*VH,VW,2)}}
   const vg=ctx.createRadialGradient(VW/2,VH/2,Math.min(VW,VH)*.45,VW/2,VH/2,Math.max(VW,VH)*.78);
   vg.addColorStop(0,"rgba(0,0,0,0)");vg.addColorStop(1,"rgba(0,0,0,.45)");
   ctx.fillStyle=vg;ctx.fillRect(0,0,VW,VH)}
@@ -1601,9 +1983,7 @@ function applyCell(x,y){if(!INB(x,y)||!TOOL)return;
     case "cancel":{const s=structAt(x,y);
       if(s){if(s.bp)cancelBp(s);else{s.desig=false;s.decon=false}}break}
     case "decon":{const s=structAt(x,y);
-      if(s&&!s.bp&&(s.type==="ruin"||DEF[s.type].cat==="b"))s.decon=true;break}
-    case "zadd":if(colCost(x,y)>=0)ST.zone.add(K(x,y));break;
-    case "zdel":ST.zone.delete(K(x,y));break}}
+      if(s&&!s.bp&&(s.type==="ruin"||DEF[s.type].cat==="b"))s.decon=true;break}}}
 function applyRect(x0,y0,x1,y1){
   const ax=clamp(Math.min(x0,x1),0,MW-1),bx=clamp(Math.max(x0,x1),0,MW-1);
   const ay=clamp(Math.min(y0,y1),0,MH-1),by=clamp(Math.max(y0,y1),0,MH-1);
@@ -1770,10 +2150,54 @@ cv.addEventListener("touchcancel",e=>{
 /* ============================================================
    UI / DOM
    ============================================================ */
-function log(msg,cls){const d=document.createElement("div");
-  d.className=cls||"info";d.textContent="» "+msg;
-  const L=$("log");L.prepend(d);
-  while(L.children.length>40)L.removeChild(L.lastChild)}
+// ── DIARY SYSTEM ──
+const DIARY_ENTRIES=[];
+let DIARY_FILTER="all";
+const DIARY_CATS={
+  crime:["robbed","stolen","caught","busted","fight","brawl","broke into","assault"],
+  eco:["income","credits","sold","debt","crisis","district finance","stim lab","gear shop","supply","market","gig","laid off","workstation","production"],
+  social:["truce","feud","crew","gang","relationship","arrived","wandered","drift","mugged","sanctioned","broke up"],
+  health:["sick","infected","infection","clinic","treated","shook off","quarantine","died","spread"],
+  district:["enforcer","crackdown","raid","heat","evict","rent","housing","home","district","day "]
+};
+function classifyEntry(msg){
+  const m=msg.toLowerCase();
+  for(const [cat,keys] of Object.entries(DIARY_CATS))
+    for(const k of keys)if(m.includes(k))return cat;
+  return "info";}
+function log(msg,cls){
+  // also write to hidden #log for any code that reads its content
+  const d=document.createElement("div");
+  d.className=cls||"info";d.textContent=msg;
+  const L=$("log");if(L){L.prepend(d);while(L.children.length>80)L.removeChild(L.lastChild)}
+  // diary entry
+  const cat=cls==="bad"||cls==="warn"?classifyEntry(msg):(cls==="good"?"district":classifyEntry(msg));
+  DIARY_ENTRIES.unshift({day:dayN(),h:hourN(),msg,cls:cls||"info",cat});
+  if(DIARY_ENTRIES.length>120)DIARY_ENTRIES.pop();
+  renderDiary();}
+function renderDiary(){
+  const body=$("diary-body");if(!body)return;
+  const f=DIARY_FILTER;
+  const filtered=f==="all"?DIARY_ENTRIES:DIARY_ENTRIES.filter(e=>e.cat===f);
+  let h="",lastDay=-1;
+  for(const e of filtered.slice(0,60)){
+    if(e.day!==lastDay){
+      h+="<div class='dday'>DAY "+e.day+"</div>";lastDay=e.day}
+    const hh=String(Math.floor(e.h)).padStart(2,"0");
+    const tagCls=e.cat==="info"?"info":e.cat;
+    const tagLabel=e.cat==="info"?"—":e.cat.toUpperCase();
+    h+="<div class='dent'><span class='dtime'>"+hh+":00</span>"
+      +"<span class='dtag "+tagCls+"'>"+tagLabel+"</span>"
+      +"<span class='dmsg' style='color:"+(e.cls==="bad"?"var(--rd)":e.cls==="warn"?"var(--yl)":e.cls==="good"?"var(--gn)":"var(--tx)")+"'>"+e.msg+"</span></div>"}
+  body.innerHTML=h||"<div style='color:var(--dim);font-size:10px;padding:8px'>No entries yet.</div>";}
+// wire diary tabs (browser only)
+if(typeof document!=="undefined"&&document.addEventListener){
+  document.addEventListener("DOMContentLoaded",()=>{
+    document.querySelectorAll(".dtab").forEach(t=>{
+      t.addEventListener("click",()=>{
+        DIARY_FILTER=t.dataset.cat;
+        document.querySelectorAll(".dtab").forEach(x=>x.classList.remove("on"));
+        t.classList.add("on");renderDiary();})})});}
 let banT=0;
 function banner(txt,cls){const b=$("banner");
   b.textContent=txt;b.className=cls||"";b.classList.add("show");
@@ -1824,6 +2248,52 @@ function applyRequest(rid,oi){
   if(!r||r.status!=="pending")return;
   const agent=ST.pawns.find(p=>p.id===r.agentId);
   const opt=r.options[oi];
+  if(r.kind==="feud"){
+    const rival=ST.pawns.find(q=>q.id===r.rivalId);
+    if(opt.mediate&&agent&&rival){
+      relAdj(agent.id,rival.id,20);relAdj(rival.id,agent.id,20);
+      agent.stress=Math.max(0,(agent.stress||0)-15);rival.stress=Math.max(0,(rival.stress||0)-15);
+      remember(agent,"the operator mediated between me and "+rival.name+" — things are cooler now");
+      remember(rival,"the operator stepped in about the situation with "+agent.name);
+      log(agent.name+" and "+rival.name+" reached a truce.","good")}
+    else log("Feud between "+(agent?agent.name:"?")+(" and ")+(r.rivalId?"someone":"?")+" left to fester.","warn");
+    r.status="answered";if(agent)log(agent.name+": "+opt.label,"info");renderRequests();return}
+  if(r.kind==="epidemic"){
+    if(opt.quarantine){ST.pawns.filter(q=>q.sick).forEach(q=>{q.quarantine=true;clearJob(q)});
+      log("Sick citizens quarantined to their homes.","good")}
+    else log("Epidemic left to run its course.","warn");
+    r.status="answered";if(agent)log(agent.name+": "+opt.label,"info");renderRequests();return}
+  if(r.kind==="gang"){
+    const crew=(r.crewIds||[]).map(id=>ST.pawns.find(q=>q.id===id)).filter(Boolean);
+    const crewIds=crew.map(c=>c.id);
+    if(opt.sanction){
+      // pick a color for this gang based on first member's accent
+      const col=crew[0]?crew[0].accent:"#ff2d95";
+      // build initial turf around dealer den and where members currently are
+      const initTurf=new Set();
+      for(const m of crew){const mx=m.px|0,my=m.py|0;
+        for(let dy=-5;dy<=5;dy++)for(let dx=-5;dx<=5;dx++){
+          if(dx*dx+dy*dy>30)continue;
+          const X=mx+dx,Y=my+dy;if(INB(X,Y)&&colCost(X,Y)>=0)initTurf.add(K(X,Y))}}
+      // remove any existing gang these members belong to
+      ST.gangs=ST.gangs.filter(g=>!g.crewIds.some(id=>crewIds.includes(id)));
+      const gName=crew[0]?crew[0].name.split('"')[0].trim()+"'s Crew":"The Crew";
+      ST.gangs.push({id:uid(),crewIds,color:col,turf:initTurf,name:gName,gangHeat:0});
+      crew.forEach(c=>{c.rep.gang=clamp((c.rep.gang||0)+15,-100,100);c.stress=Math.max(0,(c.stress||0)-10);
+        remember(c,"the district sanctioned our crew — we've got turf now")});
+      log(gName+" sanctioned — territory established on the block.","good");
+      float(crew[0].px,crew[0].py,"TURF","#ff2d95")}
+    else{
+      ST.gangs=ST.gangs.filter(g=>!g.crewIds.some(id=>crewIds.includes(id)));
+      for(const c of crew)for(const o of crew){if(o!==c)relAdj(c.id,o.id,-15);c.stress=Math.min(100,(c.stress||0)+12)}
+      log("Crew broken up — turf disbanded, bad feelings all around.","warn")}
+    r.status="answered";if(agent)log(agent.name+": "+opt.label,"info");renderRequests();return}
+  if(r.kind==="theft_report"){
+    if(opt.compensate&&(ST.income||0)>=20){ST.income-=20;if(agent)agent.credits=(agent.credits||0)+20;
+      if(agent){addMod(agent,"comp","Overseer made it right",6,TPD*.5);remember(agent,"the overseer actually made it right after I got robbed — respect")}
+      log("Compensated "+(agent?agent.name:"?")+": 20c from district income.","good")}
+    else{if(agent){addMod(agent,"ignored","Overseer ignored my complaint",-8,TPD*.6);remember(agent,"reported the theft and the overseer did nothing — noted")}}
+    r.status="answered";if(agent)log(agent.name+": "+opt.label,"info");renderRequests();return}
   if(r.kind==="robbery"){
     const victim=ST.pawns.find(q=>q.id===r.victimId);
     if(opt.rob&&agent&&victim&&victim.hp>0)startRobbery(agent,victim);
@@ -1885,18 +2355,33 @@ function tryBuildRequest(p){
     if(tgt)return{...base,kind:"robbery",victimId:tgt.id,
       text:p.name+" is desperate and circling "+tgt.name+" — ready to take their creds by force.",
       options:[{label:"Let it happen",rob:true},{label:"Hold "+firstName(p)+" back",rob:false}]};}
-  if(p.needs.food<55&&ST.res.meal===0&&ST.res.raw>0&&Math.random()<0.4)
-    return{...base,kind:"food",text:p.name+" is hungry — eat raw or wait for cooked protein?",
-      options:[{label:"Eat raw",apply:{eat:+0.2,cau:-2}},{label:"Wait",apply:{eat:-0.1,cau:+2}}]};
   const bps=[...new Map([...ST.structs.values()].filter(s=>s.bp).map(s=>[s.type,s])).values()];
   if(bps.length>=2&&p.pers.ind>55&&Math.random()<0.3)
     return{...base,kind:"build",text:p.name+" asks: raise the "+DEF[bps[0].type].name+" or the "+DEF[bps[1].type].name+" first?",
       options:[{label:DEF[bps[0].type].name,apply:{build:+0.2}},{label:DEF[bps[1].type].name,apply:{build:+0.1}}]};
-  const synth=[...ST.structs.values()].find(s=>s.type==="synth"&&!s.bp&&s.powered);
-  const other=ST.pawns.find(q=>q.id!==p.id&&q.job&&q.job.t==="cook");
-  if(synth&&other&&p.job&&p.job.t==="cook"&&Math.random()<0.5)
-    return{...base,kind:"conflict",text:p.name+" and "+other.name+" both want the synth station.",
-      options:[{label:p.name+" first",apply:{cook:+0.15}},{label:other.name+" first",apply:{cook:-0.1}}]};
+  // feud: two pawns have rel < -55 — overseer can mediate or let it simmer
+  if(p.pers.emp>45&&Math.random()<0.2){
+    const rival=ST.pawns.find(q=>q!==p&&relGet(p.id,q.id)<-55);
+    if(rival)return{...base,kind:"feud",rivalId:rival.id,
+      text:p.name+" comes to you about the situation with "+rival.name+" — things are at a breaking point.",
+      options:[{label:"Mediate",mediate:true},{label:"Stay out of it",mediate:false}]}}
+  // epidemic: 2+ sick citizens — overseer can quarantine or ignore
+  const sick=ST.pawns.filter(q=>q.sick);
+  if(sick.length>=2&&p.sick&&Math.random()<0.4)
+    return{...base,kind:"epidemic",
+      text:sick.length+" people on the block are sick, including "+p.name+". It's spreading.",
+      options:[{label:"Quarantine the sick",quarantine:true},{label:"Let it run its course",quarantine:false}]};
+  // gang: 3+ citizens with strong mutual positive relationships — overseer can sanction or break up
+  if(Math.random()<0.12){
+    const crew=[p,...ST.pawns.filter(q=>q!==p&&relGet(p.id,q.id)>45)].slice(0,4);
+    if(crew.length>=3)return{...base,kind:"gang",crewIds:crew.map(c=>c.id),
+      text:crew.map(c=>c.name).join(", ")+" have formed a tight crew. They want recognition.",
+      options:[{label:"Sanction the crew",sanction:true},{label:"Break it up",sanction:false}]}}
+  // theft_report: victim of recent NPC theft surfaces it to overseer
+  if(p.mem&&p.mem.slice(-5).some(m=>m.t.includes("caught")&&m.t.includes("lifting"))&&Math.random()<0.35)
+    return{...base,kind:"theft_report",
+      text:p.name+" reports being robbed by a neighbor. Wants something done about it.",
+      options:[{label:"Compensate (−20c income)",compensate:true},{label:"Ignore it",compensate:false}]};
   return null}
 function showModal(html){$("modal").innerHTML="<div class='mbox'>"+html+"</div>";
   $("modal").classList.add("open")}
@@ -1909,35 +2394,28 @@ $("modal").addEventListener("click",e=>{const id=e.target.id;
 function syncHUD(){
   $("h-pop").textContent=ST.pawns.length;
   $("h-cred").textContent=Math.round(ST.pawns.reduce((s,p)=>s+(p.credits||0),0));
+  const inc=$("h-income");
+  inc.textContent=(ST.crisis?"⚠ ":"")+Math.round(ST.income||0);
+  inc.className="hud-val"+(ST.crisis?" danger":(ST.income||0)<0?" warn":"");
   $("h-home").textContent=ST.pawns.filter(p=>p.homeless).length;
+  // crisis HUD border
+  const hudEl=$("hud");if(hudEl)hudEl.classList.toggle("crisis",!!ST.crisis);
+  // goods pips — color when stocked
+  const g=ST.goods||{};
+  ["data","chem","parts","stims","gear"].forEach(k=>{
+    const el=$("g-"+k);if(!el)return;
+    const v=g[k]||0;
+    el.textContent=v;
+    el.style.color=v>0?"var(--tx)":"var(--dim)"});
   const h=hourN();
   const hh=String(Math.floor(h)).padStart(2,"0");
   const mm=String(Math.floor((h%1)*60)).padStart(2,"0");
-  $("h-day").textContent="DAY "+dayN()+" "+hh+":"+mm;
-  let bea=null;
-  for(const s of ST.structs.values())if(s.type==="beacon"&&!s.bp){bea=s;break}
-  const ex=$("h-extract");
-  if(bea){ex.style.display="";$("h-exv").textContent=Math.floor(bea.charge/TPD*100)+"%"}
-  else ex.style.display="none";
+  $("h-day").textContent="DAY "+dayN()+" · "+hh+":"+mm;
   const ps=selPawns();
   $("t-draft").style.display=ps.length?"":"none";
   const dr=ps.length&&ps.every(p=>p.drafted);
   $("t-draft").textContent=(dr?"UNDRAFT":"DRAFT")+" [R]";
   $("t-draft").classList.toggle("on",!!dr)}
-
-const CK=[
-  {id:"zone",t:"Zone a stockpile (ZONES)"},
-  {id:"salv",t:"Designate scrap salvage (ORDERS)"},
-  {id:"haul",t:"Haul supplies to the stockpile"},
-  {id:"wall",t:"Wall a perimeter with a door"},
-  {id:"pod",t:"Build two sleep pods"},
-  {id:"food",t:"Build Synth Station + Algae Vat"},
-  {id:"pwr",t:"Build a Fusion Cell"},
-  {id:"def",t:"Build an Auto-Turret"},
-  {id:"beacon",t:"Build the Extraction Beacon"}];
-function renderChecklist(){const ul=$("ck");let h="";
-  for(const c of CK)h+="<li class='"+(ST.flags[c.id]?"done":"")+"'>"+c.t+"</li>";
-  if(ul.innerHTML!==h)ul.innerHTML=h}
 
 function barHtml(lab,val,col){
   return "<div class='blab'><span>"+lab+"</span><span>"+Math.round(val)+"</span></div>"+
@@ -1967,8 +2445,9 @@ function renderInspect(){const el=$("inspect");
     h+=barHtml("MOOD",e.mood,e.mood<25?"#ff4757":"#ffd84a");
     h+="<div class='sub'>TASK: "+jobLabel(e)+"</div>";
     h+="<div class='sub'>CREDITS "+(e.credits|0)+(e.homeless?" · <span style='color:var(--rd)'>EVICTED</span>":"")+"</div>";
+    if(e.assigned){const as=ST.structs.get(e.assigned);h+="<div class='sub'>ASSIGNED: "+(as?DEF[as.type].name:"—")+"</div>";}
     if(e.sick)h+="<div class='sub' style='color:var(--rd)'>INFECTED — needs a clinic</div>";
-    h+="<div class='sub'>STRESS "+(e.stress|0)+(e.addiction>0?" · ADDICTION "+(e.addiction|0):"")+"</div>";
+    h+="<div class='sub'>STRESS "+(e.stress|0)+(e.addiction>0?" · ADDICTION "+(e.addiction|0):"")+(e.hasGear?" · <span style='color:#7aa2ff'>GEARED</span>":"")+"</div>";
     if(e.rep&&(e.rep.city||e.rep.gang))h+="<div class='sub'>REP city "+(e.rep.city|0)+" · gang "+(e.rep.gang|0)+"</div>";
     h+="<div class='sub'>SAL "+e.sk.sal+" · BLD "+e.sk.bld+" · COOK "+e.sk.cook+" · SHT "+e.sk.sht+"</div>";
     {const rels=relsOf(e);
@@ -1994,14 +2473,29 @@ function renderInspect(){const el=$("inspect");
     let h="<h3>"+d.name+"</h3>";
     if(e.bp)h+="<div class='sub'>BLUEPRINT — "+Math.floor(e.prog/e.need*100)+"% built</div>";
     else if(d.hp>1)h+=barHtml("INTEGRITY",e.hp/e.maxHp*100,"#39ff88");
-    if(d.pw)h+="<div class='sub'>POWER DRAW "+d.pw+" — "+
-      (e.powered?"<span style='color:var(--gn)'>ONLINE</span>":"<span style='color:var(--rd)'>OFFLINE</span>")+"</div>";
-    if(d.pwGen)h+="<div class='sub'>OUTPUT +"+d.pwGen+
-      (ST.black>ST.tick?" <span style='color:var(--rd)'>(BLACKOUT)</span>":"")+"</div>";
     if(e.type==="pod"&&e.owner){const o=ST.pawns.find(p=>p.id===e.owner);
       h+="<div class='sub'>Assigned: "+(o?o.name:"—")+"</div>"}
-    if(e.type==="vat"&&!e.bp)h+="<div class='sub'>Growth "+Math.floor(e.vt/600*100)+"%</div>";
-    if(e.type==="beacon"&&!e.bp)h+="<div class='sub'>CHARGE "+Math.floor(e.charge/TPD*100)+"%</div>";
+    // economy fixture info
+    if(!e.bp&&(d.prod||d.refine||d.vendor)){
+      const assignees=ST.pawns.filter(p=>p.assigned===K(e.x,e.y));
+      h+="<div class='sub'>WORKER: "+(assignees.length?assignees.map(p=>p.name).join(", "):"unassigned")+"</div>";
+      if(d.prod)h+="<div class='sub'>PRODUCES: "+d.prod.toUpperCase()+" (stock: "+(ST.goods[d.prod]||0)+")</div>";
+      if(d.refine)h+="<div class='sub'>REFINES: "+d.refine.in.map(k=>k.toUpperCase()).join("+")+
+        " → "+d.refine.out.toUpperCase()+" (stock: "+(ST.goods[d.refine.out]||0)+")</div>";
+      if(d.vendor){const gs=d.sells?[d.sells]:["gear","data"];
+        h+="<div class='sub'>SELLS: "+gs.map(g=>g.toUpperCase()+" ("+(ST.goods[g]||0)+")").join(" · ")+"</div>";}
+      if(d.cost&&d.cost.income)h+="<div class='sub' style='color:var(--or)'>COST: "+d.cost.income+"c district</div>";
+      // assign selected pawn button
+      const selPawn=ST.sel.length===1&&ST.sel[0].kind==="pawn"?null:
+        ST.pawns.find(p=>ST.sel.includes(p));
+      const anySelPawn=selPawns().length>0;
+      if(anySelPawn)h+="<button class='tb' id='i-assign'>ASSIGN</button>";
+      if(anySelPawn)h+="<button class='tb' id='i-hire'>HIRE (+12c/shift)</button>";
+      if(assignees.length)h+="<button class='tb' id='i-unassign'>UNASSIGN ALL</button>";
+      const contracted=ST.pawns.filter(p=>p.contract&&p.contract.fixtureKey===K(e.x,e.y));
+      if(contracted.length)h+="<div class='sub'>Contracted: "+contracted.map(p=>p.name).join(", ")+"</div>";
+      if(contracted.length)h+="<button class='tb' id='i-fire'>FIRE CONTRACTED</button>";
+    }
     if(d.desc)h+="<div class='sub'>"+d.desc+"</div>";
     if(e.bp)h+="<button class='tb' id='i-cancel'>CANCEL</button>";
     else if(e.type==="scrap"||e.type==="cache")
@@ -2016,6 +2510,28 @@ $("inspect").addEventListener("click",e=>{
   const sel=ST.sel[0];SFX.ui();
   if(id==="i-draft")toggleDraft();
   else if(id==="i-talk"&&sel&&sel.kind==="pawn")openChat(sel);
+  else if(id==="i-hire"){
+    const tgt=ST.sel.find(e=>e.kind!=="pawn");
+    if(tgt){const fk=K(tgt.x,tgt.y);
+      selPawns().forEach(p=>{p.assigned=fk;p.contract={fixtureKey:fk,wage:12};clearJob(p);
+        remember(p,"got a contract at "+DEF[tgt.type].name+" — 12c a shift")});
+      log(selPawns().length+" citizen(s) hired at "+DEF[tgt.type].name+".","good");
+      renderInspect()}}
+  else if(id==="i-fire"){
+    const tgt=ST.sel.find(e=>e.kind!=="pawn");
+    if(tgt){const fk=K(tgt.x,tgt.y);
+      ST.pawns.filter(p=>p.contract&&p.contract.fixtureKey===fk).forEach(p=>{
+        p.contract=null;p.assigned=null;
+        remember(p,"contract at "+DEF[tgt.type].name+" got terminated");
+        p.stress=Math.min(100,(p.stress||0)+10)});
+      log("Contracts terminated at "+DEF[tgt.type].name+".","warn");
+      renderInspect()}}
+  else if(id==="i-assign"){
+    const tgt=ST.sel.find(e=>e.kind!=="pawn");
+    if(tgt){selPawns().forEach(p=>{p.assigned=K(tgt.x,tgt.y);clearJob(p)});renderInspect();syncHUD()}}
+  else if(id==="i-unassign"){
+    const tgt=ST.sel.find(e=>e.kind!=="pawn");
+    if(tgt){ST.pawns.filter(p=>p.assigned===K(tgt.x,tgt.y)).forEach(p=>{p.assigned=null});renderInspect()}}
   else if(id==="i-cancel"&&sel&&sel.bp){cancelBp(sel);ST.sel=[];renderInspect()}
   else if(id==="i-salv"&&sel){sel.desig=!sel.desig;
     if(sel.desig)ST.flags.salv=true;renderInspect()}
@@ -2047,11 +2563,25 @@ function feltState(p){const s=[],n=p.needs;
   return s.length?s.join(", "):"holding steady for now";}
 function wispSystemPrompt(p){
   const mem=(p.mem||[]).slice(-12).map(m=>"- "+m.t).join("\n")||"- nothing worth dwelling on yet";
+  const districtState=()=>{
+    const g=ST.goods;const parts=[];
+    if(ST.crisis)parts.push("district is in financial crisis — rent is brutal right now");
+    if(g.stims>0)parts.push("stims are moving on the block");
+    if(g.gear>0)parts.push("there's gear available");
+    if((g.chem||0)+(g.parts||0)>10)parts.push("the workshops are stocked but nothing's being refined yet");
+    const sick=ST.pawns.filter(q=>q.sick).length;
+    if(sick>1)parts.push(sick+" people on the block are sick");
+    const rivals=ST.pawns.filter(q=>q!==p&&relGet(p.id,q.id)<-40);
+    if(rivals.length)parts.push("you've got beef with "+rivals.map(q=>q.name).join(" and "));
+    const allies=ST.pawns.filter(q=>q!==p&&relGet(p.id,q.id)>50);
+    if(allies.length)parts.push("you're tight with "+allies.map(q=>q.name).join(" and "));
+    return parts.length?"On the block right now: "+parts.join("; ")+".":""};
+  const gearLine=p.hasGear?"You're kitted out right now — gear gives you an edge.":"You're running unprotected.";
   return "You ARE "+p.name+", a person scraping out a life on a dead block at the ragged edge of a neon megacity in 2087. "+
     "Scrap is currency, protein is life, gangs hunt after dark, and corp enforcers shake people down.\n\n"+
     "Your character: you come across as "+axTraits(p)+". You've got a streak of "+(p.tr.map(t=>t.n).join(" and ")||"hard sprawl grit")+" in you. "+
-    "Right now you are "+feltState(p)+". It is day "+dayN()+", around "+(hourN()|0)+":00.\n\n"+
-    "On your mind lately:\n"+mem+"\n\n"+
+    "Right now you are "+feltState(p)+". It is day "+dayN()+", around "+(hourN()|0)+":00. "+gearLine+"\n\n"+
+    districtState()+"\n\nOn your mind lately:\n"+mem+"\n\n"+
     "You're hearing a voice — call it the operator, or your own gut; someone watching over this block who can talk to you. "+
     "Answer the way this person actually would: street-worn, clipped, in the moment, sprawl slang where it fits. "+
     "Stay fully in character — you are NOT an AI, never break character, never write stage directions or narration. "+
@@ -2119,9 +2649,6 @@ function openSub(cat){if(subCat===cat){closeSub();return}
   else if(cat==="o"){
     mk("DECONSTRUCT",{k:"decon"},"Drag over structures to tear them down");
     mk("CANCEL",{k:"cancel"},"Drag to cancel blueprints")}
-  else{
-    mk("STOCKPILE +",{k:"zadd"},"Drag to zone a stockpile — hauled goods become usable here");
-    mk("STOCKPILE −",{k:"zdel"},"Drag to remove stockpile cells")}
   sm.classList.add("open");refreshCats();refreshToolBtns()}
 $("t-build").onclick=()=>{SFX.ui();openSub("b")};
 $("t-orders").onclick=()=>{SFX.ui();openSub("o")};
@@ -2129,6 +2656,53 @@ $("t-draft").onclick=toggleDraft;
 $("b-all").onclick=()=>{SFX.ui();ST.sel=ST.pawns.slice();renderInspect();syncHUD()};
 $("b-save").onclick=()=>{SFX.ui();saveGame()};
 $("b-load").onclick=()=>{SFX.ui();loadGame()};
+$("b-stats").onclick=()=>{SFX.ui();const p=$("stats-panel");
+  if(p.style.display==="block"){p.style.display="none";return}
+  renderStats();p.style.display="block"};
+function renderStats(){
+  const p=$("stats-panel");if(!p)return;
+  const pawns=ST.pawns;
+  let h="<b style='color:var(--cy);letter-spacing:.14em'>DISTRICT STATUS</b>";
+  // economy
+  h+="<h4>Economy</h4>";
+  const g=ST.goods||{};
+  h+=["data","chem","parts","stims","gear"].map(k=>
+    "<div class='srow'><span>"+k.toUpperCase()+"</span><b class='"+(g[k]>0?"sgood":"")+"'>"+(g[k]||0)+"</b></div>").join("");
+  h+="<div class='srow'><span>Income</span><b class='"+(ST.income<0?"sbad":ST.crisis?"sbad":"sgood")+"'>"+(ST.crisis?"⚠ ":"")+Math.round(ST.income||0)+"c</b></div>";
+  if(ST.debtDays)h+="<div class='srow'><span>Debt days</span><b class='sbad'>"+ST.debtDays+"/5</b></div>";
+  // citizens
+  h+="<h4>Citizens</h4>";
+  const sorted=[...pawns].sort((a,b)=>(b.credits||0)-(a.credits||0));
+  for(const c of sorted){
+    const flags=[];
+    if(c.sick)flags.push("<span class='sbad'>SICK</span>");
+    if(c.homeless)flags.push("<span class='sbad'>EVICTED</span>");
+    if(c.hasGear)flags.push("<span style='color:#7aa2ff'>GEARED</span>");
+    if((c.addiction||0)>30)flags.push("<span style='color:#c98bff'>HOOKED</span>");
+    if(c.assigned){const s=ST.structs.get(c.assigned);if(s)flags.push("<span style='color:#ffd84a'>→"+DEF[s.type].name+"</span>")}
+    h+="<div class='srow'><b style='color:"+c.accent+"'>"+c.name+"</b><span>"+(c.credits|0)+"c "+(flags.join(" "))+"</span></div>"}
+  // relationships — show worst feuds and strongest alliances
+  const rels=[];for(const k in ST.rel){const v=ST.rel[k];if(Math.abs(v)<30)continue;
+    const ids=k.split("|");const a=pawns.find(x=>x.id===ids[0]),b=pawns.find(x=>x.id===ids[1]);
+    if(a&&b)rels.push({a,b,v})}
+  rels.sort((x,y)=>x.v-y.v);
+  if(rels.length){h+="<h4>Relationships</h4>";
+    for(const r of rels.slice(0,6)){const col=r.v>0?"#39ff88":"#ff4757";
+      const lbl=r.v>=50?"allies":r.v>=20?"warm":r.v<=-60?"enemies":"rivals";
+      h+="<div class='srow'><span style='color:"+col+"'>"+r.a.name+" & "+r.b.name+"</span><b style='color:"+col+"'>"+lbl+" "+(r.v>0?"+":"")+Math.round(r.v)+"</b></div>"}}
+  // sickness
+  const sick=pawns.filter(c=>c.sick);
+  if(sick.length){h+="<h4>Health Alert</h4>";
+    sick.forEach(c=>{const src=c.sickSource?pawns.find(x=>x.id===c.sickSource):null;
+      h+="<div class='srow'><span class='sbad'>"+c.name+"</span><span>"+(src?"from "+src.name:"origin unknown")+"</span></div>"})}
+  // gangs
+  if(ST.gangs.length){h+="<h4>Gangs</h4>";
+    for(const g of ST.gangs){const members=g.crewIds.map(id=>pawns.find(p=>p.id===id)).filter(Boolean);
+      const heatCol=(g.gangHeat||0)>60?"var(--rd)":(g.gangHeat||0)>30?"var(--or)":"var(--gn)";
+      h+="<div class='srow'><b style='color:"+g.color+"'>"+g.name+"</b><span>"+members.map(m=>m.name).join(", ")+"</span></div>";
+      h+="<div class='srow'><span>Turf tiles</span><b>"+g.turf.size+"</b></div>";
+      h+="<div class='srow'><span>Gang heat</span><b style='color:"+heatCol+"'>"+(g.gangHeat|0)+"</b></div>";}}
+  p.innerHTML=h}
 $("b-mute").onclick=function(){this.classList.toggle("on",SFX.toggleMute())};
 $("b-help").onclick=()=>{SFX.ui();showHelp()};
 $("cancelTool").onclick=()=>{SFX.ui();setTool(null)};
@@ -2144,27 +2718,30 @@ $("sp-2").onclick=()=>{SFX.ui();setSpeed(2)};
 $("sp-3").onclick=()=>{SFX.ui();setSpeed(3)};
 
 function showHelp(){if(ST.phase==="run"){ST.paused=true;refreshSpd()}showModal(
-  "<h1 style='font-size:20px'>FIELD MANUAL</h1><div class='mh-sub'>NEON SPRAWL</div>"+
-  "<p>Keep the crew fed, rested, and sane. Runners work jobs automatically by priority: cook → build → salvage → haul. Salvage only counts once it is hauled into a stockpile zone.</p>"+
+  "<h1 style='font-size:20px;letter-spacing:.2em'>OPERATOR MANUAL</h1><div class='mh-sub'>NEON SPRAWL · CITY SIM</div>"+
+  "<p style='color:var(--dim)'>You are the overseer of a dead block in 2087 — part city manager, part warlord, part social worker. Citizens think and act on their own. Your job is to shape the conditions they live in.</p>"+
   "<table>"+
-  "<tr><td>Select</td><td>Click/tap a runner. Drag on open ground to box-select. SQUAD selects everyone.</td></tr>"+
-  "<tr><td>Draft</td><td>R or the DRAFT button. Drafted runners stop working, hold position, and shoot.</td></tr>"+
-  "<tr><td>Command</td><td>Right-click (desktop) or tap (touch) ground to move drafted runners; an enemy to focus-fire.</td></tr>"+
-  "<tr><td>Camera</td><td>WASD / arrows / right-drag / one-finger drag. Wheel or pinch to zoom.</td></tr>"+
-  "<tr><td>Build</td><td>BUILD menu, click to place. Walls paint with click-drag. Blueprints consume resources on placement.</td></tr>"+
-  "<tr><td>Power</td><td>Fusion Cells generate 12. If demand exceeds supply, ALL powered devices go offline.</td></tr>"+
-  "<tr><td>Food</td><td>Algae Vat grows protein; Synth Station turns 2 protein into 1 meal. Raw protein is edible but tanks mood.</td></tr>"+
-  "<tr><td>Mood</td><td>Below ~22, runners can snap and wander dazed. Pods, hot meals, and neon lamps help.</td></tr>"+
-  "<tr><td>Speed</td><td>Space pauses. 1/2/3 set game speed.</td></tr>"+
-  "<tr><td>Win</td><td>Build the Extraction Beacon and keep it powered for one full day.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Citizens</td><td>Each has needs: food, rest, hygiene, fun, and social. When needs go unmet, stress rises. High stress → snapping, fights, crime. Faces show their emotional state — watch them.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Economy</td><td>Production fixtures (Workstation, Chemlab, Workshop) generate goods. Vendors sell goods for district income. District income pays rent (34c/day per citizen). Income below zero for 3 days triggers Crisis — 5 days means collapse.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Goods chain</td><td>DATA (workstation) + CHEM (chemlab) + PARTS (workshop) → STIMS (stimlab) or GEAR (gearshop). Stims reduce stress. Gear cuts damage taken and boosts crime success.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Population</td><td>New citizens arrive only if you have open housing. Build a Housing Unit (150c) to add one home slot. Citizens pay 34c rent per day — evicted citizens sleep rough and get stressed.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Petitions</td><td>Citizens surface flashpoints — feuds, epidemics, gang formations, thefts — in the REQUESTS panel. Your choice shapes the outcome. Daily reports summarize each day.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Gangs</td><td>When a crew of 3+ citizens forms, you can sanction them — they claim territory (colored tint on the map). Gangs reduce crime heat on their turf but create tension with other gangs. Overlapping turf escalates to gang war.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Hire / Fire</td><td>Select a citizen + a production fixture → HIRE to give them a contract (priority work, 12c/shift wage). FIRE removes the contract. Assigned workers show up first in the fixture inspect panel.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Heat</td><td>Crime, illegal goods, and gang activity raise district Heat. Above 60, corp enforcers crackdown on your highest-rep criminals. Heat decays naturally over time.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Camera</td><td>WASD / arrows / drag to pan. Scroll or pinch to zoom. Click a citizen to inspect. SQUAD selects everyone.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Build</td><td>BUILD menu → click to place. Blueprints need a citizen to construct them. Walls drag-paint. Some fixtures cost district income.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Speed</td><td>⏸ pauses. 1×/2×/3× sets speed. DISTRICT panel shows live status on all citizens, relationships, health, and gangs.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Diary</td><td>Top-left panel. Tab to filter: ALL / CRIME / ECO / SOCIAL / HEALTH / DISTRICT. Day-grouped, timestamped entries auto-categorize as events happen.</td></tr>"+
   "</table><button class='tb big' id='m-close'>CLOSE</button>")}
 function showStart(){showModal(
   "<h1>NEON SPRAWL</h1><div class='mh-sub'>COLONY PROTOCOL</div>"+
-  "<p>2087. Your crew of three runners just claimed a dead block on the edge of the sprawl. Scrap is currency, protein is life, and the gangs come hunting after dark.</p>"+
-  "<p>Salvage. Build. Defend. Then raise an <span style='color:var(--cy)'>Extraction Beacon</span> and keep it powered for one full day to buy your way out.</p>"+
-  (hasSave()?"<button class='tb big' id='m-continue'>CONTINUE RUN</button>":"")+
-  "<button class='tb big' id='m-start'>INITIALIZE COLONY</button>"+
-  "<p style='color:var(--dim);font-size:10px'>Hit ? in the top bar for the field manual · v0.1</p>")}
+  "<p>2087. Two citizens — Vex and Static — just squatted a dead block on the edge of the megacity. The concrete is cracked, mushrooms glow through the fissures, and the corp enforcers haven't noticed you yet.</p>"+
+  "<p>Build a district. Grow a community. Keep the lights on and the rent paid. Watch your citizens live, fight, steal, fall sick, and form bonds — or not.</p>"+
+  "<p>The sprawl doesn't care about you. Make it care.</p>"+
+  (hasSave()?"<button class='tb big' id='m-continue'>CONTINUE</button>":"")+
+  "<button class='tb big' id='m-start'>NEW DISTRICT</button>"+
+  "<p style='color:var(--dim);font-size:10px;margin-top:14px'>Press ? for the operator manual · v0.2</p>")}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY="neonSprawlSave_v1";
@@ -2172,28 +2749,28 @@ function hasSave(){try{return !!localStorage.getItem(SAVE_KEY)}catch(e){return f
 function snapPawn(p){return Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,unre:undefined,pi:0,pTx:-1,pTy:-1,claim:0})}
 function snapFoe(f){return Object.assign({},f,{path:null,tgt:null,pi:0,pTx:-1,pTy:-1})}
 function snapStruct(s){return Object.assign({},s,{res:0})}
-function snapItem(it){return Object.assign({},it,{resv:0})}
 function serializeState(){
-  return{v:1,tick:ST.tick,res:ST.res,grp:ST.grp,rel:ST.rel,lastRaid:ST.lastRaid,nextEv:ST.nextEv,
-    storm:ST.storm,black:ST.black,stats:ST.stats,flags:ST.flags,
+  return{v:2,tick:ST.tick,grp:ST.grp,rel:ST.rel,nextEv:ST.nextEv,lastCrackdown:ST.lastCrackdown,
+    goods:ST.goods,income:ST.income,debtDays:ST.debtDays||0,crisis:ST.crisis||false,
+    gangs:(ST.gangs||[]).map(g=>({...g,turf:[...g.turf]})),
+    stats:ST.stats,flags:ST.flags,
     ter:Array.from(ST.ter),
     structs:[...ST.structs.values()].map(snapStruct),
-    items:ST.items.map(snapItem),
     pawns:ST.pawns.map(snapPawn),
     foes:ST.foes.map(snapFoe),
-    zone:[...ST.zone],rooms:ST.rooms}}
+    rooms:ST.rooms}}
 function applyState(d){
-  ST.tick=d.tick||0;ST.res=d.res||{scrap:0,comp:0,raw:0,meal:0};
-  ST.grp=d.grp||{};ST.rel=d.rel||{};ST.lastRaid=d.lastRaid||0;ST.nextEv=(d.nextEv==null?1e9:d.nextEv);
-  ST.storm=d.storm||0;ST.black=d.black||0;
-  ST.stats=d.stats||{kills:0,built:0,deaths:0,salv:0,hauled:0,raids:0};ST.flags=d.flags||{};
+  ST.tick=d.tick||0;
+  ST.grp=d.grp||{};ST.rel=d.rel||{};ST.nextEv=(d.nextEv==null?1e9:d.nextEv);ST.lastCrackdown=d.lastCrackdown||0;
+  ST.goods=d.goods||{data:0,chem:0,parts:0,stims:0,gear:0};ST.income=d.income||0;
+  ST.debtDays=d.debtDays||0;ST.crisis=d.crisis||false;
+  ST.gangs=(d.gangs||[]).map(g=>({...g,turf:new Set(g.turf||[])}));
+  ST.stats=d.stats||{kills:0,built:0,deaths:0,raids:0};ST.flags=d.flags||{};
   ST.ter=new Uint8Array(d.ter||[]);
   ST.structs=new Map((d.structs||[]).map(s=>[K(s.x,s.y),s]));
-  ST.items=d.items||[];
   ST.pawns=(d.pawns||[]).map(p=>Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,unre:new Map()}));
   ST.foes=(d.foes||[]).map(f=>Object.assign({},f,{path:null,tgt:null}));
-  ST.zone=new Set(d.zone||[]);ST.rooms=d.rooms||[];
-  ST.beams=[];ST.floats=[];ST.sel=[];
+  ST.beams=[];ST.floats=[];ST.sel=[];ST.rooms=d.rooms||[];
   ST.phase="run";ST.paused=false;ST.speed=1;
   powerRecalc()}
 function saveGame(){
@@ -2216,10 +2793,9 @@ function loadGame(){
    ============================================================ */
 function newGame(){
   ST.phase="run";ST.tick=0;ST.speed=1;ST.paused=false;
-  ST.res={scrap:0,comp:0,raw:0,meal:0};
   ST.pawns.length=0;ST.foes.length=0;ST.beams.length=0;ST.floats.length=0;
-  ST.grp={};ST.sel=[];ST.storm=0;ST.black=0;
-  ST.stats={kills:0,built:0,deaths:0,salv:0,hauled:0,raids:0};
+  ST.grp={};ST.sel=[];ST.goods={data:0,chem:0,parts:0,stims:0,gear:0};ST.income=200;ST.debtDays=0;ST.crisis=false;ST.gangs=[];
+  ST.stats={kills:0,built:0,deaths:0,raids:0};
   ST.flags={};setTool(null);closeSub();
   genMap();drawTerrain();
   const cx=MW/2|0,cy=MH/2|0;
@@ -2241,8 +2817,8 @@ function newGame(){
     const bedS=structAt(home.bed.x,home.bed.y);if(bedS&&bedS.type==="pod")bedS.owner=p.id}}
   cam.z=clamp(Math.min(VW/(MW*T),VH/(MH*T))*1.9,1,2.2);
   cam.x=cx*T-VW/cam.z/2;cam.y=cy*T-VH/cam.z/2;clampCam();
-  ST.lastRaid=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.rel={};relAdj(vex.id,sta.id,25);ST.heat=0;ST.heatWarn=false;
-  $("log").innerHTML="";renderRoster();
+  ST.lastCrackdown=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.rel={};relAdj(vex.id,sta.id,25);ST.heat=0;ST.heatWarn=false;
+  $("log").innerHTML="";DIARY_ENTRIES.length=0;renderDiary();renderRoster();
   log("The sprawl wakes — citizens drifting to homes, jobs, and the night's vices.","info");
   log("You watch over the district. Build it out, steer who you can, and keep the block from tearing itself apart.","info");
   powerRecalc();updateFlags();syncHUD();renderInspect();refreshSpd();hideModal();
@@ -2264,7 +2840,7 @@ function loop(ts){requestAnimationFrame(loop);
   render()}
 
 window.addEventListener("resize",resize);
-resize();renderChecklist();showStart();
+resize();showStart();
 requestAnimationFrame(loop);
 </script>
 </body>
