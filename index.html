@@ -243,12 +243,18 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 /* ── MISC ── */
 #checklist{display:none}
 @media (max-width:700px){
-  #hud{font-size:10px}
-  #diary{width:220px;font-size:10px}
-  #inspect{width:240px;bottom:96px}
-  #toolbar{bottom:6px}
-  #submenu{bottom:50px}
-  .mbox h1{font-size:22px}
+  #hud{font-size:10px;gap:4px}
+  .hud-seg{gap:4px;padding:0 7px}
+  .hud-goods{gap:6px;padding:0 6px}
+  #diary{width:200px;font-size:10px;max-height:28vh}
+  .dtab{padding:4px 6px;font-size:8px}
+  #inspect{width:220px;bottom:96px;font-size:10px}
+  #requests{width:220px;top:calc(var(--hud-h) + 28vh + 14px)}
+  #toolbar{bottom:6px;padding:4px}
+  .tb{padding:5px 7px;font-size:10px}
+  #submenu{bottom:46px}
+  .mbox h1{font-size:20px}
+  #stats-panel{width:220px;font-size:10px}
 }
 </style>
 </head>
@@ -425,18 +431,24 @@ const FOED={
   bruiser:{name:"Chrome Bruiser",hp:150, dmg:[13,19], rng:1.5, cd:12, spd:0.22, col:"#ff7a1a"}
 };
 const TRAITS=[
-  {id:"chromed", n:"Chromed Arm", d:"+15% work speed", work:1.15},
-  {id:"jittery", n:"Jittery",     d:"+10% move, −8% aim", move:1.10, acc:-0.08},
-  {id:"deadeye", n:"Deadeye",     d:"+10% aim", acc:0.10},
-  {id:"stoic",   n:"Stoic",       d:"Breaks only at very low mood", brk:-8},
-  {id:"nightowl",n:"Night Owl",   d:"−15% rest drain", rest:0.85},
-  {id:"glutton", n:"Glutton",     d:"+20% hunger drain", hung:1.2},
-  {id:"lazy",    n:"Burned Out",  d:"−12% work speed", work:0.88},
-  {id:"wired",   n:"Wired",       d:"−25% rest drain, −4 mood", rest:0.75, mood:-4},
-  {id:"sunny",   n:"Optimist",    d:"+6 mood", mood:6}
+  {id:"chromed",  n:"Chromed Arm",  d:"+15% work speed",           work:1.15},
+  {id:"jittery",  n:"Jittery",      d:"+10% move, −8% aim",        move:1.10, acc:-0.08},
+  {id:"deadeye",  n:"Deadeye",      d:"+10% aim",                  acc:0.10},
+  {id:"stoic",    n:"Stoic",        d:"Breaks only at very low mood",brk:-8},
+  {id:"nightowl", n:"Night Owl",    d:"−15% rest drain",           rest:0.85},
+  {id:"glutton",  n:"Glutton",      d:"+20% hunger drain",         hung:1.2},
+  {id:"lazy",     n:"Burned Out",   d:"−12% work speed",           work:0.88},
+  {id:"wired",    n:"Wired",        d:"−25% rest drain, −4 mood",  rest:0.75, mood:-4},
+  {id:"sunny",    n:"Optimist",     d:"+6 mood",                   mood:6},
+  {id:"streetwise",n:"Streetwise",  d:"−30% crime detection risk", street:0.70},
+  {id:"paranoid", n:"Paranoid",     d:"+20% stress from strangers",para:1.20},
+  {id:"empathic", n:"Empathic",     d:"Ally aid range +3 tiles",   emprange:3},
+  {id:"scarred",  n:"Battle-Scarred",d:"−15% damage taken",        dmgred:0.85},
+  {id:"hacker",   n:"Hacker",       d:"+20% data production",      dataprod:1.20},
+  {id:"muscle",   n:"Muscle",       d:"+20% fight damage dealt",   fightdmg:1.20},
 ];
-const NF=["Vex","Nyx","Rezz","Mara","Kade","Echo","Juno","Sable","Riko","Dash","Onna","Pike","Zee","Iris","Cole","Yuri","Tash","Bram"];
-const NH=["Static","Socket","Drift","Ghost","Patch","Vandal","Cinder","Hex","Mute","Bit","Razor","Loop","Null","Flux","Wirez","Crash"];
+const NF=["Vex","Nyx","Rezz","Mara","Kade","Echo","Juno","Sable","Riko","Dash","Onna","Pike","Zee","Iris","Cole","Yuri","Tash","Bram","Lena","Cass","Dex","Mira","Frost","Sora","Tam","Blix","Nadia","Cruz","Wren","Pax","Lyra","Orin","Faye","Zel","Kira","Rue","Axel","Nova","Cleo","Fen"];
+const NH=["Static","Socket","Drift","Ghost","Patch","Vandal","Cinder","Hex","Mute","Bit","Razor","Loop","Null","Flux","Wirez","Crash","Splice","Burn","Codec","Glitch","Sparks","Void","Cache","Proxy","Jolt","Neon","Slag","Rift","Byte","Haze","Smear","Venom","Kink","Clank","Arc","Dusk","Shard","Weld","Punk","Fuse"];
 const ACC=["#00e5ff","#39ff88","#ffd84a","#ff9ff3","#7aa2ff","#ff9f2d"];
 
 /* ---------- game state ---------- */
@@ -858,7 +870,7 @@ function fireAt(p,f){p.cd=p.weapon.cd;
   const d=DIST(p.px,p.py,f.px,f.py);
   beam(p.px,p.py,f.px,f.py,"#7df9ff");SFX.shoot();gainXp(p,"sht");
   if(Math.random()<accOf(p,d))damageFoe(f,RI(p.weapon.dmg[0],p.weapon.dmg[1]))}
-function damagePawn(p,d){const dmg=Math.round(d*(p.hasGear?0.75:1));p.hp-=dmg;p.hurtT=ST.tick;SFX.hit();applyDrift(p,{cau:3});
+function damagePawn(p,d){const dmg=Math.round(d*(p.hasGear?0.75:1)*trMul(p,"dmgred"));p.hp-=dmg;p.hurtT=ST.tick;SFX.hit();applyDrift(p,{cau:3});
   const watcher=ST.pawns.find(q=>q.id!==p.id&&DIST(q.px,q.py,p.px,p.py)<8);
   if(watcher)relAdj(watcher.id,p.id,-2);
   addMod(p,"pain","In pain",-8,TPD*.4);
@@ -962,7 +974,7 @@ function pawnTick(p){
     const inOwnTurf=pg&&pg.turf.has(K(px,py));
     const inRivalTurf=!inOwnTurf&&ST.gangs.some(g=>!g.crewIds.includes(p.id)&&g.turf.has(K(px,py)));
     if(inOwnTurf)sp-=1.5;  // gang member relaxed on home turf
-    if(inRivalTurf)sp+=2;   // outsider tense in gang turf
+    if(inRivalTurf)sp+=2*trMul(p,"para");   // outsider tense in gang turf (paranoid = worse)
     p.stress=clamp((p.stress||0)+sp,0,100);
     if(p.addiction>0)p.addiction=Math.max(0,p.addiction-0.5)}
   if((ST.tick+p.id)%40===0)moodCalc(p);
@@ -984,7 +996,7 @@ function pawnTick(p){
       const dist=DIST(p.px,p.py,q.px,q.py);
       // enemy escalation: two enemies close + stress → fight
       if(rel<-65&&dist<4&&(p.stress>40||q.stress>40)&&Math.random()<0.12){
-        const dmg=RI(4,10);
+        const dmg=Math.round(RI(4,10)*trMul(p,"fightdmg"));
         damagePawn(p,dmg);damagePawn(q,dmg);
         relAdj(p.id,q.id,-25);ST.heat=Math.min(100,(ST.heat||0)+6);
         addMod(p,"fight","Got in a fight",-8,TPD*.3);addMod(q,"fight","Got in a fight",-8,TPD*.3);
@@ -996,7 +1008,8 @@ function pawnTick(p){
         float(p.px,p.py,"FIGHT!","#ff4757");log(p.name+" and "+q.name+" came to blows.","warn");
         clearJob(p);clearJob(q);break}
       // ally mutual aid: ally is sick/starving nearby → offer 5c if can afford
-      if(rel>50&&dist<8&&(q.sick||(q.needs.food||0)<25)&&(p.credits||0)>25&&Math.random()<0.18){
+      const aidRange=8+(trAdd(p,"emprange")||0);
+      if(rel>50&&dist<aidRange&&(q.sick||(q.needs.food||0)<25)&&(p.credits||0)>25&&Math.random()<0.18){
         const gift=5;p.credits-=gift;q.credits=(q.credits||0)+gift;
         relAdj(p.id,q.id,4);
         remember(p,"slipped "+q.name+" some credits when they were struggling");
@@ -1093,12 +1106,13 @@ function pawnTick(p){
       if(r==="arr"){j.prog++;if(j.prog>=40){p.needs.socN=100;relAdj(p.id,o.id,2);p.job=null}}
       break}
     case "work":{const s=j.s;
-      if(structAt(s.x,s.y)!==s||s.bp){p.job=null;break}
+      if(structAt(s.x,s.y)!==s||s.bp||(s.surgeT&&ST.tick<s.surgeT)){p.job=null;break}
       const r=gotoCell(p,s.x,s.y,1);
       if(r==="fail"){markUnre(p,s.x,s.y);p.job=null;break}
       if(r==="arr"){j.prog++;
         const d=DEF[s.type];
-        const thresh=d.prodRate||(d.refine?160:120);
+        const hackerMul=d.prod==="data"?trMul(p,"dataprod"):1;
+        const thresh=Math.round((d.prodRate||(d.refine?160:120))/hackerMul);
         if(j.prog>=thresh){
           const wage=(p.contract&&p.contract.fixtureKey===K(s.x,s.y))?p.contract.wage:(d.wage||RI(10,15));
           let didWork=true;
@@ -1203,7 +1217,8 @@ function pawnTick(p){
           v.credits=(v.credits||0)-take;p.credits=(p.credits||0)+take;
           applyDrift(p,{intg:-1});
           // victim notices based on stress + awareness (30% base)
-          const caught=Math.random()<0.30+(v.stress>50?0.15:0)+(relGet(p.id,v.id)<-20?0.15:0);
+          const catchBase=(0.30+(v.stress>50?0.15:0)+(relGet(p.id,v.id)<-20?0.15:0))*trMul(p,"street");
+          const caught=Math.random()<catchBase;
           if(caught){
             v.stress=Math.min(100,(v.stress||0)+18);
             relAdj(p.id,v.id,-40);ST.heat=(ST.heat||0)+8;
@@ -1303,7 +1318,7 @@ function beam(x0,y0,x1,y1,col){ST.beams.push({x0,y0,x1,y1,col,ttl:6,t0:6})}
 function float(x,y,txt,col){ST.floats.push({x,y,txt,col,ttl:46,t0:46})}
 
 /* ---------- events ---------- */
-function scheduleEv(){ST.nextEv=ST.tick+Math.floor(R(.55,1.05)*TPD)}
+function scheduleEv(){ST.nextEv=ST.tick+Math.floor(R(.75,1.35)*TPD)}
 function fireEvent(){
   const r=Math.random();
   // economy-aware event injection: override random events when economy conditions are met
@@ -1311,8 +1326,8 @@ function fireEvent(){
   const stimsLow=(ST.goods.stims||0)===0&&(ST.goods.chem||0)===0;
   const stimsHot=(ST.goods.stims||0)>=3&&ST.heat>40;
   const surplusChem=(ST.goods.chem||0)>=8;
-  let ev=r<.18?"brawl":r<.36?"wander":r<.52?"mugging":r<.70?"medbill":r<.84?"gigdrought":
-    r<.91?"supply_windfall":"shortage";
+  let ev=r<.15?"brawl":r<.32?"wander":r<.46?"mugging":r<.60?"medbill":r<.72?"gigdrought":
+    r<.80?"supply_windfall":r<.87?"shortage":r<.93?"power_surge":"corp_recruit";
   // override with economy events when conditions are met
   if(stimsLow&&hasStimlab&&Math.random()<0.4)ev="shortage";
   if(stimsHot&&Math.random()<0.35)ev="enforcer_raid";
@@ -1370,7 +1385,23 @@ function fireEvent(){
       const wg=CH(["data","chem","parts"]);const qty=RI(3,6);
       ST.goods[wg]=(ST.goods[wg]||0)+qty;
       log("A scavenger crew sold "+qty+" units of "+wg+" to the district at a good rate.","good");
-      banner("SUPPLY WINDFALL","good");SFX.good();break}}
+      banner("SUPPLY WINDFALL","good");SFX.good();break}
+    case "power_surge":{// corp grid spike — disables random production fixture briefly
+      const prods=[...ST.structs.values()].filter(s=>!s.bp&&(DEF[s.type].prod||DEF[s.type].refine));
+      const tgt=CH(prods);
+      if(tgt){tgt.surgeT=ST.tick+RI(300,600);// fixture offline until surgeT clears
+        float(tgt.x+.5,tgt.y+.5,"SURGE!","#ffc947");
+        log("Corp grid surge — "+DEF[tgt.type].name+" went offline for a shift.","warn");
+        banner("POWER SURGE","warn");SFX.alert();}break}
+    case "corp_recruit":{// corp headhunter approaches a citizen
+      const p=CH(ST.pawns.filter(q=>q.sk&&q.sk.bld+q.sk.sal>6));
+      if(p){const bonus=RI(40,80);
+        const req={id:uid(),agentId:p.id,agentName:p.name,created:ST.tick,
+          expires:ST.tick+Math.floor(TPD*.6),status:"pending",kind:"corp_recruit",
+          text:p.name+" got a corp headhunter offer — "+bonus+"c signing bonus, but they'd have to leave the block.",
+          options:[{label:"Let them go (−1 citizen)",leave:true,bonus},{label:"Talk them out of it",leave:false}]};
+        ST.requests.push(req);renderRequests();
+        banner("CORP OFFER","warn");SFX.alert();}break}}
   scheduleEv()}
 
 /* ---------- win / lose ---------- */
@@ -1400,8 +1431,8 @@ function tick(){ST.tick++;
   for(let i=ST.beams.length-1;i>=0;i--)if(--ST.beams[i].ttl<=0)ST.beams.splice(i,1);
   for(let i=ST.floats.length-1;i>=0;i--)if(--ST.floats[i].ttl<=0)ST.floats.splice(i,1);
   if(ST.tick>=ST.nextEv)fireEvent();
-  if(ST.tick%120===0){  // vendor sales cycle — auto-sell goods, district takes 40% cut
-    const PRICES={stims:18,gear:14,data:6,chem:5,parts:5};
+  if(ST.tick%160===0){  // vendor sales cycle — auto-sell goods, district takes 40% cut
+    const PRICES={stims:22,gear:16,data:8,chem:6,parts:6};
     const ILLEGAL={stims:true};
     for(const s of ST.structs.values()){if(s.bp||!DEF[s.type].vendor)continue;
       const sells=DEF[s.type].sells;
@@ -1443,15 +1474,15 @@ function tick(){ST.tick++;
     // gear expiry check
     for(const p of ST.pawns){if(p.hasGear&&ST.tick>=(p.gearExpiry||0)){p.hasGear=false;p.gearExpiry=0}}
     // rent + eviction
-    for(const q of ST.pawns){q.credits=(q.credits||0)-(ST.crisis?50:34);
+    for(const q of ST.pawns){q.credits=(q.credits||0)-(ST.crisis?42:28);
       if(q.credits<0&&!q.homeless){q.homeless=true;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad");remember(q,"couldn't make rent — got evicted, sleeping rough now")}
       else if(q.credits>=0&&q.homeless){q.homeless=false;log(q.name+" cleared their back rent.","good")}}
     // soft collapse: track debt days
     if(ST.income<0){ST.debtDays=(ST.debtDays||0)+1;
-      if(ST.debtDays===3&&!ST.crisis){ST.crisis=true;
+      if(ST.debtDays===4&&!ST.crisis){ST.crisis=true;
         banner("DISTRICT IN CRISIS","bad");log("District finances collapsed — enforcers moving in, rents spiking.","bad");
         ST.heat=Math.min(100,(ST.heat||0)+30)}
-      if(ST.debtDays>=5){gameOver();return}}
+      if(ST.debtDays>=6){gameOver();return}}
     else{ST.debtDays=0;
       if(ST.crisis){ST.crisis=false;ST.heat=Math.max(0,(ST.heat||0)-20);
         banner("CRISIS RESOLVED","good");log("District finances stabilized.","good")}}
@@ -1605,58 +1636,199 @@ function drawRoomStruct(s){const X=s.x*T+T/2,Y=s.y*T+T/2,th=PODTH[s.rth]||PODTH.
   ctx.globalAlpha=.46;ctx.fillStyle=th.c;ctx.beginPath();ctx.arc(X,Y,2,0,7);ctx.fill();
   ctx.globalAlpha=.4;ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(X-.5,Y-.6,.7,0,7);ctx.fill();
   ctx.globalAlpha=1}
-function drawStruct(s){const X=s.x*T,Y=s.y*T,d=DEF[s.type];
+function drawStruct(s){const X=s.x*T,Y=s.y*T;
+  if(s.surgeT&&ST.tick<s.surgeT){
+    ctx.fillStyle="rgba(255,201,71,.08)";ctx.fillRect(X,Y,T,T);
+    ctx.strokeStyle="rgba(255,201,71,.5)";ctx.setLineDash([2,3]);
+    ctx.strokeRect(X+.5,Y+.5,T-1,T-1);ctx.setLineDash([]);
+    ctx.fillStyle="#ffc947";ctx.font="8px monospace";ctx.textAlign="center";
+    ctx.fillText("!",X+T/2,Y+T/2+3);ctx.textAlign="left";return}
   if(s.inRoom&&!s.bp&&!s.desig&&!s.decon)return drawRoomStruct(s);
-  if(s.bp){ctx.fillStyle="rgba(0,229,255,.08)";ctx.fillRect(X+1,Y+1,T-2,T-2);
-    ctx.strokeStyle="rgba(0,229,255,.55)";ctx.setLineDash([3,3]);
+  if(s.bp){
+    const phase=performance.now()*0.003;
+    ctx.fillStyle="rgba(0,212,255,.07)";ctx.fillRect(X+1,Y+1,T-2,T-2);
+    ctx.strokeStyle="rgba(0,212,255,.5)";ctx.setLineDash([3,3]);
     ctx.strokeRect(X+1.5,Y+1.5,T-3,T-3);ctx.setLineDash([]);
-    if(s.prog>0){ctx.fillStyle="#00e5ff";
-      ctx.fillRect(X+2,Y+T-4,(T-4)*clamp(s.prog/s.need,0,1),2)}}
-  else switch(s.type){
-    case "ruin":rr(X,Y,T,T,"#2c281d");rr(X+1,Y+1,T-2,3,"#3a3527");
-      rr(X+2,Y+6,4,2,"#221f16");rr(X+9,Y+10,5,2,"#221f16");break;
-    case "scrap":rr(X+2,Y+6,12,8,"#3c4350");rr(X+1,Y+9,9,6,"#4a5160");
-      rr(X+7,Y+4,7,7,"#333a46");rr(X+5,Y+7,2,2,"#ff9f2d");rr(X+11,Y+11,2,2,"#ff9f2d");break;
-    case "cache":rr(X+2,Y+3,12,11,"#5d5330");rr(X+2,Y+8,12,2,"#3e3720");rr(X+7,Y+3,2,11,"#3e3720");break;
-    case "wall":rr(X,Y,T,T,"#222a3d");rr(X,Y,T,3,"#39496e");rr(X+1,Y+T-2,T-2,1,"#161c2c");break;
-    case "door":rr(X,Y,T,T,"#1b2233");rr(X+2,Y+2,T-4,T-4,"#10141f");
-      rr(X+T/2-1,Y+2,2,T-4,"#00e5ff");break;
-    case "pod":rr(X+1,Y+3,T-2,T-6,"#15202f");rr(X+2,Y+4,T-4,T-8,"#0d1521");
-      rr(X+3,Y+5,4,T-10,"#27405c");
-      ctx.strokeStyle=s.owner?"#39ff88":"#23364f";ctx.strokeRect(X+1.5,Y+3.5,T-3,T-7);break;
-    case "lamp":rr(X+T/2-1,Y+4,2,T-6,"#3a4763");
-      ctx.fillStyle="#00e5ff";ctx.fillRect(X+T/2-3,Y+2,6,4);break;
-    case "fridge":rr(X+3,Y+1,T-6,T-2,"#2a3340");rr(X+4,Y+2,T-8,5,"#34404f");rr(X+4,Y+8,T-8,6,"#2f3a47");rr(X+10,Y+3,1,3,"#9fb4d8");rr(X+10,Y+9,1,3,"#9fb4d8");rr(X+5,Y+2,2,1,"#39ff88");break;
-    case "toilet":rr(X+5,Y+2,6,3,"#3a4658");rr(X+5,Y+5,6,6,"#5d6c85");rr(X+4,Y+10,8,3,"#2a3340");break;
-    case "shower":rr(X+3,Y+2,T-6,T-3,"#1c2735");rr(X+T/2-1,Y+2,2,2,"#9fb4d8");rr(X+T/2-2,Y+6,1,1,"#00e5ff");rr(X+T/2+1,Y+8,1,1,"#00e5ff");rr(X+T/2,Y+10,1,1,"#00e5ff");break;
-    case "tv":rr(X+2,Y+3,T-4,9,"#0c1018");rr(X+3,Y+4,T-6,7,"#0a2e38");rr(X+4,Y+5,T-8,2,"#00e5ff");rr(X+T/2-1,Y+12,2,2,"#3a4658");break;
-    case "gym":rr(X+2,Y+4,2,8,"#3a4658");rr(X+T-4,Y+4,2,8,"#3a4658");rr(X+2,Y+4,T-4,1,"#9fb4d8");rr(X+4,Y+8,T-8,3,"#2a3340");rr(X+5,Y+5,2,2,"#ff9f2d");break;
-    case "workstation":rr(X+2,Y+9,T-4,4,"#1b2233");rr(X+4,Y+3,T-8,6,"#0c1018");rr(X+5,Y+4,T-10,4,"#0a2e38");rr(X+6,Y+5,T-12,1,"#00e5ff");break;
-    case "counter":rr(X+2,Y+6,T-4,7,"#2a2333");rr(X+2,Y+5,T-4,2,"#4a3a6a");rr(X+9,Y+2,4,3,"#9fb4d8");rr(X+10,Y+3,2,1,"#39ff88");break;
-    case "bar":rr(X+2,Y+6,T-4,7,"#231a2b");rr(X+2,Y+5,T-4,2,"#3a2030");rr(X+2,Y+5,T-4,1,"#ff2d95");rr(X+4,Y+2,1,3,"#39ff88");rr(X+7,Y+2,1,3,"#00e5ff");rr(X+10,Y+2,1,3,"#ffd84a");break;
-    case "medbed":rr(X+2,Y+5,T-4,8,"#1c2a2a");rr(X+3,Y+6,T-6,5,"#2f4a40");rr(X+T/2-2,Y+7,4,1,"#39ff88");rr(X+T/2-1,Y+6,2,3,"#39ff88");rr(X+3,Y+5,T-6,1,"#00e5ff");break;
-    case "dealer":rr(X+5,Y+6,6,7,"#1a1420");rr(X+5,Y+6,6,2,"#3a2030");rr(X+6,Y+9,4,2,"#ff2d95");rr(X+7,Y+4,2,2,"#231a2b");break;
-    case "housing":rr(X+2,Y+2,T-4,T-4,"#1a2435");rr(X+4,Y+4,T-8,T-8,"#0d1521");
-      ctx.fillStyle="#39ff88";ctx.fillRect(X+T/2-1,Y+3,2,4);ctx.fillRect(X+3,Y+T/2-1,4,2);
-      ctx.fillStyle="#00e5ff";ctx.fillRect(X+T-5,Y+T/2-1,2,2);break;
-    case "chemlab":rr(X+2,Y+2,T-4,T-4,"#1a2020");rr(X+5,Y+5,3,5,"#39ff88");rr(X+9,Y+5,3,5,"#39ff88");
-      rr(X+5,Y+4,7,2,"#2f4a3a");ctx.fillStyle="#b8ff5e";ctx.fillRect(X+6,Y+9,1,3);ctx.fillRect(X+10,Y+9,1,3);break;
-    case "workshop":rr(X+2,Y+2,T-4,T-4,"#1f1c12");rr(X+3,Y+9,4,4,"#3a3318");rr(X+10,Y+7,3,2,"#ff9f2d");
-      rr(X+6,Y+4,5,3,"#4a3d1a");ctx.fillStyle="#ffd84a";ctx.fillRect(X+4,Y+12,3,2);break;
-    case "stimlab":rr(X+2,Y+2,T-4,T-4,"#1c1020");rr(X+6,Y+4,5,8,"#3a1a40");
-      rr(X+5,Y+3,7,2,"#2a1530");ctx.fillStyle="#c98bff";ctx.fillRect(X+7,Y+6,3,4);
-      ctx.fillStyle="#ff2d95";ctx.fillRect(X+8,Y+11,2,2);break;
-    case "gearshop":rr(X+2,Y+2,T-4,T-4,"#12181f");rr(X+4,Y+8,T-8,5,"#1b2840");
-      rr(X+5,Y+4,T-10,4,"#0d1a2a");ctx.fillStyle="#7aa2ff";ctx.fillRect(X+6,Y+5,5,2);
-      ctx.fillStyle="#39ff88";ctx.fillRect(X+11,Y+9,2,2);break;
-  }
-  if(s.desig){ctx.strokeStyle="#ff9f2d";ctx.strokeRect(X+.5,Y+.5,T-1,T-1)}
-  if(s.decon){ctx.strokeStyle="#ff4757";ctx.beginPath();
-    ctx.moveTo(X+2,Y+2);ctx.lineTo(X+T-2,Y+T-2);
-    ctx.moveTo(X+T-2,Y+2);ctx.lineTo(X+2,Y+T-2);ctx.stroke()}
+    if(s.prog>0){
+      for(let i=0;i<3;i++){const sp=(phase+i*2.1)%1;
+        const sx=X+4+((s.x*7+i*5)%(T-8));const sy=Y+4+((s.y*5+i*4)%(T-8));
+        ctx.globalAlpha=Math.abs(Math.sin(phase*3+i));
+        ctx.fillStyle="#00d4ff";ctx.fillRect(sx,sy,1,1);ctx.globalAlpha=1;}
+      ctx.fillStyle="#00d4ff";ctx.fillRect(X+2,Y+T-4,(T-4)*clamp(s.prog/s.need,0,1),2)}}
+  else{
+    const t=performance.now()*0.001;
+    switch(s.type){
+    case "ruin":
+      rr(X,Y,T,T,"#14101a");rr(X+1,Y+1,T-2,3,"#24202a");
+      rr(X+2,Y+6,5,3,"#1c181e");rr(X+9,Y+10,5,3,"#1c181e");
+      rr(X+3,Y+9,3,2,"#14101a");ctx.fillStyle="rgba(162,89,255,.12)";ctx.fillRect(X+4,Y+11,4,2);break;
+    case "scrap":
+      rr(X+2,Y+6,12,8,"#2c3040");rr(X+1,Y+9,9,6,"#363d50");
+      rr(X+7,Y+4,7,7,"#252d3c");rr(X+5,Y+7,2,2,"#ff8c42");rr(X+11,Y+11,2,2,"#ff8c42");
+      rr(X+3,Y+11,3,1,"#4a5568");rr(X+10,Y+6,2,2,"#4a5568");break;
+    case "cache":
+      rr(X+2,Y+3,12,11,"#4a3f22");rr(X+2,Y+8,12,2,"#332c18");rr(X+7,Y+3,2,11,"#332c18");
+      rr(X+3,Y+4,3,3,"#665530");rr(X+9,Y+4,3,3,"#665530");
+      ctx.fillStyle="#ffc947";ctx.fillRect(X+4,Y+13,2,1);break;
+    case "wall":{
+      const wN=structAt(s.x,s.y-1),wS=structAt(s.x,s.y+1);
+      const wE=structAt(s.x+1,s.y),wW=structAt(s.x-1,s.y);
+      const isW=ss=>ss&&(ss.type==="wall"||ss.type==="door");
+      rr(X,Y,T,T,"#181f36");
+      if(!isW(wN))rr(X+1,Y,T-2,2,"#28386a");
+      if(!isW(wS))rr(X+1,Y+T-2,T-2,2,"#0d1428");
+      if(!isW(wE))rr(X+T-2,Y+1,2,T-2,"#121c34");
+      if(!isW(wW))rr(X,Y+1,2,T-2,"#1e2c48");
+      rr(X+3,Y+6,T-6,1,"rgba(0,0,0,.3)");rr(X+3,Y+11,T-6,1,"rgba(0,0,0,.2)");
+      if(s.hp<s.maxHp){ctx.strokeStyle="rgba(255,61,90,.4)";ctx.lineWidth=.7;
+        ctx.beginPath();ctx.moveTo(X+T*.3,Y+T*.2);ctx.lineTo(X+T*.55,Y+T*.7);ctx.stroke();ctx.lineWidth=1;}
+      break;}
+    case "door":{
+      rr(X,Y,T,T,"#0e1428");rr(X+2,Y+2,T-4,T-4,"#080c18");
+      const isOpen=ST.pawns.some(p=>DIST(p.px,p.py,s.x+.5,s.y+.5)<2.2);
+      const pulse=0.5+0.5*Math.sin(t*2.2);
+      const iCol=isOpen?"#00d4ff":"#1a3560";
+      ctx.globalAlpha=isOpen?(0.65+0.35*pulse):0.3;
+      for(let r=5;r>1;r--){ctx.strokeStyle=iCol;ctx.lineWidth=1.1;
+        ctx.beginPath();ctx.arc(X+T/2,Y+T/2,r*1.3,0,7);ctx.stroke();}
+      if(isOpen){ctx.fillStyle=iCol;ctx.globalAlpha=.25;
+        ctx.beginPath();ctx.arc(X+T/2,Y+T/2,2,0,7);ctx.fill();}
+      ctx.globalAlpha=1;ctx.lineWidth=1;break;}
+    case "pod":
+      rr(X+1,Y+3,T-2,T-6,"#0e1826");rr(X+2,Y+4,T-4,T-8,"#070c16");
+      rr(X+3,Y+5,4,T-10,"#1a2e48");
+      ctx.strokeStyle=s.owner?"#39ff88":"#162838";ctx.lineWidth=1.2;
+      ctx.strokeRect(X+1.5,Y+3.5,T-3,T-7);
+      if(s.owner){ctx.fillStyle="rgba(57,255,136,.08)";ctx.fillRect(X+2,Y+4,T-4,T-8);}
+      ctx.lineWidth=1;break;
+    case "lamp":{
+      rr(X+T/2-1,Y+5,2,T-7,"#242e48");rr(X+T/2-4,Y+3,8,3,"#303c5a");
+      const flk=0.88+0.12*Math.sin(t*11.3+s.x);
+      ctx.globalAlpha=flk*.9;
+      const lg=ctx.createRadialGradient(X+T/2,Y+4,0,X+T/2,Y+4,T*.6);
+      lg.addColorStop(0,"rgba(255,200,80,.55)");lg.addColorStop(1,"rgba(255,200,80,0)");
+      ctx.fillStyle=lg;ctx.beginPath();ctx.arc(X+T/2,Y+4,T*.6,0,7);ctx.fill();
+      ctx.globalAlpha=1;ctx.fillStyle="#ffe0a0";ctx.fillRect(X+T/2-3,Y+3,6,3);break;}
+    case "fridge":
+      rr(X+3,Y+1,T-6,T-2,"#1c2836");rr(X+4,Y+2,T-8,5,"#243040");rr(X+4,Y+8,T-8,6,"#1e2c3c");
+      rr(X+10,Y+3,1,3,"#5a7aaa");rr(X+10,Y+9,1,3,"#5a7aaa");
+      rr(X+5,Y+2,2,1,"#39ff88");rr(X+4,Y+7,T-8,1,"rgba(0,0,0,.35)");break;
+    case "toilet":
+      rr(X+4,Y+2,8,3,"#263040");rr(X+4,Y+5,8,7,"#304055");rr(X+3,Y+10,10,3,"#1a2230");
+      rr(X+5,Y+3,6,1,"rgba(150,200,255,.12)");break;
+    case "shower":
+      rr(X+3,Y+2,T-6,T-3,"#101c28");
+      for(let i=0;i<4;i++){const dy=(t*3+i*.7)%1;
+        ctx.globalAlpha=.35+.25*Math.sin(t*4+i);ctx.fillStyle="#5a8aee";
+        ctx.fillRect(X+5+i*3,(Y+4+dy*(T-7))|0,1,2);}
+      ctx.globalAlpha=1;rr(X+T/2-1,Y+2,2,2,"#8aa4c8");break;
+    case "tv":{
+      rr(X+2,Y+3,T-4,9,"#04080e");rr(X+3,Y+4,T-6,7,"#071220");
+      const scanY=((t*18)%(T-8))|0;
+      ctx.fillStyle="rgba(0,212,255,.14)";ctx.fillRect(X+3,Y+4+scanY,T-6,1);
+      for(let i=0;i<3;i++)rr(X+4,Y+5+i*2,T-8,1,"rgba(0,212,255,.07)");
+      ctx.fillStyle="rgba(0,212,255,.55)";ctx.fillRect(X+4,Y+5,T-8,1);
+      rr(X+T/2-1,Y+12,2,2,"#202a40");break;}
+    case "gym":
+      rr(X+2,Y+4,2,8,"#202e44");rr(X+T-4,Y+4,2,8,"#202e44");
+      rr(X+2,Y+4,T-4,1,"#5a7aaa");rr(X+4,Y+8,T-8,3,"#141e30");
+      rr(X+5,Y+5,2,2,"#ff8c42");rr(X+T-7,Y+5,2,2,"#ff8c42");break;
+    case "workstation":{
+      rr(X+2,Y+9,T-4,4,"#101828");rr(X+4,Y+3,T-8,6,"#04080e");rr(X+5,Y+4,T-10,4,"#07122a");
+      const sc=((t*12)%4)|0;
+      rr(X+5,Y+4+sc,T-10,1,"rgba(0,212,255,.2)");
+      rr(X+5,Y+5,T-10,1,"rgba(0,212,255,.12)");rr(X+5,Y+7,T-10,1,"rgba(0,212,255,.06)");
+      ctx.fillStyle="#00d4ff";ctx.fillRect(X+6,Y+5,T-12,1);
+      rr(X+7,Y+10,3,2,"#182034");break;}
+    case "counter":
+      rr(X+2,Y+6,T-4,7,"#1c1626");rr(X+2,Y+5,T-4,2,"#302040");
+      rr(X+9,Y+2,4,3,"#201830");rr(X+10,Y+3,2,1,"#39ff88");
+      rr(X+3,Y+7,2,4,"rgba(255,255,255,.03)");break;
+    case "bar":{
+      rr(X+2,Y+6,T-4,7,"#120a18");rr(X+2,Y+5,T-4,2,"#200e1a");
+      const bc=(t*.6)%1;
+      const bCol="hsl("+((bc*360)|0)+",100%,62%)";
+      rr(X+2,Y+5,T-4,1,bCol);
+      rr(X+4,Y+2,1,3,"#39ff88");rr(X+7,Y+2,1,3,"#00d4ff");rr(X+10,Y+2,1,3,"#ffc947");
+      rr(X+4,Y+1,2,1,"#39ff88");rr(X+7,Y+1,2,1,"#00d4ff");rr(X+10,Y+1,2,1,"#ffc947");
+      ctx.globalAlpha=.1;
+      const bg=ctx.createLinearGradient(X+2,Y+5,X+T-2,Y+5);
+      bg.addColorStop(0,"#e040fb");bg.addColorStop(1,"#00d4ff");
+      ctx.fillStyle=bg;ctx.fillRect(X+2,Y+3,T-4,4);ctx.globalAlpha=1;break;}
+    case "medbed":{
+      rr(X+2,Y+5,T-4,8,"#0c1c1c");rr(X+3,Y+6,T-6,5,"#142e28");
+      const hbp=(t*1.8)%1;
+      ctx.strokeStyle="#39ff88";ctx.lineWidth=1.1;
+      ctx.beginPath();
+      const hbW=T-6,hbX=X+3,hbY=Y+8;
+      for(let i=0;i<=hbW;i++){const f=((i/hbW+hbp)%1);
+        const spike=f>0.4&&f<0.5?-(Math.sin((f-0.4)/0.1*Math.PI)*4.5):
+          f>0.5&&f<0.55?(Math.sin((f-0.5)/0.05*Math.PI)*1.8):0;
+        i===0?ctx.moveTo(hbX+i,hbY+spike):ctx.lineTo(hbX+i,hbY+spike);}
+      ctx.stroke();ctx.lineWidth=1;
+      rr(X+3,Y+5,T-6,1,"#00d4ff");
+      ctx.fillStyle="rgba(57,255,136,.07)";ctx.fillRect(X+3,Y+6,T-6,5);break;}
+    case "dealer":{
+      rr(X+5,Y+6,6,7,"#0e0a14");rr(X+5,Y+6,6,2,"#200e20");
+      rr(X+6,Y+9,4,2,"#e040fb");rr(X+7,Y+4,2,2,"#160e1c");
+      const dp=0.5+0.5*Math.sin(t*2.5);
+      ctx.globalAlpha=dp*.18;ctx.fillStyle="#e040fb";
+      ctx.beginPath();ctx.arc(X+8,Y+10,5,0,7);ctx.fill();ctx.globalAlpha=1;break;}
+    case "housing":
+      rr(X+2,Y+2,T-4,T-4,"#101828");rr(X+4,Y+4,T-8,T-8,"#080e1c");
+      ctx.fillStyle="#39ff88";ctx.fillRect(X+T/2-1,Y+3,2,5);ctx.fillRect(X+3,Y+T/2-1,5,2);
+      ctx.fillStyle="#00d4ff";ctx.fillRect(X+T-5,Y+T/2-1,2,2);break;
+    case "chemlab":{
+      rr(X+2,Y+2,T-4,T-4,"#0c1614");
+      rr(X+4,Y+5,4,7,"#0a1c12");rr(X+9,Y+5,4,7,"#0a1c12");
+      rr(X+4,Y+4,8,2,"#142a1e");
+      const bub=(t*2.2+s.x)%1;
+      ctx.globalAlpha=.75;ctx.fillStyle="#39ff88";
+      ctx.fillRect(X+6,(Y+10-bub*4)|0,2,2);
+      ctx.fillStyle="#b8ff5e";ctx.fillRect(X+11,(Y+8-bub*3)|0,1,2);
+      ctx.globalAlpha=1;
+      rr(X+5,Y+4,7,1,"#203c2c");ctx.fillStyle="#b8ff5e";
+      ctx.fillRect(X+6,Y+11,1,2);ctx.fillRect(X+10,Y+11,1,2);break;}
+    case "workshop":{
+      rr(X+2,Y+2,T-4,T-4,"#141210");
+      rr(X+3,Y+9,4,4,"#222010");rr(X+10,Y+7,3,2,"#ff8c42");
+      rr(X+6,Y+4,5,3,"#2c2810");
+      const sp=(t*8+s.y)%1;
+      if(sp<0.3){ctx.globalAlpha=sp/.3;ctx.fillStyle="#ffe08a";
+        ctx.fillRect(X+5+((sp*20)|0),Y+11+((sp*10)|0)%3,1,1);ctx.globalAlpha=1;}
+      rr(X+4,Y+12,3,2,"#ffc947");break;}
+    case "stimlab":{
+      rr(X+2,Y+2,T-4,T-4,"#0e0818");rr(X+6,Y+4,5,8,"#220e30");
+      rr(X+5,Y+3,7,2,"#180c22");
+      const glow=0.5+0.5*Math.sin(t*3.2);
+      ctx.globalAlpha=glow*.75;ctx.fillStyle="#c98bff";ctx.fillRect(X+7,Y+6,3,4);
+      ctx.globalAlpha=glow*.35;
+      const sg=ctx.createRadialGradient(X+8,Y+8,0,X+8,Y+8,6);
+      sg.addColorStop(0,"rgba(200,100,255,.5)");sg.addColorStop(1,"rgba(0,0,0,0)");
+      ctx.fillStyle=sg;ctx.beginPath();ctx.arc(X+8,Y+8,6,0,7);ctx.fill();
+      ctx.globalAlpha=1;ctx.fillStyle="#e040fb";ctx.fillRect(X+8,Y+11,2,2);break;}
+    case "gearshop":{
+      rr(X+2,Y+2,T-4,T-4,"#0a1016");rr(X+4,Y+8,T-8,5,"#0e1822");
+      rr(X+5,Y+4,T-10,4,"#081218");
+      ctx.strokeStyle="#7aa2ff";ctx.lineWidth=1.1;
+      ctx.beginPath();
+      for(let i=0;i<6;i++){const a=i/6*Math.PI*2-Math.PI/6;
+        i===0?ctx.moveTo(X+8+4*Math.cos(a),Y+6+4*Math.sin(a)):
+          ctx.lineTo(X+8+4*Math.cos(a),Y+6+4*Math.sin(a));}
+      ctx.closePath();ctx.stroke();ctx.lineWidth=1;
+      ctx.fillStyle="#7aa2ff";ctx.fillRect(X+6,Y+5,5,2);
+      ctx.fillStyle="#39ff88";ctx.fillRect(X+11,Y+9,2,2);break;}
+    }}
   if(!s.bp&&s.hp<s.maxHp&&DEF[s.type].hp>1){
-    ctx.fillStyle="#101626";ctx.fillRect(X+1,Y-3,T-2,2);
-    ctx.fillStyle="#ff4757";ctx.fillRect(X+1,Y-3,(T-2)*clamp(s.hp/s.maxHp,0,1),2)}}
+    ctx.fillStyle="#08101e";ctx.fillRect(X+1,Y-4,T-2,3);
+    const hpF=clamp(s.hp/s.maxHp,0,1);
+    ctx.fillStyle=hpF>0.5?"#39ff88":hpF>0.25?"#ffc947":"#ff3d5a";
+    ctx.fillRect(X+1,Y-4,(T-2)*hpF,3);}
+  if(s.desig){ctx.strokeStyle="#ff8c42";ctx.globalAlpha=.65;
+    ctx.strokeRect(X+.5,Y+.5,T-1,T-1);ctx.globalAlpha=1;}
+  if(s.decon){ctx.strokeStyle="#ff3d5a";ctx.lineWidth=1.2;
+    ctx.beginPath();ctx.moveTo(X+3,Y+3);ctx.lineTo(X+T-3,Y+T-3);
+    ctx.moveTo(X+T-3,Y+3);ctx.lineTo(X+3,Y+T-3);ctx.stroke();ctx.lineWidth=1;}}
 
 function tempCols(P){
   const T=[[(P.amb+P.ind)/2,"#ff2d95"],[(P.imp+100-P.cau)/2,"#ff4757"],
@@ -1787,7 +1959,11 @@ function faceExpr(p){
   if((p.mood||50)>55)return"good";
   return"neutral";}
 
-function drawPawn(p){const X=p.px*T,Y=p.py*T;
+function drawPawn(p){
+  // walk bob: bob vertically when job is active and not sleeping
+  const moving=!p.sleeping&&p.job&&p.job.t!=="idle";
+  const bobY=moving?Math.sin(performance.now()*0.012+(p.px+p.py))*1.2:0;
+  const X=p.px*T,Y=p.py*T+bobY;
   const sel=ST.sel.includes(p),ac=animaColor(p),slp=p.sleeping;
   const pls=0.5+0.5*Math.sin(performance.now()*0.0028+(p.px+p.py)*0.5);
   const rad=(slp?8:12)+(slp?0:pls*2.5);
@@ -1943,8 +2119,13 @@ function render(){
   ctx.globalAlpha=1;ctx.lineWidth=1;
   // floating text
   ctx.font="7px monospace";ctx.textAlign="center";
-  for(const f of ST.floats){const a=f.ttl/f.t0;ctx.globalAlpha=a;
-    ctx.fillStyle=f.col;ctx.fillText(f.txt,f.x*T,f.y*T-10-(1-a)*10)}
+  for(const f of ST.floats){const prog=1-f.ttl/f.t0;const a=clamp(1-prog*prog,0,1);
+    ctx.globalAlpha=a;ctx.fillStyle=f.col;
+    const rise=prog*prog*22; // ease-out upward
+    const sz=Math.round(9+prog*2); // slight grow then shrink
+    ctx.font="bold "+sz+"px monospace";ctx.textAlign="center";
+    ctx.fillText(f.txt,f.x*T,(f.y*T)-rise);
+    ctx.textAlign="left";ctx.font="9px monospace";}
   ctx.globalAlpha=1;ctx.textAlign="left";
   drawToolOverlay();
   nightPass();
@@ -2288,6 +2469,18 @@ function applyRequest(rid,oi){
       for(const c of crew)for(const o of crew){if(o!==c)relAdj(c.id,o.id,-15);c.stress=Math.min(100,(c.stress||0)+12)}
       log("Crew broken up — turf disbanded, bad feelings all around.","warn")}
     r.status="answered";if(agent)log(agent.name+": "+opt.label,"info");renderRequests();return}
+  if(r.kind==="corp_recruit"){
+    if(opt.leave&&agent){
+      const bonus=r.options[0].bonus||60;
+      agent.credits=(agent.credits||0)+bonus;
+      const idx=ST.pawns.indexOf(agent);if(idx>=0)ST.pawns.splice(idx,1);
+      log(agent.name+" took the corp offer and left the block (signing bonus: "+bonus+"c collected).","warn");
+      banner("CITIZEN DEPARTED","warn");}
+    else if(agent){agent.stress=Math.max(0,(agent.stress||0)-10);
+      addMod(agent,"loyalty","Turned down the corp",8,TPD*1.5);
+      remember(agent,"corp headhunter came sniffing — told them to get lost. this block is home");
+      log(agent.name+" turned down the corp offer.","good");}
+    r.status="answered";renderRequests();return}
   if(r.kind==="theft_report"){
     if(opt.compensate&&(ST.income||0)>=20){ST.income-=20;if(agent)agent.credits=(agent.credits||0)+20;
       if(agent){addMod(agent,"comp","Overseer made it right",6,TPD*.5);remember(agent,"the overseer actually made it right after I got robbed — respect")}
