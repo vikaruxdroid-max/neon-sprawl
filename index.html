@@ -296,11 +296,14 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   </div>
   <!-- Center: goods inline -->
   <div class="hud-goods">
-    <span class="hud-pip"><span class="dot" style="background:#47c8ff"></span><span id="g-data" style="color:var(--dim)">0</span></span>
-    <span class="hud-pip"><span class="dot" style="background:#39ff88"></span><span id="g-chem" style="color:var(--dim)">0</span></span>
-    <span class="hud-pip"><span class="dot" style="background:#ff8c42"></span><span id="g-parts" style="color:var(--dim)">0</span></span>
-    <span class="hud-pip"><span class="dot" style="background:#c98bff"></span><span id="g-stims" style="color:var(--dim)">0</span></span>
-    <span class="hud-pip"><span class="dot" style="background:#7aa2ff"></span><span id="g-gear" style="color:var(--dim)">0</span></span>
+    <span class="hud-pip" title="Food"><span class="dot" style="background:#b8ff5e"></span><span id="g-food" style="color:var(--dim)">0</span></span>
+    <span class="hud-pip" title="Wood"><span class="dot" style="background:#a06a3a"></span><span id="g-wood" style="color:var(--dim)">0</span></span>
+    <span class="hud-pip" title="Materials"><span class="dot" style="background:#ffc947"></span><span id="g-materials" style="color:var(--dim)">0</span></span>
+    <span class="hud-pip" title="Data"><span class="dot" style="background:#47c8ff"></span><span id="g-data" style="color:var(--dim)">0</span></span>
+    <span class="hud-pip" title="Chem"><span class="dot" style="background:#39ff88"></span><span id="g-chem" style="color:var(--dim)">0</span></span>
+    <span class="hud-pip" title="Parts"><span class="dot" style="background:#ff8c42"></span><span id="g-parts" style="color:var(--dim)">0</span></span>
+    <span class="hud-pip" title="Stims"><span class="dot" style="background:#c98bff"></span><span id="g-stims" style="color:var(--dim)">0</span></span>
+    <span class="hud-pip" title="Gear"><span class="dot" style="background:#7aa2ff"></span><span id="g-gear" style="color:var(--dim)">0</span></span>
   </div>
   <div class="gap"></div>
   <!-- Right: controls -->
@@ -365,7 +368,24 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
    ============================================================ */
 
 /* ---------- helpers ---------- */
-const T=16, MW=56, MH=40, TPD=2400, TPS=10, POP=7;   // tile px, map w/h, ticks/day, ticks/sec, starting agents
+const T=16, MW=140, MH=100, TPD=2400, TPS=10, POP=7;   // tile px, map w/h, ticks/day, ticks/sec, starting agents
+// Road arterials (2-tile wide). h:[x0,x1,topY]  v:[leftX,y0,y1]
+// Frame the central built-up core (x~38-95, y~28-78) with a loop + cross streets.
+const ROADS={
+  h:[
+    [10,130,26],   // north arterial (farm NW ↔ woods NE)
+    [30,110,48],   // mid arterial (between residential and production)
+    [10,130,64],   // south arterial (mine SW ↔ civic SE wide)
+    [30,110,80],   // far-south arterial (below crime corner)
+  ],
+  v:[
+    [22,14,88],    // far-west arterial (serves farm + mine zones)
+    [34,26,82],    // west arterial
+    [68,26,82],    // central spine (through plaza)
+    [102,26,82],   // east arterial
+    [118,14,90],   // far-east arterial (serves woods + civic zones)
+  ]
+};
 function R(a,b){return a+Math.random()*(b-a)}
 function RI(a,b){return Math.floor(R(a,b+1))}
 function CH(a){return a[Math.floor(Math.random()*a.length)]}
@@ -439,6 +459,15 @@ const DEF={
   workshop:   {name:"Workshop",     cost:{income:80}, hp:80, blocks:1, work:150, cat:"b", desc:"Produces Parts raw material.", prod:"parts", prodRate:200, wage:9},
   stimlab:    {name:"Stim Lab",     cost:{income:120},hp:70, blocks:1, work:160, cat:"b", desc:"Refines Chem + Data → Stims. High margin, raises heat.", refine:{in:["chem","data"],out:"stims"}, wage:11},
   gearshop:   {name:"Gear Shop",    cost:{income:100},hp:80, blocks:1, work:160, cat:"b", desc:"Refines Parts + Data → Gear. Steady, clean income.", refine:{in:["parts","data"],out:"gear"}, vendor:true, wage:10},
+  // ── RESOURCE PRODUCTION (outer-ring economy) ──
+  farmplot:   {name:"Farm Plot",    cost:{income:30}, hp:40, blocks:0, work:110, cat:"b", desc:"Grows Food. Feeds the block cheaply, cuts the credit drain.", prod:"food", prodRate:200, wage:7},
+  loggingcamp:{name:"Logging Camp", cost:{income:40}, hp:60, blocks:1, work:130, cat:"b", desc:"Harvests Wood from the outskirts — sold for income.", prod:"wood", prodRate:240, wage:8},
+  mineshaft:  {name:"Mine Shaft",   cost:{income:60}, hp:80, blocks:1, work:150, cat:"b", desc:"Extracts Materials — premium commodity, high margin.", prod:"materials", prodRate:300, wage:9},
+  // ── CIVIC BUILDINGS ──
+  park:       {name:"Sprawl Park",  cost:{income:50}, hp:50, blocks:0, work:140, cat:"b", desc:"Green space — free recreation + stress relief.", civic:"park"},
+  arcade:     {name:"Arcade",       cost:{income:80}, hp:60, blocks:1, work:150, cat:"b", desc:"Premium entertainment — strong fun, small fee earns income.", civic:"arcade", vendor:true},
+  hospital:   {name:"Hospital",     cost:{income:120},hp:100,blocks:1, work:180, cat:"b", desc:"Advanced care — faster, cheaper treatment than a Med Bay.", civic:"hospital"},
+  school:     {name:"Learning Hub", cost:{income:90}, hp:70, blocks:1, work:160, cat:"b", desc:"Citizens train skills here, raising work output over time.", civic:"school"},
   housing:    {name:"Housing Unit", cost:{income:150},hp:60, blocks:0, work:180, cat:"b", desc:"Adds one home slot — allows the district to support one more citizen."},
   // ── DECOR (nat:1 = not buildable, placed by genCity) ──
   bench:      {name:"Bench",       nat:1, hp:40, blocks:0},
@@ -448,7 +477,7 @@ const DEF={
   vendmachine:{name:"Vending Machine",nat:1,hp:50,blocks:1},
   planter:    {name:"Planter",     nat:1, hp:30, blocks:0}
 };
-const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","workstation","chemlab","workshop","stimlab","gearshop","counter","bar","medbed","dealer","housing"];
+const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","workstation","chemlab","workshop","stimlab","gearshop","counter","bar","medbed","dealer","farmplot","loggingcamp","mineshaft","park","arcade","hospital","school","housing"];
 
 
 // weapons removed — city sim mode
@@ -484,7 +513,7 @@ const ST={
   sel:[],
   stats:{built:0,deaths:0},
   flags:{},
-  goods:{data:0,chem:0,parts:0,stims:0,gear:0},
+  goods:{data:0,chem:0,parts:0,stims:0,gear:0,food:0,wood:0,materials:0},
   income:0,
   debtDays:0,
   crisis:false,
@@ -496,28 +525,49 @@ function hourN(){return ((ST.tick%TPD)/100+6)%24}   // day starts 06:00
 
 /* ---------- AI soul layer (Phase 1: talk to a wisp) ---------- */
 let AI_PROXY="";              // set to your Worker URL, e.g. "https://neon-sprawl-ai.you.workers.dev"
-const AI_MODEL="claude-sonnet-4-6";
+const AI_MODEL_TALK="claude-sonnet-4-6";    // quality dialogue for direct TALK
+const AI_MODEL_AMBIENT="claude-haiku-4-5";  // cheap/fast for background musings
+const AI_MODEL=AI_MODEL_TALK;               // back-compat default
 let AI_CAP_USD=1.00;          // session spend ceiling (0 = no cap); override via localStorage "neonSprawlAICap"
-const AI_COST_IN=3.0, AI_COST_OUT=15.0;  // rough $/million tokens (Sonnet) — adjust to current pricing
+const AI_RATES={"claude-sonnet-4-6":{in:3.0,out:15.0},"claude-haiku-4-5":{in:1.0,out:5.0}};
+const AI_COST_IN=3.0, AI_COST_OUT=15.0;  // legacy fallback (Sonnet)
 try{const _o=localStorage.getItem("neonSprawlAIProxy");if(_o)AI_PROXY=_o}catch(e){}
 try{const _c=localStorage.getItem("neonSprawlAICap");if(_c!=null&&_c!=="")AI_CAP_USD=parseFloat(_c)||0}catch(e){}
-const AIUSE={calls:0,inTok:0,outTok:0};
+const AIUSE={calls:0,inTok:0,outTok:0,byModel:{}};
 function aiReady(){return !!AI_PROXY}
-function aiCostUSD(){return (AIUSE.inTok*AI_COST_IN+AIUSE.outTok*AI_COST_OUT)/1e6}
+function aiCostUSD(){
+  // sum per-model costs accurately; fall back to legacy flat rate if no breakdown
+  let total=0,counted=0;
+  for(const m in AIUSE.byModel){const u=AIUSE.byModel[m],r=AI_RATES[m]||{in:AI_COST_IN,out:AI_COST_OUT};
+    total+=(u.inTok*r.in+u.outTok*r.out)/1e6;counted+=u.inTok+u.outTok;}
+  if(counted===0)return (AIUSE.inTok*AI_COST_IN+AIUSE.outTok*AI_COST_OUT)/1e6;
+  return total;}
 function aiMeterUpdate(){const el=$("aimeter");if(!el)return;
   if(!aiReady()||AIUSE.calls===0){el.style.display="none";return}
   const cost=aiCostUSD(),capOn=AI_CAP_USD>0;
   el.style.display="block";
-  el.textContent="◈ AI · "+AIUSE.calls+(AIUSE.calls===1?" call":" calls")+" · "+(AIUSE.inTok+AIUSE.outTok)+" tok · ~$"+cost.toFixed(3)+(capOn?" / $"+AI_CAP_USD.toFixed(2):"");
+  // compact per-model breakdown
+  const son=AIUSE.byModel["claude-sonnet-4-6"],hai=AIUSE.byModel["claude-haiku-4-5"];
+  const parts=[];
+  if(son)parts.push("S:"+son.calls);
+  if(hai)parts.push("H:"+hai.calls);
+  const brk=parts.length?" ("+parts.join(" ")+")":"";
+  el.textContent="\u25c8 AI"+brk+" \u00b7 "+(AIUSE.inTok+AIUSE.outTok)+" tok \u00b7 ~$"+cost.toFixed(3)+(capOn?" / $"+AI_CAP_USD.toFixed(2):"");
   el.style.color=capOn&&cost>=AI_CAP_USD?"var(--rd)":capOn&&cost>=AI_CAP_USD*0.8?"var(--or)":"var(--dim)";}
-async function aiChat(system,messages){
+async function aiChat(system,messages,model){
+  model=model||AI_MODEL_TALK;
   if(AI_CAP_USD>0&&aiCostUSD()>=AI_CAP_USD)throw new Error("session AI budget ($"+AI_CAP_USD.toFixed(2)+") reached — raise it: localStorage.setItem('neonSprawlAICap','5')");
   const r=await fetch(AI_PROXY,{method:"POST",headers:{"content-type":"application/json"},
-    body:JSON.stringify({model:AI_MODEL,max_tokens:512,system,messages})});
+    body:JSON.stringify({model,max_tokens:512,system,messages})});
   if(!r.ok)throw new Error("proxy returned "+r.status);
   const d=await r.json();
   if(d&&d.error)throw new Error((d.error&&d.error.message)||String(d.error));
-  if(d.usage){AIUSE.calls++;AIUSE.inTok+=d.usage.input_tokens||0;AIUSE.outTok+=d.usage.output_tokens||0;aiMeterUpdate();}
+  if(d.usage){AIUSE.calls++;
+    const it=d.usage.input_tokens||0,ot=d.usage.output_tokens||0;
+    AIUSE.inTok+=it;AIUSE.outTok+=ot;
+    const bm=AIUSE.byModel[model]||(AIUSE.byModel[model]={inTok:0,outTok:0,calls:0});
+    bm.inTok+=it;bm.outTok+=ot;bm.calls++;
+    aiMeterUpdate();}
   return (d.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("").trim();
 }
 function remember(p,txt){if(!p)return;(p.mem||(p.mem=[])).push({d:dayN(),h:hourN()|0,t:txt});
@@ -555,7 +605,7 @@ function astar(sx,sy,gx,gy,opt){opt=opt||{};const adj=opt.adj?1:0;const cf=opt.f
   const par=new Int32Array(MW*MH).fill(-1);
   const si=sx+sy*MW;gS[si]=0;open.push({i:si,g:0,f:CHEB(sx,sy,gx,gy)});
   let found=-1,iter=0;
-  while(open.size&&iter++<5000){const n=open.pop();const ni=n.i;
+  while(open.size&&iter++<14000){const n=open.pop();const ni=n.i;
     if(n.g>gS[ni]+1e-4)continue;
     const nx=ni%MW,ny=(ni/MW)|0;
     if(adj?CHEB(nx,ny,gx,gy)<=1:(nx===gx&&ny===gy)){found=ni;break}
@@ -630,7 +680,10 @@ function roomTheme(furn){if(!furn)return"den";
   if(t.includes("stimlab"))return"toxic";
   if(t.includes("chemlab"))return"toxic";
   if(t.includes("dealer"))return"toxic";
-  if(t.includes("medbed"))return"med";
+  if(t.includes("hospital")||t.includes("medbed"))return"med";
+  if(t.includes("school"))return"civic";
+  if(t.includes("arcade"))return"exchange";
+  if(t.includes("mineshaft")||t.includes("loggingcamp"))return"work";
   if(t.includes("workshop"))return"work";
   if(t.includes("gearshop"))return"work";
   if(t.includes("workstation"))return"work";
@@ -649,43 +702,94 @@ function placeRoom(x0,y0,w,h,door,furn){
 }
 function genCity(){
   ST.cityHomes=[];
-  // residential row — one home per citizen (bed + hygiene + screen)
-  for(let i=0;i<7;i++){const x0=4+i*7,y0=6;
+  // Organic spread on a 140x100 map: built-up core in the center,
+  // nature/resource ring reserved on the outskirts (filled in a later pass).
+  // Helper: place a home and register it
+  function home(x0,y0){
     placeRoom(x0,y0,5,4,{x:x0+2,y:y0+3},
       [{t:"pod",x:1,y:1},{t:"fridge",x:2,y:1},{t:"shower",x:3,y:1},{t:"tv",x:1,y:2},{t:"toilet",x:3,y:2}]);
-    ST.cityHomes.push({x0,y0,w:5,h:4,bed:{x:x0+1,y:y0+1},door:{x:x0+2,y:y0+3}})}
-  // workplaces along the strip, with an open plaza (x23-31) left between
-  placeRoom(4,16,10,6,{x:8,y:21},[{t:"workstation",x:1,y:1},{t:"workstation",x:3,y:1},{t:"workstation",x:5,y:1},{t:"workstation",x:7,y:1},{t:"gym",x:1,y:4},{t:"fridge",x:8,y:4}]);   // corp office
-  placeRoom(15,16,8,6,{x:18,y:21},[{t:"counter",x:1,y:1},{t:"counter",x:2,y:1},{t:"counter",x:3,y:1},{t:"fridge",x:6,y:1},{t:"fridge",x:6,y:3}]);   // shop
-  placeRoom(32,16,8,6,{x:35,y:21},[{t:"bar",x:1,y:1},{t:"bar",x:2,y:1},{t:"bar",x:3,y:1},{t:"tv",x:6,y:1},{t:"tv",x:6,y:4}]);   // bar
-  placeRoom(41,16,9,6,{x:45,y:21},[{t:"medbed",x:1,y:1},{t:"medbed",x:3,y:1},{t:"medbed",x:5,y:1},{t:"medbed",x:7,y:1}]);   // clinic
-  // the crime corner — dealer den / flophouse
-  placeRoom(20,25,7,5,{x:23,y:29},[{t:"dealer",x:1,y:1},{t:"dealer",x:5,y:1},{t:"counter",x:3,y:1},{t:"pod",x:1,y:3},{t:"pod",x:5,y:3}]);
+    ST.cityHomes.push({x0,y0,w:5,h:4,bed:{x:x0+1,y:y0+1},door:{x:x0+2,y:y0+3}});}
+  function decor(t,x,y){if(INB(x,y)&&!structAt(x,y))addBuilt(t,x,y);}
 
-  // ── STREET FURNITURE ──
-  function decor(t,x,y){addBuilt(t,x,y);}
+  // ── RESIDENTIAL QUARTER (upper-center) — two rows of homes with a lane between ──
+  const resY1=30, resY2=40, resX0=46;
+  for(let i=0;i<4;i++)home(resX0+i*9, resY1);
+  for(let i=0;i<3;i++)home(resX0+5+i*9, resY2);
 
-  // street lamps at road intersections and along main street
-  [[28,12],[28,22],[6,12],[13,12],[20,12],[35,12],[42,12],[49,12],
-   [6,22],[13,22],[35,22],[42,22]].forEach(([x,y])=>decor("streetlamp",x,y));
+  // ── PRODUCTION CLUSTER (center-left) ──
+  placeRoom(40,52,10,6,{x:44,y:57},[{t:"workstation",x:1,y:1},{t:"workstation",x:3,y:1},{t:"workstation",x:5,y:1},{t:"workstation",x:7,y:1},{t:"gym",x:1,y:4},{t:"fridge",x:8,y:4}]);   // corp office
+  placeRoom(53,52,8,6,{x:56,y:57},[{t:"counter",x:1,y:1},{t:"counter",x:2,y:1},{t:"counter",x:3,y:1},{t:"fridge",x:6,y:1},{t:"fridge",x:6,y:3}]);   // shop
 
-  // plaza benches — facing each other across the open space
-  [[24,18],[24,20],[29,18],[29,20],[26,19]].forEach(([x,y])=>decor("bench",x,y));
+  // ── COMMERCIAL / SOCIAL STRIP (center-right) ──
+  placeRoom(72,52,8,6,{x:75,y:57},[{t:"bar",x:1,y:1},{t:"bar",x:2,y:1},{t:"bar",x:3,y:1},{t:"tv",x:6,y:1},{t:"tv",x:6,y:4}]);   // bar
+  placeRoom(84,52,9,6,{x:88,y:57},[{t:"medbed",x:1,y:1},{t:"medbed",x:3,y:1},{t:"medbed",x:5,y:1},{t:"medbed",x:7,y:1}]);   // clinic
 
-  // planters in plaza corners and along residential strip
-  [[23,16],[31,16],[23,22],[31,22]].forEach(([x,y])=>decor("planter",x,y));
-  // small planters between homes
-  for(let i=0;i<6;i++)decor("planter",7+i*7,5);
+  // ── CENTRAL PLAZA (open space between residential and production) ──
+  // left intentionally empty around x58-70, y44-50 as a gathering plaza
 
-  // dumpsters in back alley (y=22-23 strip, tucked against building walls)
-  [[5,23],[16,23],[33,23],[43,23]].forEach(([x,y])=>decor("dumpster",x,y));
+  // ── CRIME CORNER (lower-center, set apart) ──
+  placeRoom(60,70,7,5,{x:63,y:74},[{t:"dealer",x:1,y:1},{t:"dealer",x:5,y:1},{t:"counter",x:3,y:1},{t:"pod",x:1,y:3},{t:"pod",x:5,y:3}]);
 
-  // crates stacked in alleys and near dealer den
-  [[19,23],[19,24],[27,23],[27,24],[3,18],[3,20],[52,18],[52,20]].forEach(([x,y])=>decor("crate",x,y));
+  // ── RESERVED OUTER-RING ZONES (markers only for now; filled next pass) ──
+  // farms NW, woods NE, mines SW, civic SE — left as open ground intentionally
+  ST.zones={
+    farm:{x:10,y:14,w:24,h:18},
+    woods:{x:106,y:14,w:24,h:18},
+    mine:{x:10,y:70,w:24,h:18},
+    civic:{x:104,y:70,w:28,h:20}
+  };
 
-  // vending machines against corp office and clinic exterior
-  [3,16].forEach(y=>decor("vendmachine",3,y+1));
-  decor("vendmachine",50,18);decor("vendmachine",50,19);
+  // ── POPULATE OUTER-RING ZONES (resource + civic) ──
+  // Farmland (NW): a spread of open farm plots (walkable crops)
+  const fz=ST.zones.farm;
+  for(let fy=0;fy<3;fy++)for(let fx=0;fx<5;fx++)
+    decor("farmplot", fz.x+3+fx*4, fz.y+3+fy*5);
+
+  // The Woods (NE): logging camps among the trees
+  const wz=ST.zones.woods;
+  [[4,3],[12,4],[18,9],[7,12],[15,14]].forEach(([dx,dy])=>
+    addBuilt("loggingcamp", wz.x+dx, wz.y+dy));
+
+  // Old Mine (SW): mine shafts
+  const mz=ST.zones.mine;
+  [[4,3],[11,5],[17,4],[6,11],[14,12]].forEach(([dx,dy])=>
+    addBuilt("mineshaft", mz.x+dx, mz.y+dy));
+
+  // Civic Zone (SE): park, arcade, hospital, school as standalone civic structures
+  const cz=ST.zones.civic;
+  // park is a cluster of green tiles
+  for(let py=0;py<3;py++)for(let px=0;px<4;px++)
+    decor("park", cz.x+2+px*2, cz.y+2+py*2);
+  addBuilt("arcade",   cz.x+12, cz.y+3);
+  addBuilt("hospital", cz.x+18, cz.y+3);
+  addBuilt("school",   cz.x+12, cz.y+10);
+  addBuilt("arcade",   cz.x+18, cz.y+10); // second entertainment node
+
+  // ── STREET FURNITURE — computed relative to rooms, not hardcoded ──
+  // street lamps around the core perimeter and plaza
+  const lampSpots=[
+    [58,44],[68,44],[58,50],[68,50],   // plaza corners
+    [44,49],[56,49],[75,49],[88,49],   // above production/commercial
+    [50,29],[68,29],[46,46],[92,46],   // residential + edges
+    [62,68],[68,68]                    // near crime corner
+  ];
+  lampSpots.forEach(([x,y])=>decor("streetlamp",x,y));
+
+  // plaza benches + planters (central gathering space x58-68 y44-50)
+  [[60,46],[60,48],[66,46],[66,48],[63,47]].forEach(([x,y])=>decor("bench",x,y));
+  [[58,44],[68,44],[58,50],[68,50],[63,45]].forEach(([x,y])=>decor("planter",x,y));
+  // planters along residential frontage
+  for(let i=0;i<4;i++)decor("planter",resX0+1+i*9,resY1-1);
+
+  // dumpsters tucked behind production/commercial buildings
+  [[41,59],[54,59],[73,59],[85,59]].forEach(([x,y])=>decor("dumpster",x,y));
+
+  // crates near production and crime corner
+  [[51,53],[51,54],[62,69],[68,69],[40,50],[92,50]].forEach(([x,y])=>decor("crate",x,y));
+
+  // vending machines on building frontages
+  decor("vendmachine",39,54);decor("vendmachine",39,55);
+  decor("vendmachine",93,54);decor("vendmachine",93,55);
 }
 function genMap(){
   ST.ter=new Uint8Array(MW*MH);ST.structs.clear();ST.rooms=[];
@@ -731,7 +835,6 @@ function mkSched(P,tr){
     bf:r2(wake+0.4),lunch:r2(clamp(12.5+(P.imp-50)/55,11.5,14.5)),dinner:r2(clamp(18.5+(P.soc-50)/45,17,21))}}
 function workSpd(p,sk){return (0.6+sk*0.09)*trMul(p,"work")}
 function moveSpd(p){let s=0.32*trMul(p,"move");if(p.dazed>ST.tick)s*=.55;return s}
-function accOf(p,d){return 0.5}// stub — combat removed
 function gainXp(p,k){p.xp[k]=(p.xp[k]||0)+1;const need=60*(p.sk[k]+1);
   if(p.xp[k]>=need&&p.sk[k]<10){p.xp[k]=0;p.sk[k]++;
     log(p.name+" advanced: "+({sal:"Salvage",bld:"Construction",cook:"Synthcraft",sht:"Shooting"})[k]+" "+p.sk[k],"good")}}
@@ -814,7 +917,7 @@ function scoreJobs(p){
   const bpStr=nearestStruct(p,s=>(s.bp||s.decon)&&!s.res);
   const hyg=p.needs.hyg??80,fun=p.needs.fun??70,socN=p.needs.socN??70,soc=p.pers.soc;
   const showStr=(!p.homeless&&(homeFixture(p,"shower")||homeFixture(p,"toilet")))||nearestStruct(p,s=>(s.type==="shower"||s.type==="toilet")&&!s.bp);
-  const funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar")&&!s.bp);
+  const funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar"||s.type==="park"||s.type==="arcade")&&!s.bp);
   let mate=null,_md=1e9;for(const q of ST.pawns){if(q.id===p.id)continue;
     if(relGet(p.id,q.id)<-40)continue;  // don't socialize toward rivals/enemies
     const dd=DIST(p.px,p.py,q.px,q.py);if(dd<_md){_md=dd;mate=q}}
@@ -822,7 +925,10 @@ function scoreJobs(p){
   const isWorkable=s=>!s.bp&&(DEF[s.type].prod||DEF[s.type].refine||DEF[s.type].vendor);
   const assignedStr=p.assigned?ST.structs.get(p.assigned):null;
   const workStr=ST.tick>(p.workCd||0)?((assignedStr&&!assignedStr.bp)?assignedStr:nearestStruct(p,isWorkable)):null;
-  const medStr=nearestStruct(p,s=>s.type==="medbed"&&!s.bp);
+  // hospital preferred over medbed (better care); fall back to either
+  const medStr=nearestStruct(p,s=>(s.type==="hospital"||s.type==="medbed")&&!s.bp);
+  // school: citizens with spare time and ambition train skills
+  const schoolStr=nearestStruct(p,s=>s.type==="school"&&!s.bp);
   const dlrStr=nearestStruct(p,s=>s.type==="dealer"&&!s.bp);
   const robTgt=nearestStruct(p,s=>s.type==="counter"&&!s.bp);
   const gearStr=!p.hasGear&&(p.credits||0)>=15&&(ST.goods.gear||0)>0?
@@ -839,11 +945,12 @@ function scoreJobs(p){
     build:bpStr?50:0,
     idle:10,
     hygiene:showStr?clamp(70-hyg,0,100):0,recreate:funStr?clamp(60-fun,0,100):0,socialize:mate?clamp(60-socN,0,100):0,
-    work:(workStr&&ST.tick>(p.workCd||0))?clamp((isContracted?95:p.assigned?80:60)-cred*0.6,0,100):0,treat:p.sick&&medStr?80:0,
+    work:(workStr&&ST.tick>(p.workCd||0))?clamp((isContracted?95:p.assigned?80:60)-cred*0.6,0,100):0,treat:p.sick&&medStr?95:0,
     substance:dlrStr?clamp((p.addiction||0)*0.6+((p.stress||0)>40?((p.stress||0)-40)*0.4:0),0,100):0,
     crime:(robTgt&&cred<20)?clamp(30-cred*1.1+turfBonus+nightBonus,0,100):0,
     steal:stealTgt?clamp(35-(cred*1.2)+turfBonus+nightBonus,0,100):0,
-    buygear:gearStr?clamp(40-(cred*0.5),0,70):0};
+    buygear:gearStr?clamp(40-(cred*0.5),0,70):0,
+    learn:(schoolStr&&food>40&&rest>35&&!p.sick)?clamp(18+cur*0.15+ind*0.1,0,45):0};
   const pw={
     eat:0.5+cau/100,sleep:0.5+cau/100,build:0.5+ind/100,
     idle:0.5+(100-ind)/100,
@@ -851,13 +958,15 @@ function scoreJobs(p){
     substance:0.3+p.pers.imp/150+(100-p.pers.intg)/200,
     crime:(100-p.pers.intg)/100*(0.4+p.pers.imp/150),
     steal:(100-p.pers.intg)/100*(0.3+p.pers.imp/120),
-    buygear:0.5+p.pers.ind/150};
-  const sm={eat:1,sleep:1,build:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1,treat:1,substance:1,crime:1,steal:1,buygear:1};
+    buygear:0.5+p.pers.ind/150,
+    learn:0.4+p.pers.amb/150+cur/200};
+  const sm={eat:1,sleep:1,build:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1,treat:1,substance:1,crime:1,steal:1,buygear:1,learn:1};
   if(p.sched){const S=p.sched,hr=hourN();
     sm.sleep*=inWin(hr,S.sleepAt,S.wake)?1.9:(rest<18?0.7:0.12);
     sm.work*=inWin(hr,S.workStart,S.workEnd)?1.6:0.6;
     sm.eat*=(nearWin(hr,S.bf,0.9)||nearWin(hr,S.lunch,0.8)||nearWin(hr,S.dinner,1.0))?1.7:0.7;
     if(nearWin(hr,S.wake+0.6,1.0))sm.hygiene*=1.7;
+    sm.learn*=inWin(hr,S.workStart,S.workEnd)?0.8:1.3; // study off-shift
   }else if(night){sm.sleep*=1.4}
   if(inj){sm.eat*=1.3;sm.sleep*=1.3}
   const bias=p.bias;
@@ -874,6 +983,7 @@ function scoreJobs(p){
     {k:"crime",  mk:()=>robTgt?{t:"crime",s:robTgt,prog:0}:null},
     {k:"steal",  mk:()=>stealTgt?{t:"steal",oid:stealTgt.id,prog:0}:null},
     {k:"buygear",mk:()=>gearStr?{t:"buygear",s:gearStr,prog:0}:null},
+    {k:"learn",  mk:()=>schoolStr?{t:"learn",s:schoolStr,prog:0}:null},
     {k:"idle",   mk:()=>{const w=randNear(p,5)||{x:p.px|0,y:p.py|0};return{t:"idle",until:ST.tick+RI(25,70),x:w.x,y:w.y}}}];
   if(p.cmd){const a=acts.find(x=>x.k===p.cmd);p.cmd=null;
     if(a){const cj=a.mk();
@@ -905,25 +1015,16 @@ function jobLabel(p){
     case "crime":return "Running a job";case "rob":return "Robbing someone";
     case "steal":return "Scoping a mark";
     case "buygear":return "Getting kitted out";
+    case "learn":return "Studying";
     default:return "Idling"}}
 
 /* combat helpers (pawn side) */
-function foeById(id){for(const f of ST.foes)if(f.id===id)return f;return null}
-function nearestFoeInRange(p){let best=null,bd=1e9;
-  for(const f of ST.foes){if(f.hp<=0)continue;
-    const d=DIST(p.px,p.py,f.px,f.py);
-    if(d<=p.weapon.rng&&d<bd&&los(p.px,p.py,f.px,f.py)){bd=d;best=f}}
-  return best}
-function foeNear(p,r){return false}// stub — no foes in city sim
-function fireAt(p,f){p.cd=p.weapon.cd;
-  const d=DIST(p.px,p.py,f.px,f.py);
-  beam(p.px,p.py,f.px,f.py,"#7df9ff");SFX.shoot();gainXp(p,"sht");
-  if(Math.random()<accOf(p,d))damageFoe(f,RI(p.weapon.dmg[0],p.weapon.dmg[1]))}
+function foeNear(p,r){return false}// no foes in city sim
 function damagePawn(p,d){const dmg=Math.round(d*(p.hasGear?0.75:1)*trMul(p,"dmgred"));p.hp-=dmg;p.hurtT=ST.tick;SFX.hit();applyDrift(p,{cau:3});
   const watcher=ST.pawns.find(q=>q.id!==p.id&&DIST(q.px,q.py,p.px,p.py)<8);
   if(watcher)relAdj(watcher.id,p.id,-2);
   addMod(p,"pain","In pain",-8,TPD*.4);
-  if(!p.drafted&&p.flee<ST.tick){clearJob(p);p.flee=ST.tick+90}
+  if(p.flee<ST.tick){clearJob(p);p.flee=ST.tick+90}
   if(p.hp<=0)killPawn(p,"was killed in the fighting")}
 function killPawn(p,why){const i=ST.pawns.indexOf(p);if(i<0)return;
   clearJob(p);ST.pawns.splice(i,1);ST.stats.deaths++;SFX.die();
@@ -993,7 +1094,7 @@ function pawnTick(p){
   if(ST.procgen!==false&&!p.sick&&ST.tick%60===0&&Math.random()<0.002+(p.needs.hyg<35?(35-p.needs.hyg)/35*0.12:0)){
     p.sick=true;addMod(p,"sick","Infection",-10,TPD);float(p.px,p.py,"INFECTED","#ff4757");log(p.name+" caught an infection.","warn")}
   if(p.sick&&ST.tick%60===0){  // contagion: spread to nearby citizens
-    const spreadRate=0.008*(p.needs.hyg<30?3:1);  // dirty carrier spreads 3x
+    const spreadRate=0.006*(p.needs.hyg<30?3:1);  // dirty carrier spreads 3x
     for(const q of ST.pawns){if(q===p||q.sick)continue;
       const d=DIST(p.px,p.py,q.px,q.py);if(d>3)continue;
       // bar and clinic are social hotspots — double spread rate there
@@ -1005,9 +1106,10 @@ function pawnTick(p){
         remember(q,"caught something — probably from "+p.name);
         log(q.name+" caught an infection from "+p.name+".","warn")}}}
   if(p.sick){
-    if(ST.tick%40===0)p.hp-=1;
+    if(ST.tick%60===0)p.hp-=1;   // slower decay — bigger map means longer trips to care
     if(p.hp<=0){killPawn(p,"died of an untreated infection");return}
-    if(p.needs.hyg>60&&p.hp>60&&ST.tick%80===0&&Math.random()<0.05){p.sick=false;p.quarantine=false;log(p.name+" shook off the infection.","good")}}
+    // easier natural recovery so a single distant clinic isn't a death sentence
+    if(p.needs.hyg>50&&p.hp>50&&ST.tick%80===0&&Math.random()<0.09){p.sick=false;p.quarantine=false;log(p.name+" shook off the infection.","good")}}
   if(ST.tick%100===0){
     let sp=-3;
     if(p.sick)sp+=3;
@@ -1029,7 +1131,7 @@ function pawnTick(p){
   if((ST.tick+p.id)%40===0)moodCalc(p);
   // mental break
   const brk=22+trAdd(p,"brk");
-  if(!p.drafted&&p.dazed<ST.tick&&p.mood<brk&&Math.random()<0.0018+(p.stress>70?0.0025:0)){
+  if(p.dazed<ST.tick&&p.mood<brk&&Math.random()<0.0018+(p.stress>70?0.0025:0)){
     clearJob(p);p.dazed=ST.tick+260;p.dz=null;
     float(p.px,p.py,"SNAPPED","#b06fff");
     log(p.name+" snapped — wandering dazed.","warn")}
@@ -1039,7 +1141,7 @@ function pawnTick(p){
     if(p.dz&&gotoCell(p,p.dz.x,p.dz.y,0)==="fail")p.dz=null;
     return}
   // relationship-driven behaviors (every 80 ticks, non-drafted non-dazed)
-  if(ST.tick%80===0&&!p.drafted&&p.dazed<ST.tick){
+  if(ST.tick%80===0&&p.dazed<ST.tick){
     for(const q of ST.pawns){if(q===p||q.hp<=0)continue;
       const rel=relGet(p.id,q.id);
       const dist=DIST(p.px,p.py,q.px,q.py);
@@ -1081,7 +1183,10 @@ function pawnTick(p){
       if(r==="fail"){markUnre(p,j.x,j.y);p.job=null;break}
       if(r==="arr"){j.prog++;
         if(j.prog>=22){
-          if(j.home){p.needs.food=100;addMod(p,"meal","Ate at home",4,TPD*.5)}
+          if((ST.goods.food||0)>0){
+            // eat from the communal food stockpile — free, satisfying
+            ST.goods.food--;p.needs.food=100;addMod(p,"meal","Ate fresh from the farms",5,TPD*.5)}
+          else if(j.home){p.needs.food=100;addMod(p,"meal","Ate at home",4,TPD*.5)}
           else if((p.credits||0)>=5){p.credits-=5;p.needs.food=100;addMod(p,"meal","Bought a meal",3,TPD*.5)}
           else{p.needs.food=Math.min(100,p.needs.food+16);addMod(p,"hungry","Couldn't afford a real meal",-7,TPD*.3)}
           let other=null,od=1e9;for(const q of ST.pawns){if(q.id===p.id)continue;const dd=Math.hypot(p.px-q.px,p.py-q.py);if(dd<od){od=dd;other=q}}
@@ -1125,6 +1230,8 @@ function pawnTick(p){
       if(r==="arr"){j.prog++;if(j.prog>=50){
         p.needs.fun=100;
         const atBar=s.type==="bar";
+        const atPark=s.type==="park";
+        const atArcade=s.type==="arcade";
         if(atBar&&(p.credits||0)>=5){
           p.credits-=5;p.needs.socN=Math.min(100,(p.needs.socN||0)+40);
           // boost relationships with everyone at the bar
@@ -1133,8 +1240,20 @@ function pawnTick(p){
               addMod(q,"drinks","Had drinks together",2,TPD*.3)}}
           addMod(p,"drinks","Night at the bar",5,TPD*.5);
           remember(p,"had a good night at the bar — feels more connected to the block")}
+        else if(atPark){
+          // free green space — strong stress relief, small social bump
+          p.stress=Math.max(0,(p.stress||0)-22);
+          p.needs.socN=Math.min(100,(p.needs.socN||0)+15);
+          addMod(p,"park","Time in the park",6,TPD*.5);
+          for(const q of ST.pawns){if(q===p)continue;
+            if(DIST(p.px,p.py,q.px,q.py)<4)relAdj(p.id,q.id,2)}}
+        else if(atArcade){
+          // premium entertainment — small fee feeds district income, big fun + stress relief
+          if((p.credits||0)>=4){p.credits-=4;ST.income=(ST.income||0)+3;}
+          p.stress=Math.max(0,(p.stress||0)-18);
+          addMod(p,"arcade","Lost in the arcade",6,TPD*.5)}
         else addMod(p,"fun","Unwound",3,TPD*.4);
-        p.job=null}}
+        p.job=null;syncHUD()}}
       break}
     case "socialize":{const o=ST.pawns.find(q=>q.id===j.oid);
       if(!o||o===p){p.job=null;break}
@@ -1176,8 +1295,35 @@ function pawnTick(p){
       const r=gotoCell(p,s.x,s.y,1);
       if(r==="fail"){markUnre(p,s.x,s.y);p.job=null;break}
       if(r==="arr"){j.prog++;
-        if(j.prog>=30){p.sick=false;p.credits=(p.credits||0)-15;p.hp=Math.min(100,p.hp+20);
-          float(s.x+.5,s.y+.5,"TREATED","#39ff88");addMod(p,"heal","Treated at clinic",4,TPD*.4);p.job=null;syncHUD()}}
+        const isHosp=s.type==="hospital";
+        const need=isHosp?20:30;        // hospital is faster
+        if(j.prog>=need){p.sick=false;
+          p.credits=(p.credits||0)-(isHosp?10:15);   // hospital cheaper
+          p.hp=Math.min(100,p.hp+(isHosp?35:20));     // hospital heals more
+          float(s.x+.5,s.y+.5,"TREATED","#39ff88");
+          addMod(p,"heal",isHosp?"Treated at the hospital":"Treated at clinic",isHosp?6:4,TPD*.4);p.job=null;syncHUD()}}
+      break}
+    case "learn":{const s=j.s;
+      if(structAt(s.x,s.y)!==s||s.bp){p.job=null;break}
+      const r=gotoCell(p,s.x,s.y,1);
+      if(r==="fail"){markUnre(p,s.x,s.y);p.job=null;break}
+      if(r==="arr"){j.prog++;
+        if(j.prog>=60){
+          // train the citizen's weakest core skill — a focused session gives a real chunk of XP
+          const skills=["sal","bld","cook","sht"];
+          let weakest=skills[0];for(const k of skills)if((p.sk[k]||0)<(p.sk[weakest]||0))weakest=k;
+          const before=p.sk[weakest];
+          // award ~half a level worth of XP per session so a few trips visibly raise the skill
+          const need=60*((p.sk[weakest]||0)+1);
+          const batch=Math.max(20,Math.round(need*0.5));
+          for(let i=0;i<batch;i++)gainXp(p,weakest);
+          p.needs.fun=Math.max(0,(p.needs.fun||0)-6); // studying isn't fun
+          applyDrift(p,{amb:1});
+          if(p.sk[weakest]>before)float(s.x+.5,s.y+.5,weakest.toUpperCase()+" "+p.sk[weakest],"#7aa2ff");
+          else float(s.x+.5,s.y+.5,"+STUDY","#7aa2ff");
+          addMod(p,"study","Studied at the hub",3,TPD*.4);
+          remember(p,"put in study time at the learning hub — sharpening up");
+          p.job=null;syncHUD()}}
       break}
     case "substance":{const s=j.s;
       if(structAt(s.x,s.y)!==s||s.bp){p.job=null;break}
@@ -1277,78 +1423,12 @@ function pawnTick(p){
 }
 
 /* ---------- foes ---------- */
-function damageFoe(f,d){f.hp-=d;
-  if(f.hp<=0&&!f.gone){f.gone=true;ST.stats.kills++;
-    const g=ST.grp[f.group];if(g){g.alive--;
-      if(!g.ret&&g.alive>0&&g.alive/g.n0<=.34){g.ret=true;
-        log("The raiders are breaking off!","good")}}
-    ST.sel=ST.sel.filter(e=>e!==f)}}
 function spawnFoeAt(kind,x,y,group){/* foes removed in city sim mode */}
 function edgeCell(){for(let i=0;i<60;i++){const side=RI(0,3);let x,y;
   if(side===0){x=RI(1,MW-2);y=1}else if(side===1){x=RI(1,MW-2);y=MH-2}
   else if(side===2){x=1;y=RI(1,MH-2)}else{x=MW-2;y=RI(1,MH-2)}
   if(foeCost(x,y)>=0&&foeCost(x,y)<5)return{x,y}}
   return{x:1,y:1}}
-function acquire(f){let best=null,bd=1e9;
-  for(const p of ST.pawns){const d=DIST(f.px,f.py,p.px,p.py);
-    if(d<bd){bd=d;best={kind:"pawn",e:p}}}
-  for(const s of ST.structs.values()){
-    if(s.type!=="turret"||s.bp)continue;
-    const d=DIST(f.px,f.py,s.x+.5,s.y+.5)*1.15;
-    if(d<bd){bd=d;best={kind:"s",e:s}}}
-  return best}
-function foeGoto(f,x,y,adj){
-  const cx=f.px|0,cy=f.py|0;
-  if(adj?CHEB(cx,cy,x,y)<=1:(cx===x&&cy===y)){f.path=null;return "arr"}
-  if(!f.path||f.pTx!==x||f.pTy!==y||f.pi>=f.path.length){
-    const pa=astar(cx,cy,x,y,{foe:1,adj:adj});
-    if(!pa){f.path=null;return "fail"}
-    f.path=pa;f.pi=0;f.pTx=x;f.pTy=y;
-    if(pa.length===0){f.path=null;return "arr"}}
-  const node=f.path[f.pi];
-  const s=structAt(node.x,node.y);
-  if(s&&!s.bp&&DEF[s.type].blocks!==0&&!DEF[s.type].nat){   // breach what blocks the route
-    if(f.cdLeft<=0){f.cdLeft=f.cd;
-      damageStruct(s,RI(f.dmg[0],f.dmg[1]));SFX.hit();
-      beam(f.px,f.py,node.x+.5,node.y+.5,"#ff5560")}
-    if(structAt(node.x,node.y)===s)return "mov"}
-  else if(s&&!s.bp&&DEF[s.type].blocks!==0&&DEF[s.type].nat){f.path=null;return "mov"}
-  const tx=node.x+.5,ty=node.y+.5;
-  const dx=tx-f.px,dy=ty-f.py,d=Math.hypot(dx,dy);
-  if(d<=f.spd){f.px=tx;f.py=ty;f.pi++;
-    if(f.pi>=f.path.length)f.path=null}
-  else{f.px+=dx/d*f.spd;f.py+=dy/d*f.spd}
-  return "mov"}
-function foeTick(f){
-  if(f.cdLeft>0)f.cdLeft--;
-  const g=ST.grp[f.group];
-  if(g&&!g.ret&&ST.tick-g.t0>TPD*1.2){g.ret=true;
-    log("The raiders lose interest and pull back.","good")}
-  if(g&&g.ret){const r=foeGoto(f,f.hx,f.hy,0);
-    if(r==="arr"||r==="fail"){f.gone=true;g.alive--}
-    return}
-  if(!f.tgt||ST.tick>f.rp||
-     (f.tgt.kind==="pawn"&&ST.pawns.indexOf(f.tgt.e)<0)||
-     (f.tgt.kind==="s"&&structAt(f.tgt.e.x,f.tgt.e.y)!==f.tgt.e)){
-    f.rp=ST.tick+25;f.tgt=acquire(f)}
-  const t=f.tgt;if(!t)return;
-  const tx=t.kind==="pawn"?t.e.px:t.e.x+.5;
-  const ty=t.kind==="pawn"?t.e.py:t.e.y+.5;
-  const d=DIST(f.px,f.py,tx,ty);
-  if(d<=f.rng&&(f.rng<2||los(f.px,f.py,tx,ty))){
-    if(f.cdLeft<=0){f.cdLeft=f.cd;
-      const dmg=RI(f.dmg[0],f.dmg[1]);
-      if(f.rng>=2){beam(f.px,f.py,tx,ty,"#ff5560");SFX.foeshoot();
-        const acc=clamp(.78-d*.045,.15,.78);
-        if(Math.random()<acc){
-          if(t.kind==="pawn")damagePawn(t.e,dmg);else damageStruct(t.e,dmg)}}
-      else{SFX.hit();beam(f.px,f.py,tx,ty,"#ff2d95");
-        if(t.kind==="pawn")damagePawn(t.e,dmg);else damageStruct(t.e,dmg)}}
-    return}
-  foeGoto(f,Math.floor(tx),Math.floor(ty),t.kind==="s"?1:0)}
-
-/* ---------- effects ---------- */
-function beam(x0,y0,x1,y1,col){ST.beams.push({x0,y0,x1,y1,col,ttl:6,t0:6})}
 function float(x,y,txt,col){ST.floats.push({x,y,txt,col,ttl:46,t0:46})}
 
 /* ---------- milestones ---------- */
@@ -1502,18 +1582,33 @@ function tick(){ST.tick++;
     if(DIST(P[i].px,P[i].py,P[j].px,P[j].py)<5)relAdj(P[i].id,P[j].id,0.02)}
   // (roguelike vat-protein production + beacon-extraction win removed — the city has neither)
   for(let i=ST.pawns.length-1;i>=0;i--)pawnTick(ST.pawns[i]);
-  for(let i=ST.beams.length-1;i>=0;i--)if(--ST.beams[i].ttl<=0)ST.beams.splice(i,1);
   for(let i=ST.floats.length-1;i>=0;i--)if(--ST.floats[i].ttl<=0)ST.floats.splice(i,1);
   if(ST.tick>=ST.nextEv)fireEvent();
+  // passive crop growth — farm plots slowly yield food on their own (tended or not)
+  if(ST.tick%200===0){
+    let farms=0,logs=0,mines=0;
+    for(const s of ST.structs.values()){if(s.bp)continue;
+      if(s.type==="farmplot")farms++;
+      else if(s.type==="loggingcamp")logs++;
+      else if(s.type==="mineshaft")mines++;}
+    // food: farms yield, but stop piling up past a sensible reserve (~3 days of meals)
+    if(farms>0&&(ST.goods.food||0)<ST.pawns.length*12)
+      ST.goods.food=(ST.goods.food||0)+Math.max(1,Math.round(farms/5));
+    // logging + mining trickle slowly when idle; dedicated workers (via assign/hire) produce faster through the work job
+    if(logs>0&&ST.tick%400===0)ST.goods.wood=(ST.goods.wood||0)+Math.max(1,Math.round(logs/3));
+    if(mines>0&&ST.tick%600===0)ST.goods.materials=(ST.goods.materials||0)+Math.max(1,Math.round(mines/3));}
   if(ST.tick%160===0){  // vendor sales cycle — auto-sell goods, district takes 40% cut
-    const PRICES={stims:22,gear:16,data:8,chem:6,parts:6};
+    const PRICES={stims:22,gear:16,data:8,chem:6,parts:6,wood:7,materials:14,food:5};
     const ILLEGAL={stims:true};
     for(const s of ST.structs.values()){if(s.bp||!DEF[s.type].vendor)continue;
       const sells=DEF[s.type].sells;
       let good=null;
       if(sells&&(ST.goods[sells]||0)>0)good=sells;
       else if(!sells){
+        // generic vendors move the premium commodities first, then raw goods
         if((ST.goods.gear||0)>0)good="gear";
+        else if((ST.goods.materials||0)>0)good="materials";
+        else if((ST.goods.wood||0)>0)good="wood";
         else if((ST.goods.data||0)>0)good="data";}
       if(!good)continue;
       ST.goods[good]--;
@@ -1544,6 +1639,7 @@ function tick(){ST.tick++;
       else float(s.x+.5,s.y+.5,"SOLD +"+cut+"c","#39ff88")}}
   if(ST.tick%30===0){updateFlags();genRequests();expireRequests()}
   if(ST.tick%TPD===0&&ST.tick>0)checkMilestones(); // daily milestone check
+  if(ST.tick%100===0)tickAmbient(); // background AI musings (rate-limited internally)
   if(ST.tick%200===0&&ST.gangs.length)gangTick();
   if(ST.tick%TPD===0&&ST.tick>0){
     // gear expiry check
@@ -1618,6 +1714,30 @@ const cv=$("c"),ctx=cv.getContext("2d");
 const oc=document.createElement("canvas"),octx=oc.getContext("2d");
 const tc=document.createElement("canvas");tc.width=MW*T;tc.height=MH*T;
 const tctx=tc.getContext("2d");
+
+// ── GLOW SPRITE CACHE ──
+// Pre-render soft radial glows once; stamp them with drawImage (cheap) instead of
+// allocating a new gradient every fixture every frame (expensive).
+const GLOW_CACHE={};
+function hexToRgb(h){const n=parseInt(h.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255];}
+function glowSprite(hex){
+  if(GLOW_CACHE[hex])return GLOW_CACHE[hex];
+  const size=32,c=document.createElement("canvas");c.width=c.height=size*2;
+  const g=c.getContext("2d");const[r,gn,b]=hexToRgb(hex);
+  const rg=g.createRadialGradient(size,size,0,size,size,size);
+  rg.addColorStop(0,`rgba(${r},${gn},${b},1)`);
+  rg.addColorStop(0.35,`rgba(${r},${gn},${b},0.55)`);
+  rg.addColorStop(0.7,`rgba(${r},${gn},${b},0.18)`);
+  rg.addColorStop(1,`rgba(${r},${gn},${b},0)`);
+  g.fillStyle=rg;g.fillRect(0,0,size*2,size*2);
+  GLOW_CACHE[hex]=c;return c;
+}
+// stamp a cached glow centered at world (wx,wy) with given radius + alpha
+function stampGlow(hex,wx,wy,radius,alpha){
+  ctx.globalAlpha=alpha;
+  ctx.drawImage(glowSprite(hex),wx-radius,wy-radius,radius*2,radius*2);
+  ctx.globalAlpha=1;
+}
 let VW=0,VH=0,dpr=1;
 const cam={x:0,y:0,z:1.6};
 function resize(){dpr=window.devicePixelRatio||1;
@@ -1693,111 +1813,77 @@ function drawTerrain(){const g=tctx;
   for(let y=0;y<=MH;y++){g.beginPath();g.moveTo(0,y*T);g.lineTo(MW*T,y*T);g.stroke()}
   g.strokeStyle="rgba(0,212,255,.06)";g.strokeRect(.5,.5,MW*T-1,MH*T-1);
 
-  // ── ROAD NETWORK ──
-  // Road tile sets: main street y=13-14, back alley y=22-23, vertical connector x=28-29
-  const ROAD_H=[[0,MW-1,13],[0,MW-1,14],[0,MW-1,22],[0,MW-1,23]]; // [x0,x1,y]
-  const ROAD_V=[[28,0,MH-1],[29,0,MH-1]]; // [x,y0,y1]
+  // ── ROAD NETWORK (procedural, scales with map) ──
+  // Arterials defined once in ROADS (module-level) so streets line up with the core.
   const roadSet=new Set();
-  ROAD_H.forEach(([x0,x1,ry])=>{for(let rx=x0;rx<=x1;rx++)roadSet.add(rx+ry*MW)});
-  ROAD_V.forEach(([rx,y0,y1])=>{for(let ry=y0;ry<=y1;ry++)roadSet.add(rx+ry*MW)});
+  ROADS.h.forEach(([x0,x1,ry])=>{for(let rx=x0;rx<=x1;rx++){roadSet.add(rx+ry*MW);roadSet.add(rx+(ry+1)*MW)}});
+  ROADS.v.forEach(([rx,y0,y1])=>{for(let ry=y0;ry<=y1;ry++){roadSet.add(rx+ry*MW);roadSet.add((rx+1)+ry*MW)}});
 
-  // draw asphalt base for all road tiles
+  // asphalt base
   for(const k of roadSet){const rx=k%MW,ry=(k/MW)|0;
     const X=rx*T,Y=ry*T;
     g.fillStyle="#04060c";g.fillRect(X,Y,T,T);
-    // slight texture variation
     const hv=hash2(rx*5,ry*9);
     if(hv>.6){g.fillStyle="rgba(255,255,255,.015)";g.fillRect(X,Y,T,T)}}
 
-  // sidewalk curbs (1px raised edge on road boundaries)
-  g.strokeStyle="rgba(180,200,220,.25)";g.lineWidth=1;
-  // top edge of main street (y=13)
-  g.beginPath();g.moveTo(0,13*T);g.lineTo(MW*T,13*T);g.stroke();
-  g.beginPath();g.moveTo(0,15*T);g.lineTo(MW*T,15*T);g.stroke();
-  // back alley edges
-  g.beginPath();g.moveTo(0,22*T);g.lineTo(MW*T,22*T);g.stroke();
-  g.beginPath();g.moveTo(0,24*T);g.lineTo(MW*T,24*T);g.stroke();
-  // curb fill (lighter concrete strip)
-  const CURB_Y=[12,15,21,24];
-  CURB_Y.forEach(cy=>{g.fillStyle="rgba(120,140,160,.08)";g.fillRect(0,cy*T,MW*T,T)});
+  // sidewalk curbs + center/edge lines per horizontal arterial
+  ROADS.h.forEach(([x0,x1,ry])=>{
+    const px0=x0*T,px1=(x1+1)*T;
+    // curb edges
+    g.strokeStyle="rgba(180,200,220,.22)";g.lineWidth=1;
+    g.beginPath();g.moveTo(px0,ry*T);g.lineTo(px1,ry*T);g.stroke();
+    g.beginPath();g.moveTo(px0,(ry+2)*T);g.lineTo(px1,(ry+2)*T);g.stroke();
+    // dashed yellow centerline
+    g.strokeStyle="rgba(255,180,0,.32)";g.lineWidth=1;g.setLineDash([T*.6,T*.8]);
+    g.beginPath();g.moveTo(px0,(ry+1)*T+.5);g.lineTo(px1,(ry+1)*T+.5);g.stroke();
+    g.setLineDash([]);
+    // white edge lines
+    g.strokeStyle="rgba(255,255,255,.1)";g.lineWidth=.8;
+    g.beginPath();g.moveTo(px0,ry*T+1);g.lineTo(px1,ry*T+1);g.stroke();
+    g.beginPath();g.moveTo(px0,(ry+2)*T-1);g.lineTo(px1,(ry+2)*T-1);g.stroke();});
+  // vertical arterial centerlines
+  ROADS.v.forEach(([rx,y0,y1])=>{
+    g.strokeStyle="rgba(255,180,0,.3)";g.lineWidth=1;g.setLineDash([T*.6,T*.8]);
+    g.beginPath();g.moveTo((rx+1)*T+.5,y0*T);g.lineTo((rx+1)*T+.5,(y1+1)*T);g.stroke();
+    g.setLineDash([]);});
 
-  // road center lines — dashed yellow
-  g.strokeStyle="rgba(255,180,0,.35)";g.lineWidth=1;g.setLineDash([T*.6,T*.8]);
-  g.beginPath();g.moveTo(0,13.5*T+.5);g.lineTo(MW*T,13.5*T+.5);g.stroke();
-  g.beginPath();g.moveTo(0,22.5*T+.5);g.lineTo(MW*T,22.5*T+.5);g.stroke();
-  // vertical road center line
-  g.beginPath();g.moveTo(28.5*T+.5,0);g.lineTo(28.5*T+.5,MH*T);g.stroke();
-  g.setLineDash([]);
+  // manholes + drains + puddles spaced along horizontal arterials
+  ROADS.h.forEach(([x0,x1,ry])=>{
+    for(let mx=x0+6;mx<x1;mx+=14){
+      const X=mx*T+T/2,Y=ry*T+T;
+      g.fillStyle="#060a14";g.beginPath();g.arc(X,Y,5,0,7);g.fill();
+      g.strokeStyle="rgba(100,130,160,.5)";g.lineWidth=.8;g.beginPath();g.arc(X,Y,5,0,7);g.stroke();
+      g.strokeStyle="rgba(80,100,130,.4)";
+      for(let i=0;i<4;i++){const a=i*Math.PI/4;
+        g.beginPath();g.moveTo(X+Math.cos(a)*2,Y+Math.sin(a)*2);g.lineTo(X+Math.cos(a)*4.5,Y+Math.sin(a)*4.5);g.stroke()}}
+    for(let px=x0+3;px<x1;px+=18){
+      const hv=hash2(px*3,ry*7);if(hv<.4)continue;
+      const X=px*T,Y=ry*T+T*1.3;
+      const rg=g.createRadialGradient(X+T*.4,Y,0,X+T*.4,Y,T*.7);
+      rg.addColorStop(0,"rgba(0,180,255,.06)");rg.addColorStop(1,"rgba(0,0,0,0)");
+      g.globalAlpha=.5+hv*.3;g.fillStyle=rg;
+      g.beginPath();g.ellipse(X+T*.4,Y+T*.3,T*.6,T*.2,0,0,7);g.fill();g.globalAlpha=1}});
 
-  // white edge lines on road
-  g.strokeStyle="rgba(255,255,255,.12)";g.lineWidth=.8;
-  [13,14,22,23].forEach(ry=>{
-    g.beginPath();g.moveTo(0,ry*T+1);g.lineTo(MW*T,ry*T+1);g.stroke();
-    g.beginPath();g.moveTo(0,(ry+1)*T-1);g.lineTo(MW*T,(ry+1)*T-1);g.stroke();});
-
-  // manhole covers on main street — hash-placed circles
-  const manholes=[[8,13],[18,13],[28,13],[38,13],[48,13],[8,22],[28,22],[45,22]];
-  manholes.forEach(([mx,my])=>{
-    const X=mx*T+T/2,Y=my*T+T/2;
-    g.fillStyle="#060a14";g.beginPath();g.arc(X,Y,5,0,7);g.fill();
-    g.strokeStyle="rgba(100,130,160,.5)";g.lineWidth=.8;
-    g.beginPath();g.arc(X,Y,5,0,7);g.stroke();
-    // spoke lines
-    g.strokeStyle="rgba(80,100,130,.4)";
-    for(let i=0;i<4;i++){const a=i*Math.PI/4;
-      g.beginPath();g.moveTo(X+Math.cos(a)*2,Y+Math.sin(a)*2);
-      g.lineTo(X+Math.cos(a)*4.5,Y+Math.sin(a)*4.5);g.stroke()}});
-
-  // drain grates at curb edges
-  const drains=[[4,12],[14,12],[22,12],[32,12],[40,12],[50,12],
-                 [4,21],[14,21],[32,21],[40,21]];
-  drains.forEach(([dx,dy])=>{
-    const X=dx*T,Y=dy*T+T-3;
-    g.fillStyle="rgba(0,0,0,.6)";g.fillRect(X+2,Y,T-4,3);
-    g.strokeStyle="rgba(60,80,100,.5)";g.lineWidth=.6;
-    for(let i=0;i<3;i++){g.beginPath();g.moveTo(X+3+i*4,Y);g.lineTo(X+3+i*4,Y+3);g.stroke()}});
-
-  // puddle reflections on road (wet asphalt)
-  const puddles=[[6,13],[17,13],[25,13],[37,13],[11,22],[33,22],[46,22]];
-  puddles.forEach(([px,py])=>{
-    const X=px*T,Y=py*T+T*.3;
-    const hv=hash2(px*3,py*7);
-    const rg=g.createRadialGradient(X+T*.4,Y,0,X+T*.4,Y,T*.7);
-    rg.addColorStop(0,"rgba(0,180,255,.06)");rg.addColorStop(1,"rgba(0,0,0,0)");
-    g.globalAlpha=.5+hv*.3;g.fillStyle=rg;
-    g.beginPath();g.ellipse(X+T*.4,Y+T*.3,T*.6,T*.2,0,0,7);g.fill();g.globalAlpha=1});
-
-  // ── GRAFFITI BASE LAYER on exterior walls ──
-  // Graffiti tags: colored stencil shapes on building exteriors
-  const GRAF_COL=["#e040fb","#00d4ff","#ff3d5a","#39ff88","#ffc947"];
+  // ── GRAFFITI BASE LAYER on exterior walls (positioned near core buildings) ──
   const grafSpots=[
-    // along left side of corp office (x=3, y=16-21)
-    {x:3,y:16,tag:"CORP LIES",col:"#ff3d5a",angle:-.08},
-    {x:3,y:18,tag:"RESIST",col:"#e040fb",angle:.05},
-    // right side of clinic exterior
-    {x:50,y:16,tag:"MEDS=CREDS",col:"#00d4ff",angle:-.04},
-    {x:50,y:19,tag:"FREE THEM",col:"#39ff88",angle:.06},
-    // above dealer den
-    {x:20,y:24,tag:"DEN",col:"#e040fb",angle:0},
-    {x:24,y:24,tag:"SPRAWL LIFE",col:"#ffc947",angle:-.05},
-    // residential alley
-    {x:1,y:10,tag:"HOME",col:"#39ff88",angle:.03},
-    {x:1,y:12,tag:"BLOCK 7",col:"#00d4ff",angle:-.02},
-    // right margin
-    {x:51,y:10,tag:"NO CORP",col:"#ff3d5a",angle:.04},
-    {x:51,y:12,tag:"STAY",col:"#e040fb",angle:-.03},
+    {x:38,y:53,tag:"CORP LIES",col:"#ff3d5a",angle:-.08},
+    {x:38,y:56,tag:"RESIST",col:"#e040fb",angle:.05},
+    {x:94,y:53,tag:"MEDS=CREDS",col:"#00d4ff",angle:-.04},
+    {x:94,y:56,tag:"FREE THEM",col:"#39ff88",angle:.06},
+    {x:59,y:69,tag:"THE DEN",col:"#e040fb",angle:0},
+    {x:63,y:76,tag:"SPRAWL LIFE",col:"#ffc947",angle:-.05},
+    {x:45,y:35,tag:"HOME BLOCK",col:"#39ff88",angle:.03},
+    {x:72,y:50,tag:"CHROME",col:"#00d4ff",angle:-.02},
+    {x:50,y:62,tag:"NO CORP",col:"#ff3d5a",angle:.04},
+    {x:80,y:62,tag:"STAY UP",col:"#e040fb",angle:-.03},
   ];
   grafSpots.forEach(({x,y,tag,col,angle})=>{
     const X=x*T,Y=y*T+T*.6;
     g.save();g.translate(X,Y);g.rotate(angle);
-    // spray paint drip effect
     g.globalAlpha=.55;g.fillStyle=col;
     g.font="bold 7px monospace";g.fillText(tag,0,0);
-    // drips
     g.globalAlpha=.2;g.fillStyle=col;
-    for(let i=0;i<tag.length;i+=3){
-      const hd=hash2(x+i,y);if(hd>.65)
-        g.fillRect(i*4.2,2,1,2+hd*4)}
+    for(let i=0;i<tag.length;i+=3){const hd=hash2(x+i,y);if(hd>.65)g.fillRect(i*4.2,2,1,2+hd*4)}
     g.globalAlpha=1;g.restore()});}
 
 function rr(x,y,w,h,col){ctx.fillStyle=col;ctx.fillRect(x,y,w,h)}
@@ -1806,6 +1892,7 @@ const PODTH={
   den:{c:"#a06bff",fill:"rgba(160,107,255,.10)"},
   med:{c:"#00e0c8",fill:"rgba(0,224,200,.10)"},
   exchange:{c:"#ffd86a",fill:"rgba(255,216,106,.09)"},
+  civic:{c:"#7aa2ff",fill:"rgba(122,162,255,.10)"},
   toxic:{c:"#ff3db0",fill:"rgba(255,61,176,.11)"}};
 function rrect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);
   ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);
@@ -1876,12 +1963,26 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
       const wN=structAt(s.x,s.y-1),wS=structAt(s.x,s.y+1);
       const wE=structAt(s.x+1,s.y),wW=structAt(s.x-1,s.y);
       const isW=ss=>ss&&(ss.type==="wall"||ss.type==="door");
-      rr(X,Y,T,T,"#181f36");
-      if(!isW(wN))rr(X+1,Y,T-2,2,"#28386a");
-      if(!isW(wS))rr(X+1,Y+T-2,T-2,2,"#0d1428");
-      if(!isW(wE))rr(X+T-2,Y+1,2,T-2,"#121c34");
-      if(!isW(wW))rr(X,Y+1,2,T-2,"#1e2c48");
-      rr(X+3,Y+6,T-6,1,"rgba(0,0,0,.3)");rr(X+3,Y+11,T-6,1,"rgba(0,0,0,.2)");
+      rr(X,Y,T,T,"#0c1020");// darker base for contrast
+      // structural edge shading
+      if(!isW(wN))rr(X+1,Y,T-2,2,"#1a2748");
+      if(!isW(wS))rr(X+1,Y+T-2,T-2,2,"#080c18");
+      if(!isW(wE))rr(X+T-2,Y+1,2,T-2,"#101a30");
+      if(!isW(wW))rr(X,Y+1,2,T-2,"#162240");
+      // neon emissive accent line — themed to the room this wall belongs to
+      const wth=PODTH[s.rth];
+      if(wth){
+        const ne=hexToRgb(wth.c);const pulse=0.5+0.5*Math.sin(t*1.2+(s.x+s.y)*.4);
+        // thin glowing strip along the interior-facing top edge
+        ctx.globalAlpha=0.35+0.25*pulse;
+        ctx.fillStyle=`rgba(${ne[0]},${ne[1]},${ne[2]},1)`;
+        ctx.fillRect(X+2,Y+T-3,T-4,1);
+        ctx.globalAlpha=1;
+        // corner glow nodes where walls meet
+        if((!isW(wN)&&!isW(wW))||(!isW(wN)&&!isW(wE))||(!isW(wS)&&!isW(wW))||(!isW(wS)&&!isW(wE))){
+          stampGlow(wth.c,X+T/2,Y+T/2,5,0.18*pulse);}
+      }
+      rr(X+3,Y+6,T-6,1,"rgba(0,0,0,.35)");rr(X+3,Y+11,T-6,1,"rgba(0,0,0,.25)");
       if(s.hp<s.maxHp){ctx.strokeStyle="rgba(255,61,90,.4)";ctx.lineWidth=.7;
         ctx.beginPath();ctx.moveTo(X+T*.3,Y+T*.2);ctx.lineTo(X+T*.55,Y+T*.7);ctx.stroke();ctx.lineWidth=1;}
       break;}
@@ -1906,11 +2007,8 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
     case "lamp":{
       rr(X+T/2-1,Y+5,2,T-7,"#242e48");rr(X+T/2-4,Y+3,8,3,"#303c5a");
       const flk=0.88+0.12*Math.sin(t*11.3+s.x);
-      ctx.globalAlpha=flk*.9;
-      const lg=ctx.createRadialGradient(X+T/2,Y+4,0,X+T/2,Y+4,T*.6);
-      lg.addColorStop(0,"rgba(255,200,80,.55)");lg.addColorStop(1,"rgba(255,200,80,0)");
-      ctx.fillStyle=lg;ctx.beginPath();ctx.arc(X+T/2,Y+4,T*.6,0,7);ctx.fill();
-      ctx.globalAlpha=1;ctx.fillStyle="#ffe0a0";ctx.fillRect(X+T/2-3,Y+3,6,3);break;}
+      stampGlow("#ffc850",X+T/2,Y+4,T*.7,flk*.6);
+      ctx.fillStyle="#ffe0a0";ctx.fillRect(X+T/2-3,Y+3,6,3);break;}
     case "fridge":
       rr(X+3,Y+1,T-6,T-2,"#1c2836");rr(X+4,Y+2,T-8,5,"#243040");rr(X+4,Y+8,T-8,6,"#1e2c3c");
       rr(X+10,Y+3,1,3,"#5a7aaa");rr(X+10,Y+9,1,3,"#5a7aaa");
@@ -1936,11 +2034,12 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
       rr(X+2,Y+4,T-4,1,"#5a7aaa");rr(X+4,Y+8,T-8,3,"#141e30");
       rr(X+5,Y+5,2,2,"#ff8c42");rr(X+T-7,Y+5,2,2,"#ff8c42");break;
     case "workstation":{
+      stampGlow("#00d4ff",X+T/2,Y+6,T*.5,0.22);// emissive screen bloom
       rr(X+2,Y+9,T-4,4,"#101828");rr(X+4,Y+3,T-8,6,"#04080e");rr(X+5,Y+4,T-10,4,"#07122a");
       const sc=((t*12)%4)|0;
-      rr(X+5,Y+4+sc,T-10,1,"rgba(0,212,255,.2)");
-      rr(X+5,Y+5,T-10,1,"rgba(0,212,255,.12)");rr(X+5,Y+7,T-10,1,"rgba(0,212,255,.06)");
-      ctx.fillStyle="#00d4ff";ctx.fillRect(X+6,Y+5,T-12,1);
+      rr(X+5,Y+4+sc,T-10,1,"rgba(0,212,255,.3)");
+      rr(X+5,Y+5,T-10,1,"rgba(0,212,255,.18)");rr(X+5,Y+7,T-10,1,"rgba(0,212,255,.08)");
+      ctx.fillStyle="#00efff";ctx.fillRect(X+6,Y+5,T-12,1);
       rr(X+7,Y+10,3,2,"#182034");break;}
     case "counter":
       rr(X+2,Y+6,T-4,7,"#1c1626");rr(X+2,Y+5,T-4,2,"#302040");
@@ -1950,14 +2049,13 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
       rr(X+2,Y+6,T-4,7,"#120a18");rr(X+2,Y+5,T-4,2,"#200e1a");
       const bc=(t*.6)%1;
       const bCol="hsl("+((bc*360)|0)+",100%,62%)";
+      stampGlow("#e040fb",X+T/2,Y+5,T*.55,0.2);// neon sign bloom
       rr(X+2,Y+5,T-4,1,bCol);
       rr(X+4,Y+2,1,3,"#39ff88");rr(X+7,Y+2,1,3,"#00d4ff");rr(X+10,Y+2,1,3,"#ffc947");
       rr(X+4,Y+1,2,1,"#39ff88");rr(X+7,Y+1,2,1,"#00d4ff");rr(X+10,Y+1,2,1,"#ffc947");
-      ctx.globalAlpha=.1;
-      const bg=ctx.createLinearGradient(X+2,Y+5,X+T-2,Y+5);
-      bg.addColorStop(0,"#e040fb");bg.addColorStop(1,"#00d4ff");
-      ctx.fillStyle=bg;ctx.fillRect(X+2,Y+3,T-4,4);ctx.globalAlpha=1;break;}
+      break;}
     case "medbed":{
+      stampGlow("#39ff88",X+T/2,Y+8,T*.5,0.14);// vital monitor bloom
       rr(X+2,Y+5,T-4,8,"#0c1c1c");rr(X+3,Y+6,T-6,5,"#142e28");
       const hbp=(t*1.8)%1;
       ctx.strokeStyle="#39ff88";ctx.lineWidth=1.1;
@@ -1971,11 +2069,10 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
       rr(X+3,Y+5,T-6,1,"#00d4ff");
       ctx.fillStyle="rgba(57,255,136,.07)";ctx.fillRect(X+3,Y+6,T-6,5);break;}
     case "dealer":{
-      rr(X+5,Y+6,6,7,"#0e0a14");rr(X+5,Y+6,6,2,"#200e20");
-      rr(X+6,Y+9,4,2,"#e040fb");rr(X+7,Y+4,2,2,"#160e1c");
       const dp=0.5+0.5*Math.sin(t*2.5);
-      ctx.globalAlpha=dp*.18;ctx.fillStyle="#e040fb";
-      ctx.beginPath();ctx.arc(X+8,Y+10,5,0,7);ctx.fill();ctx.globalAlpha=1;break;}
+      stampGlow("#e040fb",X+8,Y+10,T*.5,dp*.22);
+      rr(X+5,Y+6,6,7,"#0e0a14");rr(X+5,Y+6,6,2,"#200e20");
+      rr(X+6,Y+9,4,2,"#ff5ffb");rr(X+7,Y+4,2,2,"#160e1c");break;}
     case "housing":
       rr(X+2,Y+2,T-4,T-4,"#101828");rr(X+4,Y+4,T-8,T-8,"#080e1c");
       ctx.fillStyle="#39ff88";ctx.fillRect(X+T/2-1,Y+3,2,5);ctx.fillRect(X+3,Y+T/2-1,5,2);
@@ -2003,11 +2100,8 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
       rr(X+2,Y+2,T-4,T-4,"#0e0818");rr(X+6,Y+4,5,8,"#220e30");
       rr(X+5,Y+3,7,2,"#180c22");
       const glow=0.5+0.5*Math.sin(t*3.2);
-      ctx.globalAlpha=glow*.75;ctx.fillStyle="#c98bff";ctx.fillRect(X+7,Y+6,3,4);
-      ctx.globalAlpha=glow*.35;
-      const sg=ctx.createRadialGradient(X+8,Y+8,0,X+8,Y+8,6);
-      sg.addColorStop(0,"rgba(200,100,255,.5)");sg.addColorStop(1,"rgba(0,0,0,0)");
-      ctx.fillStyle=sg;ctx.beginPath();ctx.arc(X+8,Y+8,6,0,7);ctx.fill();
+      stampGlow("#c864ff",X+8,Y+8,T*.5,glow*.3);
+      ctx.globalAlpha=glow*.85;ctx.fillStyle="#d8a0ff";ctx.fillRect(X+7,Y+6,3,4);
       ctx.globalAlpha=1;ctx.fillStyle="#e040fb";ctx.fillRect(X+8,Y+11,2,2);break;}
     case "gearshop":{
       rr(X+2,Y+2,T-4,T-4,"#0a1016");rr(X+4,Y+8,T-8,5,"#0e1822");
@@ -2020,6 +2114,87 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
       ctx.closePath();ctx.stroke();ctx.lineWidth=1;
       ctx.fillStyle="#7aa2ff";ctx.fillRect(X+6,Y+5,5,2);
       ctx.fillStyle="#39ff88";ctx.fillRect(X+11,Y+9,2,2);break;}
+    // ── RESOURCE PRODUCTION ──
+    case "farmplot":{
+      // tilled soil base
+      rr(X+1,Y+1,T-2,T-2,"#1a1208");
+      // crop rows — green sprouts, slight sway
+      const sway=Math.sin(t*1.5+s.x*.6)*1;
+      for(let row=0;row<3;row++){const ry=Y+4+row*4;
+        rr(X+2,ry,T-4,1,"#0e1a0c");
+        for(let cx=0;cx<4;cx++){const px=X+3+cx*3+sway*(row%2?1:-1);
+          ctx.fillStyle=row===2?"#b8ff5e":"#39ff88";
+          ctx.fillRect(px,ry-2,1,2)}}
+      // ripe glow when food stocked
+      if((ST.goods.food||0)>0)stampGlow("#b8ff5e",X+T/2,Y+T/2,T*.5,.12);
+      break;}
+    case "loggingcamp":{
+      rr(X+2,Y+2,T-4,T-4,"#120e08");
+      // stacked logs
+      rr(X+3,Y+9,T-6,2,"#3a2818");rr(X+3,Y+11,T-6,2,"#2e2012");
+      for(let i=0;i<3;i++){ctx.fillStyle="#1a1208";ctx.beginPath();
+        ctx.arc(X+4+i*3,Y+10,1,0,7);ctx.fill()}
+      // standing trunk + axe glint
+      rr(X+10,Y+3,2,6,"#2e2012");
+      const sw=Math.sin(t*3)*1.5;
+      ctx.strokeStyle="#8a9bb5";ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(X+6,Y+4);ctx.lineTo(X+6+sw,Y+7);ctx.stroke();
+      ctx.fillStyle="#39ff88";ctx.fillRect(X+4,Y+3,2,1);break;}
+    case "mineshaft":{
+      rr(X+2,Y+2,T-4,T-4,"#0c0a10");
+      // shaft entrance — dark arch with support beams
+      rr(X+4,Y+5,T-8,T-7,"#040308");
+      rr(X+4,Y+4,T-8,1,"#3a3020");rr(X+4,Y+5,1,7,"#2e2618");rr(X+T-5,Y+5,1,7,"#2e2618");
+      // ore glints inside
+      const gl=0.5+0.5*Math.sin(t*2.2+s.x);
+      ctx.globalAlpha=gl;ctx.fillStyle="#ffc947";
+      ctx.fillRect(X+7,Y+9,1,1);ctx.fillRect(X+10,Y+11,1,1);ctx.fillRect(X+8,Y+12,1,1);
+      ctx.globalAlpha=1;
+      // minecart rail hint
+      rr(X+3,Y+T-2,T-6,1,"#4a3a28");
+      if((ST.goods.materials||0)>0)stampGlow("#ffc947",X+T/2,Y+T/2,T*.5,gl*.14);
+      break;}
+    // ── CIVIC ──
+    case "park":{
+      // grass base
+      rr(X+1,Y+1,T-2,T-2,"#0c1a0e");
+      // tree canopy — soft bloom
+      stampGlow("#39ff88",X+T/2,Y+6,T*.5,.18);
+      ctx.fillStyle="#1e3a1e";ctx.beginPath();ctx.arc(X+T/2,Y+6,4.5,0,7);ctx.fill();
+      ctx.fillStyle="#2e5a2e";ctx.beginPath();ctx.arc(X+T/2-1,Y+5,3,0,7);ctx.fill();
+      rr(X+T/2-1,Y+9,2,4,"#2e2012"); // trunk
+      // path + bench dot
+      rr(X+2,Y+T-3,T-4,1,"#243040");
+      ctx.fillStyle="#5a7aaa";ctx.fillRect(X+4,Y+T-4,2,1);break;}
+    case "arcade":{
+      rr(X+2,Y+2,T-4,T-4,"#0a0814");
+      // cabinet screens flashing color
+      const c1=`hsl(${((t*40)%360)|0},90%,60%)`;
+      const c2=`hsl(${((t*40+120)%360)|0},90%,60%)`;
+      rr(X+3,Y+4,4,6,"#040308");ctx.fillStyle=c1;ctx.fillRect(X+4,Y+5,2,3);
+      rr(X+9,Y+4,4,6,"#040308");ctx.fillStyle=c2;ctx.fillRect(X+10,Y+5,2,3);
+      stampGlow(((t*40)%360<180)?"#e040fb":"#00d4ff",X+T/2,Y+6,T*.5,.16);
+      rr(X+3,Y+11,T-6,2,"#1a1228");break;}
+    case "hospital":{
+      rr(X+2,Y+2,T-4,T-4,"#0c1614");
+      rr(X+3,Y+3,T-6,T-6,"#0e201c");
+      // big green cross, gently pulsing
+      const hp=0.7+0.3*Math.sin(t*1.8);
+      stampGlow("#39ff88",X+T/2,Y+T/2,T*.5,hp*.2);
+      ctx.fillStyle="#39ff88";ctx.globalAlpha=hp;
+      ctx.fillRect(X+T/2-1,Y+4,3,T-8);ctx.fillRect(X+5,Y+T/2-1,T-10,3);
+      ctx.globalAlpha=1;break;}
+    case "school":{
+      rr(X+2,Y+2,T-4,T-4,"#0a1018");
+      // roof + door
+      ctx.fillStyle="#1e2c44";ctx.beginPath();
+      ctx.moveTo(X+2,Y+6);ctx.lineTo(X+T/2,Y+2);ctx.lineTo(X+T-2,Y+6);ctx.closePath();ctx.fill();
+      rr(X+T/2-2,Y+9,4,5,"#0e1828");
+      // glowing window of knowledge
+      const sg=0.6+0.4*Math.sin(t*1.4);
+      ctx.globalAlpha=sg;ctx.fillStyle="#7aa2ff";ctx.fillRect(X+4,Y+8,3,3);ctx.fillRect(X+T-7,Y+8,3,3);
+      ctx.globalAlpha=1;
+      stampGlow("#7aa2ff",X+T/2,Y+9,T*.45,sg*.12);break;}
     // ── STREET DECOR ──
     case "streetlamp":{
       // pole
@@ -2030,15 +2205,9 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
       // lamp glass — warm amber glow animated
       const la=lightLevel(hourN());
       const lflk=0.9+0.1*Math.sin(t*13.7+s.x*0.4);
-      if(la>0.05){// only glow at night
-        ctx.globalAlpha=la*lflk*.9;
-        const llg=ctx.createRadialGradient(X+T/2+3,Y+3,0,X+T/2+3,Y+3,T*.9);
-        llg.addColorStop(0,"rgba(255,200,80,.7)");llg.addColorStop(1,"rgba(255,200,80,0)");
-        ctx.fillStyle=llg;ctx.beginPath();ctx.arc(X+T/2+3,Y+3,T*.9,0,7);ctx.fill();
-        ctx.globalAlpha=1;}
+      if(la>0.05){stampGlow("#ffc850",X+T/2+3,Y+3,T*.95,la*lflk*.7);}
       ctx.fillStyle=la>0.05?"#ffe0a0":"#404c68";
       ctx.fillRect(X+T/2+1,Y+2,3,3);
-      // base foot
       rr(X+T/2-2,Y+T-2,4,2,"#202840");break;}
     case "bench":{
       // seat plank
@@ -2173,7 +2342,10 @@ function animaColor(p){
   if(s<0.5){const t=s*2;r=160*t;g=224+(107-224)*t;b=200+(255-200)*t;}
   else{const t=(s-0.5)*2;r=160+(255-160)*t;g=107+(61-107)*t;b=255+(144-255)*t;}
   const br=0.4+m*0.6;r=Math.round(r*br);g=Math.round(g*br);b=Math.round(b*br);
-  return{col:"rgb("+r+","+g+","+b+")",core:"rgb("+Math.min(255,r+45)+","+Math.min(255,g+45)+","+Math.min(255,b+45)+")",glowA:(0.32+m*0.45)};}
+  // quantize hex to limit glow cache size (steps of 16)
+  const qr=Math.min(255,r+30)&0xF0,qg=Math.min(255,g+30)&0xF0,qb=Math.min(255,b+30)&0xF0;
+  const hex="#"+((1<<24)+(qr<<16)+(qg<<8)+qb).toString(16).slice(1);
+  return{col:"rgb("+r+","+g+","+b+")",core:"rgb("+Math.min(255,r+45)+","+Math.min(255,g+45)+","+Math.min(255,b+45)+")",hex:hex,glowA:(0.32+m*0.45)};}
 function drawTaskGlyph(x,y,t){
   const C={eat:"#ffb454",sleep:"#6ad0ff",cook:"#ff9f4a",build:"#ffd84a",salvage:"#ff9f2d",haul:"#9aa7bd",hygiene:"#4ec3ff",recreate:"#ffd84a",socialize:"#8be0ff",work:"#5ad0ff",treat:"#39ff88",substance:"#c98bff",crime:"#ff4757",rob:"#ff4757",idle:"#6b7793",dazed:"#b06fff"};
   const c=C[t]||"#9aa7bd";ctx.strokeStyle=c;ctx.fillStyle=c;ctx.lineWidth=1;
@@ -2251,12 +2423,30 @@ function drawPawn(p){
   const pls=0.5+0.5*Math.sin(performance.now()*0.0028+(p.px+p.py)*0.5);
   const rad=(slp?8:12)+(slp?0:pls*2.5);
   const ga=(slp?ac.glowA*0.5:ac.glowA)*(0.72+0.28*pls);
-  // outer glow
-  const rg=ctx.createRadialGradient(X,Y,0,X,Y,rad);
-  rg.addColorStop(0,ac.col);rg.addColorStop(0.45,ac.col);rg.addColorStop(1,"rgba(0,0,0,0)");
-  ctx.globalAlpha=ga;ctx.fillStyle=rg;ctx.beginPath();ctx.arc(X,Y,rad,0,7);ctx.fill();ctx.globalAlpha=1;
-  // selection ring
-  if(sel){ctx.strokeStyle="rgba(234,255,244,.9)";ctx.lineWidth=1.4;ctx.beginPath();ctx.arc(X,Y,10,0,7);ctx.stroke();ctx.lineWidth=1}
+  // ground shadow — soft ellipse anchored to the foot (uses unbobbed Y)
+  ctx.globalAlpha=0.28;ctx.fillStyle="#000";
+  ctx.beginPath();ctx.ellipse(X,p.py*T+6,slp?5:6,2.2,0,0,7);ctx.fill();
+  ctx.globalAlpha=1;
+  // ── soft organic wisp bloom (layered, no per-frame gradient) ──
+  // outer soft halo using cached white glow tinted by orb color via composite
+  ctx.save();
+  ctx.globalCompositeOperation="lighter";
+  // build a stamp color from the animaColor rgb
+  const acHex=ac.hex||"#a259ff";
+  ctx.globalAlpha=ga*0.55;
+  ctx.drawImage(glowSprite(acHex),X-rad,Y-rad,rad*2,rad*2);
+  // inner brighter bloom
+  ctx.globalAlpha=ga*0.7;
+  ctx.drawImage(glowSprite(acHex),X-rad*0.6,Y-rad*0.6,rad*1.2,rad*1.2);
+  ctx.restore();
+  // selection ring — animated rotating dashes
+  if(sel){
+    const rot=performance.now()*0.002;
+    ctx.save();ctx.translate(X,Y);ctx.rotate(rot);
+    ctx.strokeStyle="rgba(234,255,244,.95)";ctx.lineWidth=1.5;
+    ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.arc(0,0,11,0,7);ctx.stroke();
+    ctx.setLineDash([]);ctx.restore();}
   // solid orb body
   ctx.fillStyle=ac.col;ctx.beginPath();ctx.arc(X,Y,slp?4:5.5,0,7);ctx.fill();
   // accent ring
@@ -2268,9 +2458,6 @@ function drawPawn(p){
   const faceCol=expr==="angry"?"#ff6b6b":expr==="sick"?"#a8ff78":expr==="happy"?"#ffd700":
     expr==="dazed"?"#c98bff":expr==="scared"?"#ffa500":"#ffffff";
   drawFace(X,Y-0.5,expr,faceCol,ps);
-  // draft indicator (red chevron above)
-  if(p.drafted){ctx.fillStyle="#ff3d5a";ctx.beginPath();
-    ctx.moveTo(X,Y-13);ctx.lineTo(X-3.5,Y-17);ctx.lineTo(X+3.5,Y-17);ctx.fill()}
   // sleeping zzz
   if(slp){ctx.fillStyle="#aef3ff";ctx.font="7px monospace";ctx.fillText("z",X+7,Y-8)}
   // status badges (above pawn, more compact)
@@ -2291,18 +2478,6 @@ function drawPawn(p){
   // name when selected
   if(sel){ctx.fillStyle=p.accent;ctx.font="bold 7px monospace";ctx.textAlign="center";
     ctx.fillText(p.name.split(" ")[0],X,Y-20);ctx.textAlign="left"}}
-function drawFoe(f){const X=f.px*T,Y=f.py*T;
-  ctx.fillStyle="rgba(0,0,0,.4)";ctx.beginPath();ctx.ellipse(X,Y+5,5,2,0,0,7);ctx.fill();
-  const big=f.fk==="bruiser",w=big?9:7,h=big?11:9;
-  ctx.fillStyle="#241723";ctx.fillRect(X-w/2,Y-3,w,h);
-  ctx.fillStyle=f.col;ctx.fillRect(X-w/2,Y-3,w,2);
-  ctx.fillStyle="#120a12";ctx.fillRect(X-3,Y-9,6,6);
-  ctx.fillStyle=f.col;ctx.fillRect(X-3,Y-7,6,1.5);
-  if(f.fk==="gunner"){ctx.fillStyle="#c47b8f";ctx.fillRect(X+3,Y-1,5,2)}
-  if(ST.sel.includes(f)){ctx.strokeStyle="#ff4757";ctx.beginPath();ctx.arc(X,Y,8,0,7);ctx.stroke()}
-  if(f.hp<f.maxHp){ctx.fillStyle="#101626";ctx.fillRect(X-7,Y+8,14,2);
-    ctx.fillStyle="#ff4757";ctx.fillRect(X-7,Y+8,14*clamp(f.hp/f.maxHp,0,1),2)}}
-
 function toolColor(){if(!TOOL)return "#00e5ff";
   return TOOL.k==="salv"?"#ff9f2d":(TOOL.k==="decon"||TOOL.k==="cancel")?"#ff4757":"#00e5ff"}
 function drawToolOverlay(){
@@ -2339,7 +2514,6 @@ function nightPass(){const la=lightLevel(hourN());if(la<=.02)return;
     // screens cast cool blue-white
     if(s.type==="tv"||s.type==="workstation")light(s.x+.5,s.y+.5,2.5,.45,false);}
   for(const p of ST.pawns)light(p.px,p.py,1.8,.6,false);
-  for(const b of ST.beams)light(b.x0,b.y0,2.2,.55*b.ttl/b.t0,false);
   ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(oc,0,0)}
 
 function menuBg(){ctx.setTransform(dpr,0,0,dpr,0,0);
@@ -2350,9 +2524,21 @@ function menuBg(){ctx.setTransform(dpr,0,0,dpr,0,0);
 
 let MOTES=null;
 function initMotes(){const SPORE=["#a259ff","#d946ef","#7c3aed","#e879f9","#ff47c8"],a=[];
-  for(let i=0;i<60;i++)a.push({x:Math.random()*MW*T,y:Math.random()*MH*T,
-    c:SPORE[i%5],r:0.4+Math.random()*.9,sp:0.04+Math.random()*.1,
-    ph:Math.random()*6.28,b:0.25+Math.random()*.45,drift:(Math.random()-.5)*.02});
+  const N=12; // wisp count — kept low per design (8-15 range)
+  for(let i=0;i<N;i++){
+    // bias spawn toward map edges (nature outskirts), away from built core
+    let mx,my;
+    if(Math.random()<0.7){
+      // edge band
+      const edge=RI(0,3);
+      if(edge===0){mx=RI(2,MW-3);my=RI(2,18)}
+      else if(edge===1){mx=RI(2,MW-3);my=RI(MH-18,MH-3)}
+      else if(edge===2){mx=RI(2,18);my=RI(2,MH-3)}
+      else{mx=RI(MW-18,MW-3);my=RI(2,MH-3)}
+    }else{mx=RI(2,MW-3);my=RI(2,MH-3)}
+    a.push({x:mx*T,y:my*T,
+      c:SPORE[i%5],hex:SPORE[i%5],r:0.5+Math.random()*1.1,sp:0.04+Math.random()*.09,
+      ph:Math.random()*6.28,b:0.3+Math.random()*.5,drift:(Math.random()-.5)*.02});}
   return a;}
 // ── STREET LAYER — signs, posters, puddle shimmer ──
 function drawStreetLayer(x0,y0,x1,y1){
@@ -2394,62 +2580,56 @@ function drawStreetLayer(x0,y0,x1,y1){
     ctx.strokeStyle="rgba(255,255,255,.15)";ctx.lineWidth=.5;
     ctx.strokeRect(X,Y,T-2,T-2);}
 
-  // ── BUILDING NEON SIGNS (above workplace doors) ──
-  // Corp office — blue neon plate above door x=8 y=21
-  neonSign(6,15,"▲ NEXUS CORP",  "#00d4ff",52,10);
-  // Shop — yellow sign
-  neonSign(15,15,"BODEGA",        "#ffc947",44,10);
-  // Bar — magenta cycling neon
+  // ── BUILDING NEON SIGNS (positioned above new core buildings) ──
+  // Production cluster (corp office x40-49 y52, shop x53-60 y52)
+  neonSign(40,51,"▲ NEXUS CORP",  "#00d4ff",54,10);
+  neonSign(53,51,"BODEGA",          "#ffc947",46,10);
+  // Commercial strip (bar x72-79 y52, clinic x84-92 y52)
   const barCol=`hsl(${((t*.4)%1*360)|0},100%,65%)`;
-  neonSign(32,15,"CHROME BAR",    barCol,   48,10);
-  // Clinic — green medical cross sign
-  neonSign(41,15,"✚ MEDCENTER",  "#39ff88",52,10);
-  // Dealer den — dim purple above y=24
-  neonSign(20,24,"THE DEN",       "#a259ff",36,9);
+  neonSign(72,51,"CHROME BAR",      barCol,   48,10);
+  neonSign(84,51,"✚ MEDCENTER",  "#39ff88",54,10);
+  // Crime corner (dealer x60-66 y70)
+  neonSign(59,69,"THE DEN",         "#a259ff",40,9);
 
-  // ── RESIDENTIAL BLOCK LABELS (hand-painted graffiti style) ──
-  // Above each home cluster — approximate centers
-  grafSign(5, 5,"HOME 1","#39ff88",-.06);
-  grafSign(12,5,"HOME 2","#ffc947",.04);
-  grafSign(19,5,"HOME 3","#e040fb",-.03);
-  grafSign(26,5,"HOME 4","#00d4ff",.05);
-  grafSign(33,5,"HOME 5","#39ff88",-.04);
-  grafSign(40,5,"HOME 6","#ffc947",.03);
-  grafSign(47,5,"HOME 7","#e040fb",-.05);
+  // ── RESIDENTIAL BLOCK LABELS (hand-painted, above home rows) ──
+  const resX0=46;
+  for(let i=0;i<4;i++)grafSign(resX0+i*9,29,"HOME "+(i+1),
+    ["#39ff88","#ffc947","#e040fb","#00d4ff"][i],(i%2?.04:-.05));
+  for(let i=0;i<3;i++)grafSign(resX0+5+i*9,39,"HOME "+(i+5),
+    ["#39ff88","#ffc947","#e040fb"][i],(i%2?-.04:.05));
 
-  // ── WALL POSTERS ──
-  poster(2, 17,["WANTED","VOLT","100c"],    "#1a0808","#ff3d5a");
-  poster(2, 19,["CORP","SURVEY","ZONE"],    "#080818","#00d4ff");
-  poster(2, 20,["JOIN","NEXUS","CORPS"],    "#080818","#7aa2ff");
-  poster(50,17,["FREE","CLINIC","TODAY"],   "#081408","#39ff88");
-  poster(50,20,["STIMS","=","DEATH"],       "#180818","#e040fb");
-  poster(3, 11,["BLOCK 7","WATCHES","OUT"], "#0a0a0a","#ffc947");
-  poster(52,11,["NO","CORP","HERE"],        "#100808","#ff3d5a");
-  // Plaza poster pillar
-  poster(27,17,["DISTRICT","MEET","HERE"],  "#0a0c10","#00d4ff");
-  poster(27,20,["TOMORROW","06:00"],        "#0a0c10","#ffc947");
+  // ── ZONE LABELS (reserved outer-ring nature/resource areas) ──
+  if(ST.zones){
+    grafSign(ST.zones.farm.x+8,ST.zones.farm.y+8,"FARMLAND","#b8ff5e",0);
+    grafSign(ST.zones.woods.x+8,ST.zones.woods.y+8,"THE WOODS","#39ff88",0);
+    grafSign(ST.zones.mine.x+8,ST.zones.mine.y+8,"OLD MINE","#ffc947",0);
+    grafSign(ST.zones.civic.x+10,ST.zones.civic.y+9,"CIVIC ZONE","#00d4ff",0);
+  }
 
-  // ── PUDDLE SHIMMER ANIMATION (on road tiles) ──
+  // ── WALL POSTERS (near core buildings) ──
+  poster(38,54,["WANTED","VOLT","100c"],    "#1a0808","#ff3d5a");
+  poster(38,55,["CORP","SURVEY"],           "#080818","#00d4ff");
+  poster(94,54,["FREE","CLINIC"],           "#081408","#39ff88");
+  poster(94,55,["STIMS","=DEATH"],          "#180818","#e040fb");
+  poster(63,45,["DISTRICT","MEET HERE"],    "#0a0c10","#00d4ff");
+
+  // ── PUDDLE SHIMMER (on horizontal arterials near core) ──
   const pshimmer=0.08+0.06*Math.sin(t*2.1);
-  const puddleSpots=[[6,13],[17,13],[25,13],[37,13],[11,22],[33,22],[46,22]];
-  puddleSpots.forEach(([px,py])=>{
-    if(px<x0||px>x1||py<y0||py>y1)return;
-    const X=px*T,Y=py*T+T*.4;
-    ctx.globalAlpha=pshimmer;
-    const rg=ctx.createRadialGradient(X+T*.4,Y+T*.2,0,X+T*.4,Y+T*.2,T*.6);
-    rg.addColorStop(0,"rgba(0,180,255,.5)");rg.addColorStop(1,"rgba(0,0,0,0)");
-    ctx.fillStyle=rg;ctx.beginPath();ctx.ellipse(X+T*.4,Y+T*.2,T*.55,T*.18,0,0,7);ctx.fill();
-    ctx.globalAlpha=1;});
+  ROADS.h.forEach(([rx0,rx1,ry])=>{
+    for(let px=rx0+5;px<rx1;px+=20){
+      if(px<x0||px>x1||ry<y0||ry>y1)continue;
+      const X=px*T,Y=ry*T+T*.9;
+      ctx.globalAlpha=pshimmer;
+      const rg=ctx.createRadialGradient(X+T*.4,Y+T*.2,0,X+T*.4,Y+T*.2,T*.6);
+      rg.addColorStop(0,"rgba(0,180,255,.5)");rg.addColorStop(1,"rgba(0,0,0,0)");
+      ctx.fillStyle=rg;ctx.beginPath();ctx.ellipse(X+T*.4,Y+T*.2,T*.55,T*.18,0,0,7);ctx.fill();
+      ctx.globalAlpha=1;}});
 
-  // ── ROAD INTERSECTION MARKINGS ──
-  // Zebra crossing at main street near plaza (x=26-31, y=13-14)
+  // ── ZEBRA CROSSING at the central spine / mid-arterial intersection ──
   ctx.fillStyle="rgba(255,255,255,.08)";
-  for(let xi=26;xi<=30;xi+=2){
+  for(let xi=66;xi<=70;xi+=2){
     if(xi<x0||xi>x1)continue;
-    ctx.fillRect(xi*T,13*T,T,T*2);}
-  // Stop line
-  ctx.fillStyle="rgba(255,255,255,.12)";ctx.lineWidth=1.5;
-  if(25>=x0&&25<=x1){ctx.fillRect(25*T,13*T,T*.5,T*2);}
+    ctx.fillRect(xi*T,48*T,T,T*2);}
 }
 
 function render(){
@@ -2468,7 +2648,13 @@ function render(){
     if(mo.y<0){mo.y=MH*T;mo.x=Math.random()*MW*T}
     if(mo.x<0)mo.x=MW*T;if(mo.x>MW*T)mo.x=0;
     if(mo.x<x0*T||mo.x>x1*T||mo.y<y0*T||mo.y>y1*T)continue;
-    ctx.globalAlpha=(0.3+0.25*Math.sin(mo.ph))*mo.b;ctx.fillStyle=mo.c;
+    const ma=(0.3+0.25*Math.sin(mo.ph))*mo.b;
+    // soft bloom halo (cached) + bright core
+    ctx.save();ctx.globalCompositeOperation="lighter";
+    ctx.globalAlpha=ma*0.5;
+    ctx.drawImage(glowSprite(mo.hex||"#a259ff"),mo.x-mo.r*3,mo.y-mo.r*3,mo.r*6,mo.r*6);
+    ctx.restore();
+    ctx.globalAlpha=ma;ctx.fillStyle=mo.c;
     ctx.beginPath();ctx.arc(mo.x,mo.y,mo.r,0,7);ctx.fill()}
   ctx.globalAlpha=1;
   // gang territory tint (drawn over terrain, under structures)
@@ -2489,16 +2675,7 @@ function render(){
   for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){const s=structAt(x,y);
     if(!s)continue;
     drawStruct(s)}
-  // move-order markers
-  for(const p of ST.pawns)if(p.drafted&&p.order){
-    ctx.strokeStyle="rgba(0,229,255,.5)";
-    ctx.strokeRect(p.order.x*T+5.5,p.order.y*T+5.5,5,5)}
   for(const p of ST.pawns)drawPawn(p);
-  // beams
-  for(const b of ST.beams){const a=b.ttl/b.t0;
-    ctx.globalAlpha=a;ctx.strokeStyle=b.col;ctx.lineWidth=1.4;
-    ctx.beginPath();ctx.moveTo(b.x0*T,b.y0*T);ctx.lineTo(b.x1*T,b.y1*T);ctx.stroke()}
-  ctx.globalAlpha=1;ctx.lineWidth=1;
   // floating text
   ctx.font="7px monospace";ctx.textAlign="center";
   for(const f of ST.floats){const prog=1-f.ttl/f.t0;const a=clamp(1-prog*prog,0,1);
@@ -2513,9 +2690,18 @@ function render(){
   nightPass();
   // screen-space effects
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  const vg=ctx.createRadialGradient(VW/2,VH/2,Math.min(VW,VH)*.45,VW/2,VH/2,Math.max(VW,VH)*.78);
-  vg.addColorStop(0,"rgba(0,0,0,0)");vg.addColorStop(1,"rgba(0,0,0,.45)");
-  ctx.fillStyle=vg;ctx.fillRect(0,0,VW,VH)}
+  // day/night sky tint — shifts the vignette color by hour
+  const hr=hourN();
+  // night = deep blue, dawn/dusk = warm, day = neutral
+  let tintR,tintG,tintB;
+  if(hr<5||hr>=21){tintR=4;tintG=8;tintB=24;}        // night — blue
+  else if(hr<7){const k=(hr-5)/2;tintR=4+40*k;tintG=8+18*k;tintB=24-6*k;}  // dawn warm
+  else if(hr<19){tintR=8;tintG=10;tintB=16;}          // day neutral
+  else{const k=(hr-19)/2;tintR=8+50*k;tintG=10+10*k;tintB=16+6*k;}  // dusk warm-orange
+  const vg=ctx.createRadialGradient(VW/2,VH/2,Math.min(VW,VH)*.42,VW/2,VH/2,Math.max(VW,VH)*.8);
+  vg.addColorStop(0,"rgba(0,0,0,0)");
+  vg.addColorStop(1,"rgba("+(tintR|0)+","+(tintG|0)+","+(tintB|0)+",.5)");
+  ctx.fillStyle=vg;ctx.fillRect(0,0,VW,VH);}
 
 /* ============================================================
    INPUT & TOOLS
@@ -2531,9 +2717,7 @@ function cellAt(sx,sy){const w=s2w(sx,sy);
 function selPawns(){return ST.sel.filter(e=>e.kind==="pawn")}
 function pawnAt(wx,wy){let best=null,bd=.8;
   for(const p of ST.pawns){const d=DIST(wx/T,wy/T,p.px,p.py);if(d<bd){bd=d;best=p}}return best}
-function foeAt(wx,wy){let best=null,bd=.8;
-  for(const f of ST.foes){const d=DIST(wx/T,wy/T,f.px,f.py);if(d<bd){bd=d;best=f}}return best}
-
+function foeAt(wx,wy){return null;}
 function setTool(t){TOOL=t;$("cancelTool").style.display=t?"block":"none";refreshToolBtns()}
 function dragToolKind(){if(!TOOL)return null;
   if(TOOL.k==="build")return TOOL.type==="wall"?"paint":"single";
@@ -2567,7 +2751,6 @@ function spreadCells(x,y,n){const out=[],seen=new Set([K(x,y)]),q=[{x,y}];
   return out.length?out:[{x,y}]}
 function clickSelect(c){const p=pawnAt(c.wx,c.wy);
   if(p){ST.sel=[p];renderInspect();return}
-  const f=foeAt(c.wx,c.wy);if(f){ST.sel=[f];renderInspect();return}
   const s=structAt(c.x,c.y);if(s){ST.sel=[s];renderInspect();return}
   ST.sel=[];renderInspect()}
 function marqueeSelect(m){
@@ -2576,32 +2759,15 @@ function marqueeSelect(m){
   const got=ST.pawns.filter(p=>p.px*T>=ax&&p.px*T<=bx&&p.py*T>=ay&&p.py*T<=by);
   if(got.length)ST.sel=got;else ST.sel=[];
   renderInspect()}
-function rmbAction(c){if(TOOL){setTool(null);return}
-  const dr=selPawns().filter(p=>p.drafted);
-  if(!dr.length)return;
-  const f=foeAt(c.wx,c.wy);
-  if(f){for(const p of dr){p.forced=f.id;p.order=null}
-    log("Target marked: "+f.name,"info");return}
-  const cells=spreadCells(c.x,c.y,dr.length);
-  dr.forEach((p,i)=>{p.forced=0;p.order=cells[i]||cells[0];p.path=null})}
+function rmbAction(c){if(TOOL){setTool(null);return}}
 function tapAction(c){
   if(TOOL){applyCell(c.x,c.y);return}
   const p=pawnAt(c.wx,c.wy);
   if(p){ST.sel=[p];renderInspect();syncHUD();return}
-  const dr=selPawns().filter(q=>q.drafted);
-  const f=foeAt(c.wx,c.wy);
-  if(f){if(dr.length){dr.forEach(q=>{q.forced=f.id;q.order=null})}
-    else{ST.sel=[f]}renderInspect();return}
-  if(dr.length){const cells=spreadCells(c.x,c.y,dr.length);
-    dr.forEach((q,i)=>{q.forced=0;q.order=cells[i]||cells[0];q.path=null});return}
   const s=structAt(c.x,c.y);
   if(s){ST.sel=[s];renderInspect();return}
   ST.sel=[];renderInspect()}
-function toggleDraft(){const ps=selPawns();if(!ps.length)return;
-  const v=!ps.every(p=>p.drafted);
-  for(const p of ps){p.drafted=v;p.order=null;p.forced=0;
-    if(v)clearJob(p);else p.path=null}
-  SFX.ui();renderInspect();syncHUD()}
+
 
 /* mouse */
 cv.addEventListener("mousedown",e=>{e.preventDefault();SFX.wake();
@@ -2641,7 +2807,7 @@ window.addEventListener("mouseup",e=>{
 cv.addEventListener("contextmenu",e=>e.preventDefault());
 cv.addEventListener("wheel",e=>{e.preventDefault();if(ST.phase!=="run")return;
   const f=e.deltaY<0?1.12:1/1.12;
-  const nz=clamp(cam.z*f,.7,3);
+  const nz=clamp(cam.z*f,.35,3);
   const w=s2w(e.clientX,e.clientY);
   cam.x=w.wx-e.clientX/nz;cam.y=w.wy-e.clientY/nz;cam.z=nz;clampCam()},{passive:false});
 
@@ -2676,7 +2842,7 @@ cv.addEventListener("touchmove",e=>{e.preventDefault();if(ST.phase!=="run")retur
   if(a.length>=2&&PT.pinch){
     const d=Math.hypot(a[1].x-a[0].x,a[1].y-a[0].y);
     const ccx=(a[0].x+a[1].x)/2,ccy=(a[0].y+a[1].y)/2;
-    const nz=clamp(cam.z*d/Math.max(1,PT.pinch.d),.7,3);
+    const nz=clamp(cam.z*d/Math.max(1,PT.pinch.d),.35,3);
     const w=s2w(ccx,ccy);
     cam.x=w.wx-ccx/nz;cam.y=w.wy-ccy/nz;cam.z=nz;PT.pinch.d=d;clampCam();return}
   if(a.length===1){const r=a[0];
@@ -2978,7 +3144,7 @@ function syncHUD(){
   const hudEl=$("hud");if(hudEl)hudEl.classList.toggle("crisis",!!ST.crisis);
   // goods pips — color when stocked
   const g=ST.goods||{};
-  ["data","chem","parts","stims","gear"].forEach(k=>{
+  ["food","wood","materials","data","chem","parts","stims","gear"].forEach(k=>{
     const el=$("g-"+k);if(!el)return;
     const v=g[k]||0;
     el.textContent=v;
@@ -3031,7 +3197,7 @@ function renderInspect(){const el=$("inspect");
          const lbl=v>=50?"ally":v>=15?"warm":v<=-50?"hostile":v<=-15?"rival":"·";
          h+="<div class='sub' style='display:flex;justify-content:space-between;gap:8px'><span style='color:"+tie.o.accent+"'>"+tie.o.name+"</span><span style='color:"+col+"'>"+lbl+" "+(v>0?"+":"")+(v|0)+"</span></div>"}}}
     if(e.mem&&e.mem.length)h+="<div class='sub' style='font-style:italic;opacity:.78'>\u201c"+e.mem[e.mem.length-1].t+"\u201d</div>";
-    if(!e.drafted)h+="<div class='ordsec'>DIRECT ORDERS</div><div class='ordgrid'>"+
+    h+="<div class='ordsec'>DIRECT ORDERS</div><div class='ordgrid'>"+
       "<button class='ob' data-o='work'><span>⚒</span>Work</button>"+
       "<button class='ob' data-o='sleep'><span>☾</span>Rest</button>"+
       "<button class='ob' data-o='eat'><span>⊕</span>Feed</button>"+
@@ -3110,6 +3276,46 @@ $("inspect").addEventListener("click",e=>{
     if(sel.desig)ST.flags.salv=true;renderInspect()}
   else if(id==="i-decon"&&sel){sel.decon=!sel.decon;renderInspect()}});
 
+/* ---------- ambient musings (Haiku, background flavor) ---------- */
+const AMBIENT={lastTick:-1e9,gapTicks:1200,enabled:true,inFlight:false};
+// pick the most "interesting" citizen to muse — someone with a strong current state
+function pickMuser(){
+  const cands=ST.pawns.filter(p=>!p.sleeping);
+  if(!cands.length)return null;
+  // weight by how much is going on for them
+  let best=null,bw=-1;
+  for(const p of cands){
+    let w=0;
+    if(p.stress>60)w+=3;if((p.credits||0)<5)w+=2;if(p.homeless)w+=3;
+    if(p.sick)w+=2;if((p.addiction||0)>40)w+=2;if(p.mood>70)w+=1;if(p.mood<25)w+=2;
+    const rivals=ST.pawns.filter(q=>q!==p&&relGet(p.id,q.id)<-40).length;
+    const allies=ST.pawns.filter(q=>q!==p&&relGet(p.id,q.id)>50).length;
+    w+=rivals+allies;
+    w+=Math.random()*2; // jitter so it's not always the same person
+    if(w>bw){bw=w;best=p}}
+  return best;}
+function ambientPrompt(p){
+  return "You ARE "+p.name+", scraping a life on a dead block in a neon megacity, 2087. "+
+    "You come across as "+axTraits(p)+". Right now you are "+feltState(p)+". "+
+    "It's day "+dayN()+", around "+(hourN()|0)+":00.\n\n"+
+    "Write ONE short line of inner thought — something you'd mutter to yourself or jot down right now. "+
+    "Street-worn, in the moment, under 16 words. No quotes, no name prefix, no stage directions. Just the raw thought.";}
+async function tickAmbient(){
+  if(!AMBIENT.enabled||AMBIENT.inFlight||!aiReady())return;
+  if(ST.tick-AMBIENT.lastTick<AMBIENT.gapTicks)return;
+  if(AI_CAP_USD>0&&aiCostUSD()>=AI_CAP_USD*0.9)return; // leave headroom for TALK
+  const p=pickMuser();if(!p)return;
+  AMBIENT.lastTick=ST.tick;AMBIENT.inFlight=true;
+  try{
+    const line=await aiChat(ambientPrompt(p),[{role:"user",content:"(muse)"}],AI_MODEL_AMBIENT);
+    const clean=(line||"").replace(/^["']|["']$/g,"").replace(/\[.*?\]/g,"").trim();
+    if(clean){
+      // store as a memory and surface as a social diary entry
+      remember(p,clean);
+      log(p.name+": \u201c"+clean+"\u201d","info");}
+  }catch(e){/* silent — ambient is best-effort */}
+  AMBIENT.inFlight=false;}
+
 /* ---------- wisp conversation (Phase 1) ---------- */
 let CHAT={p:null,hist:[],busy:false,wasPaused:false};
 function axTraits(p){const a=p.pers,o=[];
@@ -3167,7 +3373,7 @@ const AIACT={work:"work",rest:"sleep",eat:"eat",wash:"hygiene",wander:"recreate"
 const AILBL={work:"breaks off to grind some work",rest:"goes to get some rest",eat:"heads off to find food",wash:"goes to clean up",wander:"wanders off to clear their head",socialize:"goes looking for someone to talk to"};
 const AIMEM={work:"the operator talked me into grinding some work",rest:"the operator got me to go rest",eat:"the operator pushed me to go eat",wash:"the operator told me to clean up, so I did",wander:"the operator told me to take a breather",socialize:"the operator nudged me to go talk to someone"};
 function parseAct(t){const m=t.match(/\[act(?:ion)?:\s*(work|rest|eat|wash|wander|socialize)\s*\]/i);return m?m[1].toLowerCase():null;}
-function applyWispAct(p,verb){const cmd=AIACT[verb];if(!cmd||p.drafted)return null;
+function applyWispAct(p,verb){const cmd=AIACT[verb];if(!cmd)return null;
   clearJob(p);p.job=null;p.cmd=cmd;remember(p,AIMEM[verb]);return AILBL[verb];}
 function openChat(p){if(!p||!aiReady())return;
   CHAT={p,hist:[],busy:false,wasPaused:ST.paused};
@@ -3185,7 +3391,7 @@ async function sendChat(){
   CHAT.busy=true;$("ch-send").disabled=true;
   const dots=pushCm("a","…");
   try{
-    const reply=await aiChat(wispSystemPrompt(CHAT.p),CHAT.hist);
+    const reply=await aiChat(wispSystemPrompt(CHAT.p),CHAT.hist,AI_MODEL_TALK);
     dots.remove();
     const verb=parseAct(reply);
     const shown=reply.replace(/\[act(?:ion)?:\s*\w+\s*\]/ig,"").trim()||"…";
@@ -3217,8 +3423,9 @@ function openSub(cat){if(subCat===cat){closeSub();return}
     b.dataset.tool=tool.k==="build"?"build:"+tool.type:tool.k;
     b.onclick=()=>{SFX.ui();setTool(tool)};sm.appendChild(b)}
   if(cat==="b"){for(const t of BUILD_ORDER){const d=DEF[t];
-    const cost=d.work?(" ⚒"+d.work):"";
-    mk(d.name+"<span class='cost'>"+cost+"</span>",{k:"build",type:t},d.desc)}}
+    const wc=d.work?(" \u2692"+d.work):"";
+    const cc=(d.cost&&d.cost.income)?(" <span style='color:var(--or)'>"+d.cost.income+"c</span>"):"";
+    mk(d.name+"<span class='cost'>"+wc+cc+"</span>",{k:"build",type:t},d.desc)}}
   else if(cat==="o"){
     mk("DECONSTRUCT",{k:"decon"},"Drag over structures to tear them down");
     mk("CANCEL",{k:"cancel"},"Drag to cancel blueprints")}
@@ -3238,7 +3445,7 @@ function renderStats(){
   // economy
   h+="<h4>Economy</h4>";
   const g=ST.goods||{};
-  h+=["data","chem","parts","stims","gear"].map(k=>
+  h+=["food","wood","materials","data","chem","parts","stims","gear"].map(k=>
     "<div class='srow'><span>"+k.toUpperCase()+"</span><b class='"+(g[k]>0?"sgood":"")+"'>"+(g[k]||0)+"</b></div>").join("");
   h+="<div class='srow'><span>Income</span><b class='"+(ST.income<0?"sbad":ST.crisis?"sbad":"sgood")+"'>"+(ST.crisis?"⚠ ":"")+Math.round(ST.income||0)+"c</b></div>";
   if(ST.debtDays)h+="<div class='srow'><span>Debt days</span><b class='sbad'>"+ST.debtDays+"/6</b></div>";
@@ -3311,6 +3518,8 @@ function showHelp(){if(ST.phase==="run"){ST.paused=true;refreshSpd()}showModal(
   "<tr><td style='color:var(--cy)'>Citizens</td><td>Each has needs: food, rest, hygiene, fun, and social. When needs go unmet, stress rises. High stress → snapping, fights, crime. Faces show their emotional state — watch them.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Economy</td><td>Production fixtures (Workstation, Chemlab, Workshop) generate goods. Vendors sell goods for district income. District income pays rent (34c/day per citizen). Income below zero for 3 days triggers Crisis — 5 days means collapse.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Goods chain</td><td>DATA (workstation) + CHEM (chemlab) + PARTS (workshop) → STIMS (stimlab) or GEAR (gearshop). Stims reduce stress. Gear cuts damage taken and boosts crime success.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Resources</td><td>The outskirts ring the core: FARMLAND (NW) grows Food that feeds the block cheaply, THE WOODS (NE) yield Wood, and the OLD MINE (SW) extracts Materials. Farms grow on their own; assign citizens to logging/mining to boost output. Wood and Materials sell through vendors for district income.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Civic (SE)</td><td>PARK — free recreation and strong stress relief. ARCADE — premium fun, small fee feeds income. HOSPITAL — faster, cheaper, stronger treatment than a Med Bay. LEARNING HUB — citizens study here in their spare time, raising their work skills over a few visits.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Population</td><td>New citizens arrive only if you have open housing. Build a Housing Unit (150c) to add one home slot. Citizens pay 34c rent per day — evicted citizens sleep rough and get stressed.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Petitions</td><td>Citizens surface flashpoints — feuds, epidemics, gang formations, thefts — in the REQUESTS panel. Your choice shapes the outcome. Daily reports summarize each day.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Gangs</td><td>When a crew of 3+ citizens forms, you can sanction them — they claim territory (colored tint on the map). Gangs reduce crime heat on their turf but create tension with other gangs. Overlapping turf escalates to gang war.</td></tr>"+
@@ -3348,7 +3557,7 @@ function serializeState(){
 function applyState(d){
   ST.tick=d.tick||0;
   ST.grp=d.grp||{};ST.rel=d.rel||{};ST.nextEv=(d.nextEv==null?1e9:d.nextEv);ST.lastCrackdown=d.lastCrackdown||0;
-  ST.goods=d.goods||{data:0,chem:0,parts:0,stims:0,gear:0};ST.income=d.income||0;
+  ST.goods=d.goods||{data:0,chem:0,parts:0,stims:0,gear:0,food:0,wood:0,materials:0};ST.income=d.income||0;
   ST.debtDays=d.debtDays||0;ST.crisis=d.crisis||false;
   ST.gangs=(d.gangs||[]).map(g=>({...g,turf:new Set(g.turf||[])}));
   ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];
@@ -3379,30 +3588,30 @@ function loadGame(){
 function newGame(){
   ST.phase="run";ST.tick=0;ST.speed=1;ST.paused=false;
   ST.pawns.length=0;ST.beams.length=0;ST.floats.length=0;
-  ST.grp={};ST.sel=[];ST.goods={data:0,chem:0,parts:0,stims:0,gear:0};ST.income=200;ST.debtDays=0;ST.crisis=false;ST.gangs=[];
+  ST.grp={};ST.sel=[];ST.goods={data:0,chem:0,parts:0,stims:0,gear:0,food:0,wood:0,materials:0};ST.income=200;ST.debtDays=0;ST.crisis=false;ST.gangs=[];
   ST.stats={built:0,deaths:0};ST.milestones=[];
   setTimeout(showTutorialHints,500); // show after render
   ST.flags={};setTool(null);closeSub();
   genMap();drawTerrain();
-  const cx=MW/2|0,cy=MH/2|0;
-  const vex=mkPawn(21,15,"sal");
+  const cx=64,cy=50;  // core center
+  const vex=mkPawn(58,46,"sal");  // plaza area
   vex.name="Vex";Object.assign(vex.pers,{ind:40,cau:30,soc:60,cur:80,amb:55,emp:55,imp:70,intg:35});vex.accent=tempCols(vex.pers)[0];vex.sched=mkSched(vex.pers,vex.tr);
   vex.mem=[{d:0,h:6,t:"carved out a place in this sprawl alongside Static"},{d:0,h:6,t:"I move fast and don't sweat the rules — it's what's kept me breathing"}];
   ST.pawns.push(vex);
-  const sta=mkPawn(35,15,"bld");
+  const sta=mkPawn(68,46,"bld");  // plaza area
   sta.name="Static";Object.assign(sta.pers,{ind:80,cau:65,soc:45,cur:25,amb:60,emp:50,imp:25,intg:75});sta.accent=tempCols(sta.pers)[0];sta.sched=mkSched(sta.pers,sta.tr);
   sta.mem=[{d:0,h:6,t:"settled into this block with Vex — somebody's got to keep it running straight"},{d:0,h:6,t:"I grind steady and careful; Vex thinks I'm too slow about it"}];
   ST.pawns.push(sta);
-  // populace — scatter procedural agents across walkable cells until POP is reached
+  // populace — scatter procedural agents near the core (not across the whole 140x100 map)
   {let tries=0;while(ST.pawns.length<POP&&tries<4000){tries++;
-    const x=RI(3,MW-4),y=RI(3,MH-4);
+    const x=RI(40,96),y=RI(28,78);  // within the built-up core region
     if(colCost(x,y)<0)continue;
     if(ST.pawns.some(q=>(q.px|0)===x&&(q.py|0)===y))continue;
     ST.pawns.push(mkPawn(x,y))}}
   {let hi=0;for(const p of ST.pawns){const home=ST.cityHomes[hi%ST.cityHomes.length];hi++;p.home=home;
     const bedS=structAt(home.bed.x,home.bed.y);if(bedS&&bedS.type==="pod")bedS.owner=p.id}}
-  cam.z=clamp(Math.min(VW/(MW*T),VH/(MH*T))*1.9,1,2.2);
-  cam.x=cx*T-VW/cam.z/2;cam.y=cy*T-VH/cam.z/2;clampCam();
+  cam.z=1.4;  // start zoomed into the core on the bigger map
+  cam.x=64*T-VW/cam.z/2;cam.y=50*T-VH/cam.z/2;clampCam();
   ST.lastCrackdown=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.rel={};relAdj(vex.id,sta.id,25);ST.heat=0;ST.heatWarn=false;
   $("log").innerHTML="";DIARY_ENTRIES.length=0;renderDiary();renderRoster();
   log("The sprawl wakes — citizens drifting to homes, jobs, and the night's vices.","info");
@@ -3417,7 +3626,7 @@ function loop(ts){requestAnimationFrame(loop);
     acc+=dt;const step=100/ST.speed;let n=0;
     while(acc>=step&&n<10){tick();acc-=step;n++;if(ST.phase!=="run")break}
     if(n>=10)acc=0}
-  if(ST.phase==="run"){let dx=0,dy=0;const sp=.55*dt/cam.z;
+  if(ST.phase==="run"){let dx=0,dy=0;const sp=.95*dt/cam.z;
     if(KEYS.w||KEYS.arrowup)dy-=sp;
     if(KEYS.s||KEYS.arrowdown)dy+=sp;
     if(KEYS.a||KEYS.arrowleft)dx-=sp;
