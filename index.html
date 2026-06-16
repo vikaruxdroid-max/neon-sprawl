@@ -326,6 +326,37 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   font-size:11px;font-family:var(--disp);margin-bottom:10px}
 .cd-back:hover{text-decoration:underline}
 .hud-icon{font-size:14px;line-height:1}
+.task-badge{position:absolute;top:-5px;right:-5px;min-width:15px;height:15px;
+  border-radius:8px;background:var(--rd);color:#fff;font-size:9px;font-weight:800;
+  font-family:var(--disp);display:flex;align-items:center;justify-content:center;
+  padding:0 3px;box-shadow:0 0 6px rgba(255,61,90,.6);animation:badgePulse 1.4s infinite}
+@keyframes badgePulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+.task-sec{font-family:var(--disp);font-size:10px;letter-spacing:.14em;color:var(--cy);
+  margin:10px 2px 6px;text-transform:uppercase;border-bottom:1px solid var(--bd);padding-bottom:4px}
+.task-alert{display:flex;align-items:center;gap:9px;padding:8px 11px;margin-bottom:5px;
+  background:rgba(8,18,36,.7);border:1px solid var(--bd);border-left-width:3px;border-radius:7px}
+.task-alert .ta-ic{font-size:16px;flex-shrink:0}
+.task-alert .ta-body{flex:1;min-width:0}
+.task-alert .ta-t{font-size:12px;font-weight:600}
+.task-alert .ta-s{font-size:10px;color:var(--dim)}
+.task-alert.crit{border-left-color:var(--rd)}
+.task-alert.warn{border-left-color:var(--or)}
+.task-alert.info{border-left-color:var(--cy)}
+/* save slots */
+.slot-list{display:flex;flex-direction:column;gap:8px}
+.slot-row{display:flex;align-items:center;gap:10px;padding:11px 13px;
+  background:rgba(8,18,36,.7);border:1px solid var(--bd);border-radius:9px}
+.slot-row.filled{border-color:rgba(0,212,255,.3)}
+.slot-meta{flex:1;min-width:0}
+.slot-name{font-family:var(--disp);font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--cy)}
+.slot-info{font-size:10px;color:var(--dim);margin-top:2px}
+.hud-tier{font-family:var(--disp);font-weight:800;font-size:12px;color:#04101a;
+  background:linear-gradient(135deg,#ffe07a,#ffb020);border-radius:5px;padding:1px 6px;
+  box-shadow:0 0 8px rgba(255,200,80,.5);letter-spacing:.04em}
+.prosp-wrap{display:inline-block;width:54px;height:7px;border-radius:4px;
+  background:rgba(255,255,255,.08);overflow:hidden;margin:0 5px;vertical-align:middle}
+.prosp-fill{display:block;height:100%;width:0%;border-radius:4px;
+  background:linear-gradient(90deg,#ff3d5a,#ffc947 50%,#39ff88);transition:width .4s}
 .mbox{width:min(580px,92vw);max-height:88vh;overflow-y:auto;padding:26px 30px;
   border:1px solid rgba(0,212,255,.25);background:rgba(4,10,22,.98);
   box-shadow:0 0 60px rgba(0,212,255,.12);border-radius:10px}
@@ -374,6 +405,11 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
     <span class="hud-label" style="margin-left:8px">EVICT</span><span class="hud-val" id="h-home">0</span>
     <span class="hud-label" style="margin-left:8px">HEAT</span><span class="hud-val" id="h-heat">0</span>
   </div>
+  <div class="hud-seg" id="h-tier-seg" title="District tier + prosperity">
+    <span class="hud-tier" id="h-tier">T1</span>
+    <span class="prosp-wrap"><span class="prosp-fill" id="h-prosp-fill"></span></span>
+    <span class="hud-val" id="h-prosp" style="font-size:10px">0</span>
+  </div>
   <!-- Center: goods inline -->
   <div class="hud-goods">
     <span class="hud-pip" title="Food"><span class="dot" style="background:#b8ff5e"></span><span id="g-food" style="color:var(--dim)">0</span></span>
@@ -395,6 +431,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
     <span style="width:1px;background:var(--bd);height:20px;margin:0 4px"></span>
     <button class="tb" id="b-diary" title="Diary"><span class="hud-icon">📖</span></button>
     <button class="tb" id="b-crew" title="Crew"><span class="hud-icon">👥</span></button>
+    <button class="tb" id="b-tasks" title="Tasks" style="position:relative"><span class="hud-icon">📋</span><span class="task-badge" id="task-badge" style="display:none">0</span></button>
     <button class="tb" id="b-stats" title="District"><span class="hud-icon">📊</span></button>
     <span style="width:1px;background:var(--bd);height:20px;margin:0 4px"></span>
     <button class="tb" id="b-save" title="Save">💾</button>
@@ -593,7 +630,7 @@ const ST={
   phase:"menu", tick:0, speed:1, paused:false,
   ter:new Uint8Array(MW*MH),
   structs:new Map(),
-  pawns:[], foes:[], beams:[], floats:[],
+  pawns:[], foes:[], beams:[], floats:[], emotes:[], tombs:[],
   grp:{}, rel:{}, nextEv:1e9, lastCrackdown:0,
   sel:[],
   stats:{built:0,deaths:0},
@@ -1125,12 +1162,21 @@ function damagePawn(p,d){const dmg=Math.round(d*(p.hasGear?0.75:1)*trMul(p,"dmgr
   if(p.flee<ST.tick){clearJob(p);p.flee=ST.tick+90}
   if(p.hp<=0)killPawn(p,"was killed in the fighting")}
 function killPawn(p,why){const i=ST.pawns.indexOf(p);if(i<0)return;
+  // cute-comedic death: a little ghost puffs up, a tombstone marks the spot, neighbors gasp
+  emote(p,"ghost");
+  spawnTombstone(p.px,p.py);
+  onlookersReact(p.px,p.py,"shock",9);
   clearJob(p);ST.pawns.splice(i,1);ST.stats.deaths++;SFX.die();
   for(const s of ST.structs.values())if(s.owner===p.id)s.owner=0;
   log(p.name+" "+why+".","bad");banner("RUNNER DOWN","bad");
-  for(const o of ST.pawns){addMod(o,"loss","Lost a crewmate",-16,TPD*2.5);applyDrift(o,{cau:6,soc:-3})}
+  for(const o of ST.pawns){addMod(o,"loss","Lost a crewmate",-16,TPD*2.5);applyDrift(o,{cau:6,soc:-3});
+    if(DIST(o.px,o.py,p.px,p.py)<10)tryEmote(o,"cry",120);}
   ST.sel=ST.sel.filter(e=>e!==p);renderInspect();
   if(ST.pawns.length===0&&ST.phase==="run")gameOver()}
+// comedic mini-tombstone that lingers then fades
+function spawnTombstone(x,y){
+  (ST.tombs||(ST.tombs=[])).push({x,y,ttl:TPD*1.5,t0:TPD*1.5});
+}
 function homeCell(p){const h=p&&p.home;return h?{x:h.door.x,y:h.door.y}:{x:MW/2|0,y:MH/2|0}}
 function openHomes(){return ST.cityHomes.filter(h=>!ST.pawns.some(p=>p.home===h))}
 function pawnGang(p){return ST.gangs.find(g=>g.crewIds.includes(p.id))||null}
@@ -1173,6 +1219,24 @@ function gangTick(){
 /* per-tick pawn logic */
 function pawnTick(p){
   if(!p.sleeping&&colCost(p.px|0,p.py|0)<0)nudgeOff(p.px|0,p.py|0);
+  // ── ambient charm: wisps spontaneously emote based on how they feel ──
+  if(ST.tick%45===0&&Math.random()<0.5){
+    if(p.sleeping){if(Math.random()<0.4)tryEmote(p,"sleepy",120);}
+    else if(p.dazed>ST.tick){tryEmote(p,"dizzy",100);}
+    else if((p.stress||0)>65){tryEmote(p,"sweat",100);}
+    else if(p.sick){if(Math.random()<0.5)tryEmote(p,"gross",140);}
+    else if((p.mood||50)>72){tryEmote(p,Math.random()<0.4?"music":"happy",110);}
+    else if((p.mood||50)<28){tryEmote(p,"cry",140);}
+    // gossip: two friendly wisps near each other trade ! and ? bubbles
+    else if(Math.random()<0.3){
+      for(const q of ST.pawns){if(q===p||q.hp<=0||q.sleeping)continue;
+        if(DIST(p.px,p.py,q.px,q.py)<3.2&&relGet(p.id,q.id)>10){
+          tryEmote(p,Math.random()<0.5?"excl":"ques",100);
+          if(Math.random()<0.5)tryEmote(q,"happy",100);
+          // friends near each other warm up slightly
+          if(relGet(p.id,q.id)>55&&Math.random()<0.2)tryEmote(p,"heart",160);
+          break;}}}
+  }
   const hd=100/(TPD*0.95)*trMul(p,"hung");
   const rd=100/(TPD*1.5)*trMul(p,"rest");
   p.needs.food=Math.max(0,p.needs.food-hd);
@@ -1190,7 +1254,7 @@ function pawnTick(p){
   if(!p.sleeping&&!p.sick&&p.hp<100&&p.needs.food>30&&ST.tick%10===0&&!foeNear(p,10))
     p.hp=Math.min(100,p.hp+0.1);
   if(ST.procgen!==false&&!p.sick&&ST.tick%60===0&&Math.random()<0.002+(p.needs.hyg<35?(35-p.needs.hyg)/35*0.12:0)){
-    p.sick=true;addMod(p,"sick","Infection",-10,TPD);float(p.px,p.py,"INFECTED","#ff4757");log(p.name+" caught an infection.","warn")}
+    p.sick=true;addMod(p,"sick","Infection",-10,TPD);float(p.px,p.py,"INFECTED","#ff4757");emote(p,"gross");log(p.name+" caught an infection.","warn")}
   if(p.sick&&ST.tick%60===0){  // contagion: spread to nearby citizens
     const spreadRate=0.006*(p.needs.hyg<30?3:1);  // dirty carrier spreads 3x
     for(const q of ST.pawns){if(q===p||q.sick)continue;
@@ -1231,7 +1295,7 @@ function pawnTick(p){
   const brk=22+trAdd(p,"brk");
   if(p.dazed<ST.tick&&p.mood<brk&&Math.random()<0.0018+(p.stress>70?0.0025:0)){
     clearJob(p);p.dazed=ST.tick+260;p.dz=null;
-    float(p.px,p.py,"SNAPPED","#b06fff");
+    float(p.px,p.py,"SNAPPED","#b06fff");emote(p,"dizzy");onlookersReact(p.px,p.py,"sweat",6);
     log(p.name+" snapped — wandering dazed.","warn")}
   if(p.dazed>ST.tick&&p.dazed-ST.tick===1){applyDrift(p,{cau:2,soc:-1})}
   if(p.dazed>ST.tick){p.sleeping=false;
@@ -1254,7 +1318,7 @@ function pawnTick(p){
         for(const w of ST.pawns){if(w===p||w===q)continue;
           if(DIST(w.px,w.py,p.px,p.py)<8){relAdj(w.id,p.id,-5);relAdj(w.id,q.id,-5);
             remember(w,"watched "+p.name+" and "+q.name+" beat each other up")}}
-        float(p.px,p.py,"FIGHT!","#ff4757");log(p.name+" and "+q.name+" came to blows.","warn");
+        float(p.px,p.py,"FIGHT!","#ff4757");emote(p,"anger");emote(q,"anger");onlookersReact(p.px,p.py,"shock",8);log(p.name+" and "+q.name+" came to blows.","warn");
         clearJob(p);clearJob(q);break}
       // ally mutual aid: ally is sick/starving nearby → offer 5c if can afford
       const aidRange=8+(trAdd(p,"emprange")||0);
@@ -1263,7 +1327,7 @@ function pawnTick(p){
         relAdj(p.id,q.id,4);
         remember(p,"slipped "+q.name+" some credits when they were struggling");
         remember(q,p.name+" looked out for me when I needed it — good people");
-        float(p.px,p.py,"-"+gift+"c help","#39ff88")}}}
+        float(p.px,p.py,"-"+gift+"c help","#39ff88");emote(p,"heart")}}}
   // quarantine: if flagged, stay home
   if(p.quarantine&&p.sick){const h=p.home;
     if(h&&((p.px|0)<h.x0||(p.px|0)>=h.x0+h.w)){clearJob(p);p.cmd="sleep"}}
@@ -1288,7 +1352,7 @@ function pawnTick(p){
           else if((p.credits||0)>=5){p.credits-=5;p.needs.food=100;addMod(p,"meal","Bought a meal",3,TPD*.5)}
           else{p.needs.food=Math.min(100,p.needs.food+16);addMod(p,"hungry","Couldn't afford a real meal",-7,TPD*.3)}
           let other=null,od=1e9;for(const q of ST.pawns){if(q.id===p.id)continue;const dd=Math.hypot(p.px-q.px,p.py-q.py);if(dd<od){od=dd;other=q}}
-          if(other&&od<6){relAdj(p.id,other.id,3);applyDrift(p,{soc:2})}
+          if(other&&od<6){relAdj(p.id,other.id,3);applyDrift(p,{soc:2});tryEmote(p,"happy",80)}
           p.job=null;syncHUD()}}
       break}
     case "sleep":{
@@ -1432,7 +1496,7 @@ function pawnTick(p){
           p.needs.fun=Math.min(100,(p.needs.fun||0)+30);
           p.stress=Math.max(0,(p.stress||0)-25);
           p.addiction=Math.min(100,(p.addiction||0)+6);
-          float(s.x+.5,s.y+.5,"USED","#b06fff");addMod(p,"high","Chemically numb",6,TPD*.3);applyDrift(p,{intg:-1,cau:-1});p.job=null;syncHUD()}}
+          float(s.x+.5,s.y+.5,"USED","#b06fff");emote(p,"dizzy");addMod(p,"high","Chemically numb",6,TPD*.3);applyDrift(p,{intg:-1,cau:-1});p.job=null;syncHUD()}}
       break}
     case "crime":{const s=j.s;
       if(structAt(s.x,s.y)!==s||s.bp){p.job=null;break}
@@ -1467,7 +1531,7 @@ function pawnTick(p){
           applyDrift(p,{intg:-2,cau:-1});
           p.rep.city=clamp((p.rep.city||0)-8,-100,100);p.rep.gang=clamp((p.rep.gang||0)+6,-100,100);
           remember(p,"robbed "+v.name+" for "+take+" creds in the sprawl");
-          float(p.px,p.py,"+"+take+"c ROBBED","#ff4757");
+          float(p.px,p.py,"+"+take+"c ROBBED","#ff4757");emote(p,"excl");onlookersReact(p.px,p.py,"shock",7);
           v.stress=Math.min(100,(v.stress||0)+25);addMod(v,"robbed","Just got robbed",-12,TPD*.5);
           remember(v,"got robbed by "+p.name+" — lost "+take+" creds, still shaking");
           relAdj(p.id,v.id,-50);
@@ -1559,6 +1623,60 @@ function checkMilestones(){
       ST.milestones.push(m.id);
       log("MILESTONE: "+m.label+" — "+m.desc,"good");
       banner(m.label.toUpperCase(),"good");SFX.good();}}}
+
+/* ============================================================
+   DISTRICT TIERS + PROSPERITY SCORE
+   ============================================================ */
+// Tiers: the whole block ranks up as it grows and stabilizes.
+const TIERS=[
+  {t:1,name:"Dead Block",     pop:0,  income:0,   prosp:0},
+  {t:2,name:"Squat",          pop:6,  income:300, prosp:30},
+  {t:3,name:"Settlement",     pop:9,  income:700, prosp:45},
+  {t:4,name:"District",       pop:13, income:1400,prosp:58},
+  {t:5,name:"Neon Sprawl",    pop:18, income:2600,prosp:70},
+];
+// Prosperity (0-100): a live gauge blending economy, wellbeing, safety, growth.
+function prosperity(){
+  const pawns=ST.pawns;if(!pawns.length)return 0;
+  // economy: income scaled (cap influence at 2000c)
+  const eco=clamp((ST.income||0)/2000,0,1)*100;
+  // wellbeing: average mood, minus sickness/homelessness drag
+  const avgMood=pawns.reduce((s,p)=>s+(p.mood||0),0)/pawns.length;
+  const sick=pawns.filter(p=>p.sick).length/pawns.length;
+  const evicted=pawns.filter(p=>p.homeless).length/pawns.length;
+  const well=clamp(avgMood-sick*40-evicted*45,0,100);
+  // safety: inverse of district heat + active gang war tension
+  const heat=ST.heat||0;
+  const safety=clamp(100-heat,0,100);
+  // growth: population relative to a healthy target
+  const growth=clamp(pawns.length/18,0,1)*100;
+  // weighted blend
+  const score=eco*0.28+well*0.34+safety*0.20+growth*0.18;
+  return clamp(Math.round(score),0,100);
+}
+function currentTier(){
+  const prosp=prosperity();
+  let tier=TIERS[0];
+  for(const T of TIERS){
+    if(ST.pawns.length>=T.pop&&(ST.income||0)>=T.income&&prosp>=T.prosp)tier=T;
+  }
+  return tier;
+}
+function checkTier(){
+  const cur=currentTier();
+  if(!ST.tierReached)ST.tierReached=1;
+  if(cur.t>ST.tierReached){
+    ST.tierReached=cur.t;
+    log("DISTRICT RANKED UP — now a "+cur.name+" (Tier "+cur.t+")!","good");
+    banner("TIER "+cur.t+" · "+cur.name.toUpperCase(),"good");SFX.good();
+    // little celebration: every citizen gets a mood lift
+    for(const p of ST.pawns){addMod(p,"tierup","The block's coming up!",10,TPD*1.2);
+      emote(p,"party");}
+  }
+}
+function prospRank(s){
+  return s>=80?"Thriving":s>=62?"Flourishing":s>=45?"Stable":s>=28?"Struggling":s>=12?"Failing":"Collapsing";
+}
 
 /* ---------- tutorial hints (day 1 only) ---------- */
 function showTutorialHints(){
@@ -1681,6 +1799,8 @@ function tick(){ST.tick++;
   // (roguelike vat-protein production + beacon-extraction win removed — the city has neither)
   for(let i=ST.pawns.length-1;i>=0;i--)pawnTick(ST.pawns[i]);
   for(let i=ST.floats.length-1;i>=0;i--)if(--ST.floats[i].ttl<=0)ST.floats.splice(i,1);
+  tickEmotes();
+  tickTombstones();
   if(ST.tick>=ST.nextEv)fireEvent();
   // passive crop growth — farm plots slowly yield food on their own (tended or not)
   if(ST.tick%200===0){
@@ -1737,6 +1857,8 @@ function tick(){ST.tick++;
       else float(s.x+.5,s.y+.5,"SOLD +"+cut+"c","#39ff88")}}
   if(ST.tick%30===0){updateFlags();genRequests();expireRequests()}
   if(ST.tick%TPD===0&&ST.tick>0)checkMilestones(); // daily milestone check
+  if(ST.tick%TPD===0&&ST.tick>0&&typeof autosave==="function")autosave(); // daily autosave
+  if(ST.tick%120===0)checkTier(); // district tier progression
   if(ST.tick%100===0)tickAmbient(); // background AI musings (rate-limited internally)
   if(ST.tick%200===0&&ST.gangs.length)gangTick();
   if(ST.tick%TPD===0&&ST.tick>0){
@@ -2488,10 +2610,117 @@ function faceExpr(p){
   if((p.mood||50)>55)return"good";
   return"neutral";}
 
+/* ============================================================
+   WISP CHARM — cute emotes + reactions
+   ============================================================ */
+// floating emote bubbles above pawns. kind drives the symbol + color + motion.
+const EMOTES={
+  heart:   {s:"\u2665", c:"#ff6fae", rise:14, life:46, wob:1},
+  love:    {s:"\u2661", c:"#ff8fc4", rise:14, life:46, wob:1.4},
+  music:   {s:"\u266a", c:"#7ad0ff", rise:13, life:44, wob:1.6},
+  happy:   {s:"\u2727", c:"#ffd700", rise:12, life:38, wob:1},
+  party:   {s:"\u2736", c:"#ffc947", rise:16, life:50, wob:2},
+  sweat:   {s:"\u00b0", c:"#9fd8ff", rise:8,  life:34, wob:.4},
+  shock:   {s:"\u2049", c:"#ffe066", rise:10, life:40, wob:.6}, // interrobang-ish
+  excl:    {s:"\uff01", c:"#ffe066", rise:11, life:34, wob:.5},
+  ques:    {s:"\uff1f", c:"#aec6ff", rise:11, life:36, wob:.7},
+  anger:   {s:"\u2762", c:"#ff5a5a", rise:9,  life:34, wob:.5}, // anger puff
+  cry:     {s:"\u2767", c:"#7ec8ff", rise:7,  life:38, wob:.5},
+  sleepy:  {s:"z", c:"#aef3ff", rise:9, life:40, wob:.5},
+  ghost:   {s:"\u2620", c:"#cdd6ff", rise:20, life:64, wob:2.2}, // skull/ghost puff for KO
+  dizzy:   {s:"\u204b", c:"#c98bff", rise:8, life:40, wob:1.8},
+  idea:    {s:"\u273c", c:"#fff1a8", rise:12, life:38, wob:.8},
+  gross:   {s:"\u2754", c:"#a8ff78", rise:8, life:34, wob:.6},
+};
+function emote(p,kind){
+  if(!p||p.hp<=0&&kind!=="ghost")return;
+  const e=EMOTES[kind]||EMOTES.happy;
+  (ST.emotes||(ST.emotes=[])).push({
+    x:p.px,y:p.py,kind,ttl:e.life,t0:e.life,
+    seed:Math.random()*6.28});
+  // brief reaction cooldown so we don't spam
+  p.lastEmote=ST.tick;
+}
+// throttle helper — only emote if this pawn hasn't recently
+function tryEmote(p,kind,gap){
+  if(!p)return;
+  if(p.lastEmote&&ST.tick-p.lastEmote<(gap||60))return;
+  emote(p,kind);
+}
+// nearby onlookers react to a dramatic event at (x,y)
+function onlookersReact(x,y,kind,radius){
+  for(const q of ST.pawns){
+    if(q.hp<=0||q.sleeping)continue;
+    if(DIST(q.px,q.py,x,y)>(radius||7))continue;
+    tryEmote(q,kind,90);
+  }
+}
+function drawEmotes(x0,y0,x1,y1){
+  if(!ST.emotes||!ST.emotes.length)return;
+  ctx.textAlign="center";
+  for(const em of ST.emotes){
+    if(em.x<x0-2||em.x>x1+2||em.y<y0-2||em.y>y1+2)continue;
+    const def=EMOTES[em.kind]||EMOTES.happy;
+    const prog=1-em.ttl/em.t0;
+    const a=clamp(em.ttl<8?em.ttl/8:1,0,1); // fade out at end
+    const rise=prog*def.rise;
+    const wob=Math.sin(prog*7+em.seed)*def.wob;
+    const sz=Math.round((em.kind==="ghost"?11:9)+prog*2);
+    const X=em.x*T+wob, Y=em.y*T-10-rise;
+    ctx.globalAlpha=a;
+    ctx.font="bold "+sz+"px monospace";
+    // soft glow behind the symbol
+    ctx.fillStyle=def.c;
+    ctx.fillText(def.s,X,Y);
+    ctx.globalAlpha=1;
+  }
+  ctx.textAlign="left";
+}
+function tickEmotes(){
+  if(!ST.emotes)return;
+  for(let i=ST.emotes.length-1;i>=0;i--)if(--ST.emotes[i].ttl<=0)ST.emotes.splice(i,1);
+}
+function drawTombstones(x0,y0,x1,y1){
+  if(!ST.tombs||!ST.tombs.length)return;
+  for(const tb of ST.tombs){
+    if(tb.x<x0-1||tb.x>x1+1||tb.y<y0-1||tb.y>y1+1)continue;
+    const X=tb.x*T,Y=tb.y*T;
+    const a=clamp(tb.ttl<60?tb.ttl/60:1,0,1);
+    ctx.globalAlpha=a*.9;
+    // little rounded headstone
+    ctx.fillStyle="#3a4258";
+    ctx.beginPath();
+    ctx.moveTo(X+5,Y+13);ctx.lineTo(X+5,Y+7);
+    ctx.arc(X+8,Y+7,3,Math.PI,0);ctx.lineTo(X+11,Y+13);ctx.closePath();ctx.fill();
+    // RIP scratch
+    ctx.fillStyle="#8a93ad";ctx.font="4px monospace";ctx.textAlign="center";
+    ctx.fillText("RIP",X+8,Y+10);ctx.textAlign="left";
+    // soft mound
+    ctx.fillStyle="rgba(40,50,30,.5)";ctx.fillRect(X+3,Y+12,10,2);
+    ctx.globalAlpha=1;
+  }
+}
+function tickTombstones(){
+  if(!ST.tombs)return;
+  for(let i=ST.tombs.length-1;i>=0;i--)if(--ST.tombs[i].ttl<=0)ST.tombs.splice(i,1);
+}
+
 function drawPawn(p){
-  // walk bob: bob vertically when job is active and not sleeping
-  const moving=!p.sleeping&&p.job&&p.job.t!=="idle";
-  const bobY=moving?Math.sin(performance.now()*0.012+(p.px+p.py))*1.2:0;
+  const now=performance.now();
+  // motion personality: walking bob, idle breathing, happy bounce, stressed jitter
+  const moving=!p.sleeping&&p.job&&p.job.t!=="idle"&&p.path;
+  const mood=p.mood||50,stress=p.stress||0;
+  let bobY=0,squash=1;
+  if(p.sleeping){bobY=Math.sin(now*0.002+p.px)*0.6;} // gentle sleep rise/fall
+  else if(moving){bobY=Math.sin(now*0.014+(p.px+p.py))*1.4;squash=1+Math.sin(now*0.014+(p.px+p.py))*0.06;}
+  else{
+    // idle: soft breathing; happy wisps do a little bounce; stressed ones jitter
+    const breathe=Math.sin(now*0.004+p.px*1.3)*0.7;
+    const hop=mood>68?Math.max(0,Math.sin(now*0.006+p.py))*1.8:0;
+    const jit=stress>60?(Math.random()-0.5)*0.7:0;
+    bobY=breathe-hop+jit;
+    squash=1+Math.sin(now*0.004+p.px*1.3)*0.04+(mood>68?hop*0.02:0);
+  }
   const X=p.px*T,Y=p.py*T+bobY;
   const sel=ST.sel.includes(p),ac=animaColor(p),slp=p.sleeping;
   const pls=0.5+0.5*Math.sin(performance.now()*0.0028+(p.px+p.py)*0.5);
@@ -2750,6 +2979,8 @@ function render(){
     if(!s)continue;
     drawStruct(s)}
   for(const p of ST.pawns)drawPawn(p);
+  drawTombstones(x0,y0,x1,y1);
+  drawEmotes(x0,y0,x1,y1);
   // floating text
   ctx.font="7px monospace";ctx.textAlign="center";
   for(const f of ST.floats){const prog=1-f.ttl/f.t0;const a=clamp(1-prog*prog,0,1);
@@ -2900,6 +3131,7 @@ window.addEventListener("keydown",e=>{const k=e.key.toLowerCase();
   else if(k==="j")openOverlay("diary");
   else if(k==="k")openOverlay("crew");
   else if(k==="l")openOverlay("district");
+  else if(k==="t")openOverlay("tasks");
   else if(k==="escape"){if(TOOL)setTool(null);
     else{ST.sel=[];renderInspect();closeSub();syncHUD()}}});
 window.addEventListener("keyup",e=>{KEYS[e.key.toLowerCase()]=false});
@@ -3020,6 +3252,8 @@ function renderOverlay(){
   if(OV.view==="diary")renderDiaryOverlay();
   else if(OV.view==="crew")renderCrewOverlay();
   else if(OV.view==="district")renderDistrictOverlay();
+  else if(OV.view==="tasks")renderTasksOverlay();
+  // "slots" view is static — not re-rendered on tick
 }
 function renderDiaryOverlay(){
   $("ov-title").textContent="DIARY";
@@ -3107,6 +3341,68 @@ function renderDistrictOverlay(){
   $("ov-tabs").style.display="none";$("ov-tabs").innerHTML="";
   $("ov-body").innerHTML=districtStatsHTML();
 }
+// collect live district alerts (things needing the overseer's attention)
+function collectAlerts(){
+  const alerts=[];
+  // crisis state
+  if(ST.crisis)alerts.push({sev:"crit",ic:"\u26a0",t:"District in crisis",s:"Income is negative — build revenue or cut losses fast."});
+  if(ST.debtDays)alerts.push({sev:"crit",ic:"\u26a0",t:"Debt: day "+ST.debtDays+"/6",s:"The district is condemned at day 6 of debt."});
+  // citizens in trouble
+  for(const p of ST.pawns){
+    if(p.sick)alerts.push({sev:"crit",ic:"\u2716",t:p.name+" is infected",s:"Needs a clinic — build a Med Bay or Hospital nearby.",pid:p.id});
+    else if(p.hp<35)alerts.push({sev:"crit",ic:"\u2665",t:p.name+" badly hurt",s:"HP critical — they may not recover on their own.",pid:p.id});
+  }
+  for(const p of ST.pawns){
+    if(p.homeless)alerts.push({sev:"warn",ic:"\u2302",t:p.name+" is evicted",s:"Sleeping rough and stressing out — build housing.",pid:p.id});
+    else if((p.credits||0)<0)alerts.push({sev:"warn",ic:"\u25c8",t:p.name+" is broke",s:"In debt — can't afford food or rent.",pid:p.id});
+    else if((p.mood||50)<22)alerts.push({sev:"warn",ic:"\u2767",t:p.name+" is miserable",s:"Very low mood — at risk of snapping.",pid:p.id});
+  }
+  // heat
+  if((ST.heat||0)>60)alerts.push({sev:"warn",ic:"\u25b2",t:"District heat is high",s:"Crime is drawing attention. A crackdown may come."});
+  return alerts;
+}
+function pendingRequests(){return ST.requests?ST.requests.filter(r=>r.status==="pending"):[];}
+function taskCount(){return collectAlerts().length+pendingRequests().length;}
+function renderTasksOverlay(){
+  $("ov-title").textContent="TASKS";
+  $("ov-tabs").style.display="none";$("ov-tabs").innerHTML="";
+  const alerts=collectAlerts(),reqs=pendingRequests();
+  let h="";
+  if(reqs.length){
+    h+="<div class='task-sec'>Petitions \u2014 awaiting your call</div>";
+    const now=ST.tick;
+    for(const r of reqs){
+      const frac=(r.expires-now)/(r.expires-r.created);
+      const sev=frac<0.25?"crit":frac<0.5?"warn":"info";
+      const agent=ST.pawns.find(p=>p.id===r.agentId);
+      const col=agent?agent.accent:"var(--cy)";
+      h+="<div class='task-alert "+sev+"'>";
+      h+="<div class='ta-ic'>\u270b</div><div class='ta-body'>";
+      h+="<div class='ta-t' style='color:"+col+"'>"+r.agentName+"</div>";
+      h+="<div class='ta-s'>"+r.text+"</div>";
+      h+="<div class='rq-opts' style='margin-top:6px'>";
+      r.options.forEach((opt,i)=>{h+="<button class='tb' data-trid='"+r.id+"' data-toi='"+i+"'>"+opt.label+"</button>";});
+      h+="</div></div></div>";
+    }
+  }
+  if(alerts.length){
+    h+="<div class='task-sec'>Alerts \u2014 district status</div>";
+    for(const a of alerts){
+      h+="<div class='task-alert "+a.sev+"'"+(a.pid?" data-tpid='"+a.pid+"' style='cursor:pointer'":"")+">";
+      h+="<div class='ta-ic'>"+a.ic+"</div><div class='ta-body'>";
+      h+="<div class='ta-t'>"+a.t+"</div><div class='ta-s'>"+a.s+"</div>";
+      h+="</div></div>";
+    }
+  }
+  if(!h)h="<div style='color:var(--dim);font-size:12px;padding:16px;text-align:center'>All clear. No pending petitions or alerts \u2014 the district runs smooth.</div>";
+  $("ov-body").innerHTML=h;
+}
+// refresh the HUD task badge
+function refreshTaskBadge(){
+  const n=taskCount(),b=$("task-badge");if(!b)return;
+  if(n>0){b.style.display="flex";b.textContent=n>9?"9+":n;}else b.style.display="none";
+  if(OV.view==="tasks")renderTasksOverlay();
+}
 
 // overlay event delegation
 $("overlay").addEventListener("click",e=>{
@@ -3118,6 +3414,21 @@ $("overlay").addEventListener("click",e=>{
   if(cc){OV.crewFocus=+cc.dataset.cid;SFX.ui();renderCrewDetail();return;}
   // back from detail
   if(e.target.closest("#cd-back")){OV.crewFocus=null;SFX.ui();renderCrewOverlay();return;}
+  // task petition answer
+  const trb=e.target.closest("[data-trid]");
+  if(trb){SFX.ui();applyRequest(trb.dataset.trid,+trb.dataset.toi);renderTasksOverlay();refreshTaskBadge();return;}
+  // task alert → locate citizen
+  const tpid=e.target.closest("[data-tpid]");
+  if(tpid){const p=ST.pawns.find(q=>q.id===+tpid.dataset.tpid);
+    if(p){SFX.ui();ST.sel=[p];cam.x=p.px*T-VW/cam.z/2;cam.y=p.py*T-VH/cam.z/2;clampCam();closeOverlay();renderInspect();}return;}
+  // save slot actions
+  const slotBtn=e.target.closest("[data-slotact]");
+  if(slotBtn){const slot=slotBtn.dataset.slot==="auto"?"auto":+slotBtn.dataset.slot,act=slotBtn.dataset.slotact;SFX.ui();
+    if(act==="save"){saveToSlot(slot);openSaveSlots();}
+    else if(act==="load"){loadFromSlot(slot);}
+    else if(act==="del"){try{localStorage.removeItem(slotKeyFor(slot));}catch(e){}
+      OV.slotMode==="save"?openSaveSlots():openLoadSlots();}
+    return;}
   // detail orders
   const cm=e.target.closest("[data-cdcmd]");
   if(cm){const p=ST.pawns.find(q=>q.id===OV.crewFocus);
@@ -3142,7 +3453,7 @@ function flashMsg(m){log(m,"warn")}
 function renderRequests(){
   const el=$("requests");
   const pending=ST.requests?ST.requests.filter(r=>r.status==="pending"):[];
-  if(!pending.length){el.style.display="none";return}
+  if(!pending.length){el.style.display="none";if(typeof refreshTaskBadge==="function")refreshTaskBadge();return}
   el.style.display="block";
   let h='<div class="rq-hdr">AGENT REQUESTS</div>';
   const now=ST.tick;
@@ -3158,7 +3469,8 @@ function renderRequests(){
     r.options.forEach((opt,i)=>{
       h+="<button class='tb' data-rid='"+r.id+"' data-oi='"+i+"'>"+opt.label+"</button>"});
     h+="</div></div>"}
-  el.innerHTML=h}
+  el.innerHTML=h;
+  if(typeof refreshTaskBadge==="function")refreshTaskBadge();}
 
 /* ---------- crime: organic robbery (Phase B.1) ---------- */
 function firstName(p){return (p.name||"").split(" ")[0]}
@@ -3336,7 +3648,7 @@ function showModal(html){$("modal").innerHTML="<div class='mbox'>"+html+"</div>"
 function hideModal(){$("modal").classList.remove("open")}
 $("modal").addEventListener("click",e=>{const id=e.target.id;
   if(id==="m-start"||id==="m-restart"){SFX.wake();SFX.ui();newGame()}
-  else if(id==="m-continue"){SFX.wake();SFX.ui();loadGame()}
+  else if(id==="m-continue"){SFX.wake();SFX.ui();hideModal();openLoadSlots()}
   else if(id==="m-close"){SFX.ui();hideModal()}});
 
 function syncHUD(){
@@ -3359,6 +3671,11 @@ function syncHUD(){
   const hh=String(Math.floor(h)).padStart(2,"0");
   const mm=String(Math.floor((h%1)*60)).padStart(2,"0");
   $("h-day").textContent="DAY "+dayN()+" · "+hh+":"+mm;
+  // tier + prosperity
+  const tier=currentTier(),prosp=prosperity();
+  const tEl=$("h-tier");if(tEl){tEl.textContent="T"+tier.t;tEl.title=tier.name+" (Tier "+tier.t+")";}
+  const pf=$("h-prosp-fill");if(pf)pf.style.width=prosp+"%";
+  const pe=$("h-prosp");if(pe){pe.textContent=prosp;pe.title=prospRank(prosp);}
   refreshBuildAfford();}
 
 // lightweight: update build-card affordability classes without rebuilding the menu
@@ -3736,14 +4053,25 @@ $("submenu").addEventListener("click",e=>{
 $("t-build").onclick=()=>{SFX.ui();openSub("b")};
 $("t-zone").onclick=()=>{SFX.ui();openSub("z")};
 $("t-command").onclick=()=>{SFX.ui();openSub("c")};
-$("b-save").onclick=()=>{SFX.ui();saveGame()};
-$("b-load").onclick=()=>{SFX.ui();loadGame()};
+$("b-save").onclick=()=>{SFX.ui();openSaveSlots()};
+$("b-load").onclick=()=>{SFX.ui();openLoadSlots()};
 $("b-diary").onclick=()=>{SFX.ui();openOverlay("diary")};
 $("b-crew").onclick=()=>{SFX.ui();openOverlay("crew")};
+$("b-tasks").onclick=()=>{SFX.ui();openOverlay("tasks")};
 $("b-stats").onclick=()=>{SFX.ui();openOverlay("district")};
 function districtStatsHTML(){
   const pawns=ST.pawns;
   let h="";
+  // tier + prosperity headline
+  const tier=currentTier(),prosp=prosperity();
+  const next=TIERS.find(T=>T.t===tier.t+1);
+  h+="<div style='display:flex;align-items:center;gap:10px;margin-bottom:10px'>"+
+     "<span class='hud-tier' style='font-size:14px'>T"+tier.t+"</span>"+
+     "<div><div style='font-family:var(--disp);font-size:13px;color:var(--cy)'>"+tier.name+"</div>"+
+     "<div style='font-size:10px;color:var(--dim)'>Prosperity "+prosp+" · "+prospRank(prosp)+"</div></div></div>";
+  h+="<div class='prosp-wrap' style='width:100%;height:9px;display:block'><span class='prosp-fill' style='width:"+prosp+"%'></span></div>";
+  if(next)h+="<div style='font-size:10px;color:var(--dim);margin:5px 0 4px'>Next: "+next.name+" — needs "+next.pop+" pop · "+next.income+"c · "+next.prosp+" prosperity</div>";
+  else h+="<div style='font-size:10px;color:var(--gn);margin:5px 0 4px'>Maximum tier reached — the sprawl is yours.</div>";
   // economy
   h+="<h4>Economy</h4>";
   const g=ST.goods||{};
@@ -3821,7 +4149,10 @@ function showHelp(){if(ST.phase==="run"){ST.paused=true;refreshSpd()}showModal(
   "<tr><td style='color:var(--cy)'>Camera</td><td>WASD / arrows / drag to pan. Scroll or pinch to zoom. Tap a citizen to select and inspect. Citizens prefer roads when travelling.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Build</td><td>BUILD menu → categorized cards. Affordable items glow; ones you can't afford dim red. Credits are charged when you place a blueprint, refunded if cancelled. Walls drag-paint. ZONE handles deconstruct/cancel/salvage. COMMAND issues orders to selected citizens.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Speed</td><td>⏸ pauses. 1×/2×/3× sets speed.</td></tr>"+
-  "<tr><td style='color:var(--cy)'>Windows</td><td>The 📖 DIARY, 👥 CREW, and 📊 DISTRICT icons open full-screen windows you can scroll and close (✕ or Esc). Hotkeys: J diary · K crew · L district. CREW lists everyone — tap a citizen for full profile and direct orders.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Windows</td><td>The 📖 DIARY, 👥 CREW, 📋 TASKS, and 📊 DISTRICT icons open full-screen windows you can scroll and close (✕ or Esc). Hotkeys: J diary · K crew · L district. CREW lists everyone — tap a citizen for full profile and direct orders.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Tasks</td><td>📋 TASKS gathers every pending petition plus live alerts — sick, evicted, broke, or miserable citizens and district crises. A red badge on the icon counts what needs you; tap an alert to jump to that citizen.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Progression</td><td>The district ranks up through Tiers (Squat → Settlement → District → Neon Sprawl) as population, income, and prosperity rise. The HUD shows your tier badge and a live PROSPERITY bar (red→green) blending economy, wellbeing, safety, and growth — push it as high as you can.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Saves</td><td>💾 SAVE / 📂 LOAD use three slots plus a daily autosave. Each slot shows day, population, tier, and income so you can manage multiple runs.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Diary</td><td>Day-grouped, timestamped event log. Filter tabs: ALL / CRIME / ECO / SOCIAL / HEALTH / DISTRICT.</td></tr>"+
   "</table><button class='tb big' id='m-close'>CLOSE</button>")}
 function showStart(){showModal(
@@ -3834,16 +4165,34 @@ function showStart(){showModal(
   "<p style='color:var(--dim);font-size:10px;margin-top:14px'>Press ? for the operator manual · v0.2</p>")}
 
 /* ---------- save / load ---------- */
-const SAVE_KEY="neonSprawlSave_v1";
-function hasSave(){try{return !!localStorage.getItem(SAVE_KEY)}catch(e){return false}}
+const SAVE_KEY="neonSprawlSave_v1";       // legacy single-slot (auto-migrated)
+const SLOT_KEY=n=>"neonSprawlSlot_"+n;     // n = 1,2,3
+const AUTO_KEY="neonSprawlSlot_auto";
+const SLOTS=[1,2,3];
+function slotKeyFor(slot){return slot==="auto"?AUTO_KEY:SLOT_KEY(slot);}
+function slotMeta(slot){
+  try{const raw=localStorage.getItem(slotKeyFor(slot));if(!raw)return null;
+    const d=JSON.parse(raw);
+    return{day:Math.floor((d.tick||0)/TPD)+1,pop:(d.pawns||[]).length,
+      tier:d.tierReached||1,income:Math.round(d.income||0),
+      saved:d.savedAt||null};}
+  catch(e){return null}}
+function hasSave(){
+  // true if ANY slot (or legacy) has data
+  try{if(localStorage.getItem(SAVE_KEY))return true;
+    if(localStorage.getItem(AUTO_KEY))return true;
+    for(const n of SLOTS)if(localStorage.getItem(SLOT_KEY(n)))return true;
+  }catch(e){}
+  return false}
 function snapPawn(p){return Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,unre:undefined,pi:0,pTx:-1,pTy:-1,claim:0})}
 function snapFoe(f){return Object.assign({},f,{path:null,tgt:null,pi:0,pTx:-1,pTy:-1})}
 function snapStruct(s){return Object.assign({},s,{res:0})}
 function serializeState(){
   return{v:2,tick:ST.tick,grp:ST.grp,rel:ST.rel,nextEv:ST.nextEv,lastCrackdown:ST.lastCrackdown,
     goods:ST.goods,income:ST.income,debtDays:ST.debtDays||0,crisis:ST.crisis||false,
+    savedAt:Date.now(),
     gangs:(ST.gangs||[]).map(g=>({...g,turf:[...g.turf]})),
-    stats:ST.stats,flags:ST.flags,milestones:ST.milestones||[],
+    stats:ST.stats,flags:ST.flags,milestones:ST.milestones||[],tierReached:ST.tierReached||1,
     ter:Array.from(ST.ter),
     structs:[...ST.structs.values()].map(snapStruct),
     pawns:ST.pawns.map(snapPawn),
@@ -3854,27 +4203,92 @@ function applyState(d){
   ST.goods=d.goods||{data:0,chem:0,parts:0,stims:0,gear:0,food:0,wood:0,materials:0};ST.income=d.income||0;
   ST.debtDays=d.debtDays||0;ST.crisis=d.crisis||false;
   ST.gangs=(d.gangs||[]).map(g=>({...g,turf:new Set(g.turf||[])}));
-  ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];
+  ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];ST.tierReached=d.tierReached||1;
   ST.ter=new Uint8Array(d.ter||[]);
   ST.structs=new Map((d.structs||[]).map(s=>[K(s.x,s.y),s]));
   ST.pawns=(d.pawns||[]).map(p=>Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,unre:new Map()}));
-  ST.beams=[];ST.floats=[];ST.sel=[];ST.rooms=d.rooms||[];
+  ST.beams=[];ST.floats=[];ST.emotes=[];ST.tombs=[];ST.sel=[];ST.rooms=d.rooms||[];
   ST.phase="run";ST.paused=false;ST.speed=1;
   powerRecalc()}
-function saveGame(){
+function saveToSlot(slot){
   if(ST.phase!=="run"){flashMsg("Nothing to save yet");return false}
-  try{localStorage.setItem(SAVE_KEY,JSON.stringify(serializeState()));
-    flashMsg("Run saved — day "+dayN());banner("RUN SAVED","good");return true}
+  try{localStorage.setItem(slotKeyFor(slot),JSON.stringify(serializeState()));
+    if(slot!=="auto"){flashMsg("Saved to slot "+slot+" — day "+dayN());banner("SAVED · SLOT "+slot,"good");}
+    return true}
   catch(e){flashMsg("Save failed: "+(e&&e.message||"storage error"));return false}}
-function loadGame(){
-  let raw;try{raw=localStorage.getItem(SAVE_KEY)}catch(e){flashMsg("Storage unavailable");return false}
-  if(!raw){flashMsg("No save found");return false}
+function loadFromSlot(slot){
+  let raw;try{raw=localStorage.getItem(slotKeyFor(slot))}catch(e){flashMsg("Storage unavailable");return false}
+  if(!raw){flashMsg("Slot "+slot+" is empty");return false}
   let d;try{d=JSON.parse(raw)}catch(e){flashMsg("Save file corrupt");return false}
   applyState(d);
   drawTerrain();MOTES=null;
   if(ST.pawns[0]){cam.x=ST.pawns[0].px*T-VW/cam.z/2;cam.y=ST.pawns[0].py*T-VH/cam.z/2;clampCam()}
-  hideModal();refreshSpd();syncHUD();renderRoster();renderInspect();
-  flashMsg("Run loaded — day "+dayN());banner("RUN LOADED","good");return true}
+  hideModal();closeOverlay();refreshSpd();syncHUD();renderRoster();renderInspect();
+  flashMsg("Loaded "+(slot==="auto"?"autosave":"slot "+slot)+" — day "+dayN());banner("RUN LOADED","good");return true}
+function autosave(){saveToSlot("auto");}
+// functional round-trip helpers (also used by the smoke harness):
+// saveGame writes to slot 1; loadGame loads the most recently saved slot.
+function saveGame(){return saveToSlot(1);}
+function mostRecentSlot(){
+  let best=null,bt=-1;
+  for(const slot of ["auto",1,2,3]){const m=slotMeta(slot);
+    if(m&&m.saved&&m.saved>bt){bt=m.saved;best=slot;}}
+  // legacy fallback
+  if(best===null){try{if(localStorage.getItem(SAVE_KEY))return"legacy";}catch(e){}}
+  return best;
+}
+function loadGame(){
+  const slot=mostRecentSlot();
+  if(slot==="legacy"){
+    try{const d=JSON.parse(localStorage.getItem(SAVE_KEY));applyState(d);
+      drawTerrain();MOTES=null;
+      if(ST.pawns[0]){cam.x=ST.pawns[0].px*T-VW/cam.z/2;cam.y=ST.pawns[0].py*T-VH/cam.z/2;clampCam()}
+      hideModal();refreshSpd();syncHUD();renderRoster();renderInspect();
+      flashMsg("Run loaded — day "+dayN());banner("RUN LOADED","good");return true;}
+    catch(e){return false;}
+  }
+  if(slot===null){flashMsg("No save found");return false;}
+  return loadFromSlot(slot);
+}
+// slot picker overlays
+function slotRowHTML(slot,mode){
+  const meta=slotMeta(slot);
+  const label=slot==="auto"?"AUTOSAVE":"SLOT "+slot;
+  let info;
+  if(meta){
+    const when=meta.saved?new Date(meta.saved).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}):"";
+    info="Day "+meta.day+" · Pop "+meta.pop+" · T"+meta.tier+" · "+meta.income+"c"+(when?" · "+when:"");
+  }else info="<span style='opacity:.5'>empty</span>";
+  const canAct=mode==="save"?(slot!=="auto"):!!meta;
+  const act=mode==="save"?"save":"load";
+  return "<div class='slot-row "+(meta?"filled":"")+"'>"+
+    "<div class='slot-meta'><div class='slot-name'>"+label+"</div><div class='slot-info'>"+info+"</div></div>"+
+    (canAct?"<button class='tb' data-slot='"+slot+"' data-slotact='"+act+"'>"+(mode==="save"?"SAVE":"LOAD")+"</button>":"")+
+    (meta&&slot!=="auto"?"<button class='tb warnb' data-slot='"+slot+"' data-slotact='del'>✕</button>":"")+
+    "</div>";
+}
+function openSaveSlots(){
+  OV.view="slots";OV.slotMode="save";
+  $("overlay").classList.add("open");
+  $("ov-title").textContent="SAVE GAME";
+  $("ov-tabs").style.display="none";$("ov-tabs").innerHTML="";
+  let h="<div class='slot-list'>";
+  for(const n of SLOTS)h+=slotRowHTML(n,"save");
+  h+=slotRowHTML("auto","load"); // autosave is load-only here
+  h+="</div>";
+  $("ov-body").innerHTML=h;
+}
+function openLoadSlots(){
+  OV.view="slots";OV.slotMode="load";
+  $("overlay").classList.add("open");
+  $("ov-title").textContent="LOAD GAME";
+  $("ov-tabs").style.display="none";$("ov-tabs").innerHTML="";
+  let h="<div class='slot-list'>";
+  for(const n of SLOTS)h+=slotRowHTML(n,"load");
+  h+=slotRowHTML("auto","load");
+  h+="</div>";
+  $("ov-body").innerHTML=h;
+}
 
 /* ============================================================
    GAME START / MAIN LOOP
@@ -3883,7 +4297,7 @@ function newGame(){
   ST.phase="run";ST.tick=0;ST.speed=1;ST.paused=false;
   ST.pawns.length=0;ST.beams.length=0;ST.floats.length=0;
   ST.grp={};ST.sel=[];ST.goods={data:0,chem:0,parts:0,stims:0,gear:0,food:0,wood:0,materials:0};ST.income=200;ST.debtDays=0;ST.crisis=false;ST.gangs=[];
-  ST.stats={built:0,deaths:0};ST.milestones=[];
+  ST.stats={built:0,deaths:0};ST.milestones=[];ST.tierReached=1;
   setTimeout(showTutorialHints,500); // show after render
   ST.flags={};setTool(null);closeSub();
   genMap();drawTerrain();
