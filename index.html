@@ -288,7 +288,7 @@ const ST={
   structs:new Map(),
   items:[], pawns:[], foes:[], beams:[], floats:[],
   zone:new Set(),
-  grp:{}, lastRaid:0, nextEv:1e9, storm:0, black:0,
+  grp:{}, rel:{}, lastRaid:0, nextEv:1e9, storm:0, black:0,
   pwG:0, pwU:0, pwOk:true,
   sel:[],
   stats:{kills:0,built:0,deaths:0,salv:0,hauled:0,raids:0},
@@ -325,6 +325,10 @@ async function aiChat(system,messages){
 }
 function remember(p,txt){if(!p)return;(p.mem||(p.mem=[])).push({d:dayN(),h:hourN()|0,t:txt});
   if(p.mem.length>40)p.mem.shift()}
+/* ---------- relationship graph (pairwise affinity, -100..100) ---------- */
+function relKey(a,b){return a<b?a+"|"+b:b+"|"+a}
+function relGet(a,b){return ST.rel[relKey(a,b)]||0}
+function relAdj(a,b,d){if(a===b)return;const k=relKey(a,b);ST.rel[k]=clamp((ST.rel[k]||0)+d,-100,100)}
 
 /* ---------- structures / passability ---------- */
 function structAt(x,y){return ST.structs.get(K(x,y))||null}
@@ -597,9 +601,9 @@ function moodCalc(p){
   if(lightLevel(hourN())>.3){                       // neon lamp aura at night
     for(const s of ST.structs.values())
       if(s.type==="lamp"&&s.powered&&DIST(p.px,p.py,s.x+.5,s.y+.5)<4.5){m+=3;break}}
-  if(ST.pawns.length===2){const other=ST.pawns.find(q=>q.id!==p.id);
-    if(other&&DIST(p.px,p.py,other.px,other.py)<6){
-      if(ST.bond>65)m+=5;else if(ST.bond<35)m-=5}}
+  {let aff=0,nn=0;for(const o of ST.pawns){if(o===p)continue;
+      if(DIST(p.px,p.py,o.px,o.py)<6){aff+=relGet(p.id,o.id);nn++}}
+    if(nn){aff/=nn;if(aff>20)m+=5;else if(aff<-20)m-=5}}
   if(p.needs.hyg<20)m-=4;
   if(p.needs.fun<20)m-=4;
   if(p.needs.socN<20)m-=5;
@@ -700,7 +704,7 @@ function scoreJobs(p){
     hygiene:showStr?clamp(70-hyg,0,100):0,recreate:funStr?clamp(60-fun,0,100):0,socialize:mate?clamp(60-socN,0,100):0,
     work:(workStr&&ST.tick>(p.workCd||0))?clamp(60-cred*0.6,0,100):0,treat:p.sick&&medStr?80:0,substance:dlrStr?clamp((p.addiction||0)*0.6+((p.stress||0)>40?((p.stress||0)-40)*0.4:0),0,100):0,crime:(robTgt&&cred<20)?clamp(30-cred*1.1,0,100):0};
   const pw={
-    eat:0.5+cau/100,sleep:0.5+cau/100,cook:0.5+ind/100,build:0.5+ind/100+(ST.pawns.length===2&&ST.bond>65?0.1:0),
+    eat:0.5+cau/100,sleep:0.5+cau/100,cook:0.5+ind/100,build:0.5+ind/100,
     salvage:0.5+ind/100+0.1*(cur/100),haul:0.5+ind/100,
     idle:0.5+(100-ind)/100,
     hygiene:1,recreate:0.5+cur/100,socialize:0.5+soc/100,work:0.5+ind/100,treat:0.5+cau/100,substance:0.3+p.pers.imp/150+(100-p.pers.intg)/200,crime:(100-p.pers.intg)/100*(0.4+p.pers.imp/150)};
@@ -777,7 +781,7 @@ function fireAt(p,f){p.cd=p.weapon.cd;
   if(Math.random()<accOf(p,d))damageFoe(f,RI(p.weapon.dmg[0],p.weapon.dmg[1]))}
 function damagePawn(p,d){p.hp-=d;p.hurtT=ST.tick;SFX.hit();applyDrift(p,{cau:3});
   const watcher=ST.pawns.find(q=>q.id!==p.id&&DIST(q.px,q.py,p.px,p.py)<8);
-  if(watcher)ST.bond=clamp(ST.bond-1,0,100);
+  if(watcher)relAdj(watcher.id,p.id,-2);
   addMod(p,"pain","In pain",-8,TPD*.4);
   if(!p.drafted&&p.flee<ST.tick){clearJob(p);p.flee=ST.tick+90}
   if(p.hp<=0)killPawn(p,"was killed in the fighting")}
@@ -871,7 +875,7 @@ function pawnTick(p){
             addMod(p,"raw","Ate raw protein",-6,TPD*.4)}
           else{p.needs.food=Math.min(100,p.needs.food+40);addMod(p,"scraps","Scrounged scraps",-4,TPD*.3)}
           const other=ST.pawns.find(q=>q.id!==p.id);
-          if(other&&Math.hypot(p.px-other.px,p.py-other.py)<6){ST.bond=clamp(ST.bond+3,0,100);applyDrift(p,{soc:2})}
+          if(other&&Math.hypot(p.px-other.px,p.py-other.py)<6){relAdj(p.id,other.id,3);applyDrift(p,{soc:2})}
           p.job=null;syncHUD()}}
       break}
     case "sleep":{
@@ -905,7 +909,7 @@ function pawnTick(p){
           if(ST.tick%25===0)gainXp(p,"bld");
           if(s.prog>=s.need){finishBuild(s);s.res=0;applyDrift(p,{ind:1});
   const co=ST.pawns.find(q=>q.id!==p.id&&q.job&&q.job.s===s);
-  if(co)ST.bond=clamp(ST.bond+2,0,100);
+  if(co)relAdj(p.id,co.id,2);
   p.job=null}}}
       break}
     case "salvage":{const s=j.s;
@@ -953,7 +957,7 @@ function pawnTick(p){
       if(!o||o===p){p.job=null;break}
       const r=gotoCell(p,o.px|0,o.py|0,1);
       if(r==="fail"){p.job=null;break}
-      if(r==="arr"){j.prog++;if(j.prog>=40){p.needs.socN=100;ST.bond=clamp(ST.bond+1,0,100);p.job=null}}
+      if(r==="arr"){j.prog++;if(j.prog>=40){p.needs.socN=100;relAdj(p.id,o.id,2);p.job=null}}
       break}
     case "work":{const s=j.s;
       if(structAt(s.x,s.y)!==s||s.bp){p.job=null;break}
@@ -1182,8 +1186,8 @@ function updateFlags(){const F=ST.flags;
   renderChecklist()}
 function tick(){ST.tick++;
   if(ST.tick%10===0)powerRecalc();
-  if(ST.tick%5===0&&ST.pawns.length===2){const [a,b]=ST.pawns;
-    if(DIST(a.px,a.py,b.px,b.py)<5)ST.bond=clamp(ST.bond+0.02,0,100)}
+  if(ST.tick%5===0){const P=ST.pawns;for(let i=0;i<P.length;i++)for(let j=i+1;j<P.length;j++)
+    if(DIST(P[i].px,P[i].py,P[j].px,P[j].py)<5)relAdj(P[i].id,P[j].id,0.02)}
   if(ST.tick%20===0){
     for(const s of ST.structs.values()){if(s.bp)continue;
       if(s.type==="vat"&&s.powered){s.vt+=20;
@@ -1827,7 +1831,6 @@ function expireRequests(){
     r.status="expired";
     const agent=ST.pawns.find(p=>p.id===r.agentId);
     if(agent)agent.pers.soc=clamp(agent.pers.soc-1,0,100);
-    ST.bond=clamp((ST.bond||50)-1,0,100);
     log((agent?agent.name:"Agent")+" got tired of waiting — acted on instinct.","warn")}}
 
 function applyDrift(p,deltas){
@@ -2134,7 +2137,7 @@ function snapFoe(f){return Object.assign({},f,{path:null,tgt:null,pi:0,pTx:-1,pT
 function snapStruct(s){return Object.assign({},s,{res:0})}
 function snapItem(it){return Object.assign({},it,{resv:0})}
 function serializeState(){
-  return{v:1,tick:ST.tick,res:ST.res,grp:ST.grp,lastRaid:ST.lastRaid,nextEv:ST.nextEv,
+  return{v:1,tick:ST.tick,res:ST.res,grp:ST.grp,rel:ST.rel,lastRaid:ST.lastRaid,nextEv:ST.nextEv,
     storm:ST.storm,black:ST.black,stats:ST.stats,flags:ST.flags,
     ter:Array.from(ST.ter),
     structs:[...ST.structs.values()].map(snapStruct),
@@ -2144,7 +2147,7 @@ function serializeState(){
     zone:[...ST.zone],rooms:ST.rooms}}
 function applyState(d){
   ST.tick=d.tick||0;ST.res=d.res||{scrap:0,comp:0,raw:0,meal:0};
-  ST.grp=d.grp||{};ST.lastRaid=d.lastRaid||0;ST.nextEv=(d.nextEv==null?1e9:d.nextEv);
+  ST.grp=d.grp||{};ST.rel=d.rel||{};ST.lastRaid=d.lastRaid||0;ST.nextEv=(d.nextEv==null?1e9:d.nextEv);
   ST.storm=d.storm||0;ST.black=d.black||0;
   ST.stats=d.stats||{kills:0,built:0,deaths:0,salv:0,hauled:0,raids:0};ST.flags=d.flags||{};
   ST.ter=new Uint8Array(d.ter||[]);
@@ -2193,7 +2196,7 @@ function newGame(){
   ST.pawns.push(sta);
   cam.z=clamp(Math.min(VW/(MW*T),VH/(MH*T))*1.9,1,2.2);
   cam.x=cx*T-VW/cam.z/2;cam.y=cy*T-VH/cam.z/2;clampCam();
-  ST.lastRaid=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.bond=50;ST.heat=0;ST.heatWarn=false;
+  ST.lastRaid=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.rel={};relAdj(vex.id,sta.id,25);ST.heat=0;ST.heatWarn=false;
   $("log").innerHTML="";renderRoster();
   log("Vex and Static holed up in the dead district. Daylight won't last.","info");
   log("Zone a stockpile, mark scrap for salvage, and get walls up before the gangs notice.","info");
