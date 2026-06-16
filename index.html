@@ -55,43 +55,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 #hud.crisis{border-bottom-color:rgba(255,61,90,.6);
   box-shadow:0 0 20px rgba(255,61,90,.25) inset}
 
-/* ── DIARY (replaces log) ── */
-#diary{position:fixed;left:8px;top:calc(var(--hud-h) + 6px);width:310px;
-  max-height:32vh;display:flex;flex-direction:column;
-  border-radius:8px;overflow:hidden;z-index:11;
-  transition:width .2s,opacity .2s}
-#diary.collapsed{width:32px;max-height:32px;overflow:hidden}
-#diary.collapsed .diary-tabs{display:none}
-#diary.collapsed .diary-body{display:none}
-#diary-toggle{position:absolute;top:4px;right:4px;z-index:2;
-  background:none;border:none;color:var(--dim);cursor:pointer;
-  font-size:11px;padding:2px 5px;line-height:1;
-  font-family:var(--mono);letter-spacing:.05em}
-#diary-toggle:hover{color:var(--cy)}
-#diary.collapsed #diary-toggle{position:static;display:block;padding:6px;
-  color:var(--cy);font-size:13px;text-align:center;width:32px}
-/* roster collapse */
-#roster{position:fixed;right:8px;top:calc(var(--hud-h) + 6px);width:auto;
-  max-height:calc(100vh - 70px);overflow-y:auto;padding:0;
-  background:none;border:none;display:flex;flex-direction:column;gap:6px;
-  align-items:flex-end;z-index:11;transition:opacity .2s}
-#roster.collapsed .rchip{display:none}
-#roster.collapsed .rhdr{display:none}
-#roster-toggle{width:28px;height:28px;border-radius:6px;
-  background:rgba(4,10,22,.9);border:1px solid var(--bd);
-  color:var(--dim);cursor:pointer;font-size:12px;
-  display:flex;align-items:center;justify-content:center;
-  align-self:flex-end;transition:color .12s,border-color .12s}
-#roster-toggle:hover{color:var(--cy);border-color:rgba(0,212,255,.4)}
-.diary-tabs{display:flex;gap:0;border-bottom:1px solid var(--bd);background:rgba(2,6,16,.9);flex-shrink:0}
-.dtab{font-family:var(--disp);font-size:9px;letter-spacing:.14em;color:var(--dim);
-  padding:5px 9px;cursor:pointer;transition:color .12s,border-bottom .12s;
-  border-bottom:2px solid transparent}
-.dtab.on{color:var(--cy);border-bottom-color:var(--cy)}
-.dtab:hover{color:var(--tx)}
-.diary-body{flex:1;overflow-y:auto;padding:5px 8px;background:rgba(4,10,22,.88)}
-.diary-body::-webkit-scrollbar{width:3px}
-.diary-body::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
+/* ── DIARY entries (rendered inside overlay) ── */
 .dday{font-family:var(--disp);font-size:9px;letter-spacing:.22em;color:var(--vi);
   text-transform:uppercase;padding:6px 0 3px;border-top:1px solid rgba(13,32,64,.6);
   margin-top:4px}
@@ -129,42 +93,15 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 .ob:hover{border-color:var(--cy);color:#eafff4;background:rgba(0,212,255,.12)}
 .i-talk{background:rgba(162,89,255,.16)!important;border-color:rgba(162,89,255,.42)!important;color:#e7dcff!important}
 
-/* ── ROSTER ── */
-#roster::-webkit-scrollbar{display:none}
-#roster .rhdr{font-family:var(--disp);font-weight:600;color:var(--cy);
-  letter-spacing:.16em;font-size:9px;text-align:center;width:54px;opacity:.7}
-.rchip{width:54px;height:54px;position:relative;cursor:pointer;border-radius:10px;
-  background:rgba(4,10,22,.9);border:1px solid var(--bd);
-  display:grid;place-items:center;transition:border-color .12s,box-shadow .12s}
-.rchip:hover{border-color:rgba(0,212,255,.4)}
-.rchip.sel{border-color:#00d4ff;box-shadow:0 0 0 1px rgba(0,212,255,.4) inset,0 0 14px rgba(0,212,255,.25)}
-.rring{position:absolute;inset:3px;border-radius:50%;opacity:.8;pointer-events:none}
-.rnow{position:absolute;width:5px;height:5px;border-radius:50%;
-  background:var(--mg);box-shadow:0 0 6px var(--mg);top:50%;left:50%;pointer-events:none}
-.rava{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;
-  font-family:var(--disp);font-weight:700;font-size:13px;color:#010408;position:relative;z-index:1}
-.rmood{position:absolute;bottom:4px;right:4px;width:7px;height:7px;
-  border-radius:50%;border:1.5px solid #010408;z-index:2}
-.rfly{position:absolute;right:62px;top:50%;transform:translateY(-50%);
-  background:var(--panel);border:1px solid var(--bd);border-radius:8px;
-  padding:7px 11px;white-space:nowrap;opacity:0;pointer-events:none;
-  transition:opacity .12s;display:flex;flex-direction:column;gap:2px;z-index:30}
-.rchip:hover .rfly{opacity:1}
-.rfly b{font-family:var(--disp);font-size:12px;letter-spacing:.02em}
-.rfly span{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
-.rfly em{font-style:normal;font-size:9px;color:var(--or);letter-spacing:.04em}
-
-/* ── STATS PANEL ── */
-#stats-panel{display:none;position:fixed;right:8px;bottom:62px;width:270px;
-  max-height:60vh;overflow-y:auto;padding:12px 14px;font-size:11px;line-height:1.5;z-index:30}
-#stats-panel h4{color:var(--cy);letter-spacing:.12em;font-size:9px;
-  margin:8px 0 5px;text-transform:uppercase;
+/* ── DISTRICT STATS (rendered inside overlay) ── */
+.ov-body h4{color:var(--cy);letter-spacing:.12em;font-size:9px;
+  margin:10px 0 6px;text-transform:uppercase;
   display:flex;align-items:center;gap:6px}
-#stats-panel h4::after{content:"";flex:1;height:1px;background:var(--bd)}
-#stats-panel .srow{display:flex;justify-content:space-between;color:var(--dim);margin-bottom:3px}
-#stats-panel .srow b{color:var(--tx)}
-#stats-panel .sbad{color:var(--rd)}
-#stats-panel .sgood{color:var(--gn)}
+.ov-body h4::after{content:"";flex:1;height:1px;background:var(--bd)}
+.ov-body .srow{display:flex;justify-content:space-between;color:var(--dim);margin-bottom:4px;font-size:11px;line-height:1.5}
+.ov-body .srow b{color:var(--tx)}
+.ov-body .sbad{color:var(--rd)}
+.ov-body .sgood{color:var(--gn)}
 
 /* ── REQUESTS ── */
 #requests{position:fixed;left:8px;top:calc(var(--hud-h) + 32vh + 18px);
@@ -377,8 +314,6 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   #hud{font-size:10px;gap:4px}
   .hud-seg{gap:4px;padding:0 7px}
   .hud-goods{gap:6px;padding:0 6px}
-  #diary{width:200px;font-size:10px;max-height:28vh}
-  .dtab{padding:4px 6px;font-size:8px}
   #inspect{width:220px;bottom:96px;font-size:10px}
   #requests{width:220px;top:calc(var(--hud-h) + 28vh + 14px)}
   #toolbar{bottom:6px;padding:4px}
@@ -499,7 +434,9 @@ function R(a,b){return a+Math.random()*(b-a)}
 function RI(a,b){return Math.floor(R(a,b+1))}
 function CH(a){return a[Math.floor(Math.random()*a.length)]}
 function clamp(v,a,b){return v<a?a:v>b?b:v}
-function K(x,y){return x+","+y}
+function K(x,y){return x*MH+y}        // numeric tile key — no string allocation in hot paths
+function KX(k){return (k/MH)|0}        // decode key → x
+function KY(k){return k%MH}            // decode key → y
 function INB(x,y){return x>=0&&y>=0&&x<MW&&y<MH}
 function DIST(ax,ay,bx,by){return Math.hypot(bx-ax,by-ay)}
 function CHEB(ax,ay,bx,by){return Math.max(Math.abs(bx-ax),Math.abs(by-ay))}
@@ -742,20 +679,9 @@ function astar(sx,sy,gx,gy,opt){opt=opt||{};const adj=opt.adj?1:0;const cf=opt.f
   while(cur!==si&&cur>=0){path.push({x:cur%MW,y:(cur/MW)|0});cur=par[cur]}
   path.reverse();return path}
 
-function los(x0,y0,x1,y1){const dx=x1-x0,dy=y1-y0;
-  const n=Math.ceil(Math.max(Math.abs(dx),Math.abs(dy))*2)+1;
-  const c0x=Math.floor(x0),c0y=Math.floor(y0),c1x=Math.floor(x1),c1y=Math.floor(y1);
-  for(let i=1;i<n;i++){const t=i/n;
-    const cx=Math.floor(x0+dx*t),cy=Math.floor(y0+dy*t);
-    if((cx===c0x&&cy===c0y)||(cx===c1x&&cy===c1y))continue;
-    const s=structAt(cx,cy);
-    if(s&&!s.bp){const b=DEF[s.type].blocks;if(b===1||b===2)return false}}
-  return true}
-
 /* ---------- economy ---------- */
 function afford(cost){if(cost.income&&ST.income<cost.income){flashMsg("Need "+cost.income+"c district income");return false}return true}
 function pay(cost){if(cost.income)ST.income-=cost.income}
-function refund(cost,frac){if(cost.income){const v=Math.floor((cost.income||0)*frac);if(v>0)ST.income+=v}}
 
 /* ---------- placement / construction ---------- */
 function entityOn(x,y){for(const p of ST.pawns)if((p.px|0)===x&&(p.py|0)===y)return true;
@@ -787,10 +713,6 @@ function nudgeOff(x,y){const all=ST.pawns;
         const X=x+dx,Y=y+dy;
         if(INB(X,Y)&&colCost(X,Y)>=0){e.px=X+.5;e.py=Y+.5;e.path=null;e.job=null;placed=true}}}}
 function deconFinish(s){removeStruct(s);powerRecalc();syncHUD();if(typeof drawTerrain==="function")drawTerrain()}
-function damageStruct(s,d){if(s.bp){cancelBp(s);return}
-  s.hp-=d;
-  if(s.hp<=0){removeStruct(s);powerRecalc();
-    if(!DEF[s.type].nat)log(DEF[s.type].name+" destroyed.","bad")}}
 
 /* ---------- power ---------- */
 function powerRecalc(){}  // city is always powered — no generator system
@@ -1180,7 +1102,6 @@ function spawnTombstone(x,y){
 function homeCell(p){const h=p&&p.home;return h?{x:h.door.x,y:h.door.y}:{x:MW/2|0,y:MH/2|0}}
 function openHomes(){return ST.cityHomes.filter(h=>!ST.pawns.some(p=>p.home===h))}
 function pawnGang(p){return ST.gangs.find(g=>g.crewIds.includes(p.id))||null}
-function tileInTurf(x,y){return ST.gangs.some(g=>g.turf.has(K(x,y)))}
 function gangTick(){
   for(const g of ST.gangs){if(!g.crewIds.length)continue;
     const newTurf=new Set();
@@ -1585,7 +1506,6 @@ function pawnTick(p){
 }
 
 /* ---------- foes ---------- */
-function spawnFoeAt(kind,x,y,group){/* foes removed in city sim mode */}
 function edgeCell(){for(let i=0;i<60;i++){const side=RI(0,3);let x,y;
   if(side===0){x=RI(1,MW-2);y=1}else if(side===1){x=RI(1,MW-2);y=MH-2}
   else if(side===2){x=1;y=RI(1,MH-2)}else{x=MW-2;y=RI(1,MH-2)}
@@ -2507,27 +2427,6 @@ function tempCols(P){
     [(P.soc+P.emp)/2,"#39ff88"],[(P.cau+P.intg)/2,"#00e5ff"],
     [(P.cur+100-P.intg)/2,"#b06fff"],[(P.ind+100-P.emp)/2,"#ff9f2d"]];
   T.sort((a,b)=>b[0]-a[0]);return[T[0][1],T[1][1]]}
-function drawBody(p,X,Y){
-  const[c1,c2]=tempCols(p.pers);
-  ctx.fillStyle="#141a26";ctx.fillRect(X-3.5,Y-3,7,9);
-  ctx.fillStyle=c1;ctx.fillRect(X-3.5,Y-3,7,3);
-  ctx.fillStyle="#0e1420";ctx.fillRect(X-3,Y-9,6,6);
-  ctx.fillStyle=c2;ctx.fillRect(X-3,Y-7,6,1.5);
-}
-function dayRing(p){
-  const s=p.sched;
-  if(!s)return{grad:"#24403a",nx:-2,ny:-17};
-  const meals=[s.bf,s.lunch,s.dinner];
-  const inW=(a,b,x)=>{a=((a%24)+24)%24;b=((b%24)+24)%24;return a<=b?(x>=a&&x<b):(x>=a||x<b)};
-  const pick=h=>{h=((h%24)+24)%24;
-    for(const m of meals)if(Math.abs(((h-m+12+24)%24)-12)<=0.22)return"#ffd86a";
-    if(inW(s.sleepAt,s.wake,h))return"#0e2820";
-    if(inW(s.workStart,s.workEnd,h))return"#00d2c0";
-    return"#24403a";};
-  let out=[];for(let hh=0;hh<24;hh+=0.5)out.push(pick(hh)+" "+(hh/24*360).toFixed(1)+"deg "+((hh+0.5)/24*360).toFixed(1)+"deg");
-  const ang=hourN()/24*360,r=15;
-  return{grad:"conic-gradient(from 0deg,"+out.join(",")+")",
-    nx:Math.sin(ang*Math.PI/180)*r-2,ny:-Math.cos(ang*Math.PI/180)*r-2};}
 function renderRoster(){
   // roster panel removed from home screen — keep the heat HUD update + live overlay refresh
   const hb=$("h-heat");if(hb){hb.textContent=ST.heat|0;hb.className="hud-val"+(ST.heat>60?" danger":ST.heat>30?" warn":"");}
@@ -2964,7 +2863,7 @@ function render(){
   if(ST.gangs.length){
     for(const g of ST.gangs){if(!g.turf.size)continue;
       ctx.globalAlpha=0.11;ctx.fillStyle=g.color;
-      for(const k of g.turf){const c=k.split(",");const gx=+c[0],gy=+c[1];
+      for(const k of g.turf){const gx=KX(k),gy=KY(k);
         if(gx<x0||gx>=x1||gy<y0||gy>=y1)continue;
         ctx.fillRect(gx*T,gy*T,T,T);}
       ctx.globalAlpha=1;}
@@ -3003,10 +2902,19 @@ function render(){
   else if(hr<7){const k=(hr-5)/2;tintR=4+40*k;tintG=8+18*k;tintB=24-6*k;}  // dawn warm
   else if(hr<19){tintR=8;tintG=10;tintB=16;}          // day neutral
   else{const k=(hr-19)/2;tintR=8+50*k;tintG=10+10*k;tintB=16+6*k;}  // dusk warm-orange
+  const vg=vignetteGradient(tintR|0,tintG|0,tintB|0);
+  ctx.fillStyle=vg;ctx.fillRect(0,0,VW,VH);}
+
+// cached day/night vignette — rebuilds only when the (quantized) tint or canvas size changes,
+// instead of allocating a full-screen radial gradient every frame.
+let _vigCache=null,_vigKey="";
+function vignetteGradient(r,g,b){
+  const key=r+","+g+","+b+"|"+VW+"x"+VH;
+  if(_vigCache&&_vigKey===key)return _vigCache;
   const vg=ctx.createRadialGradient(VW/2,VH/2,Math.min(VW,VH)*.42,VW/2,VH/2,Math.max(VW,VH)*.8);
   vg.addColorStop(0,"rgba(0,0,0,0)");
-  vg.addColorStop(1,"rgba("+(tintR|0)+","+(tintG|0)+","+(tintB|0)+",.5)");
-  ctx.fillStyle=vg;ctx.fillRect(0,0,VW,VH);}
+  vg.addColorStop(1,"rgba("+r+","+g+","+b+",.5)");
+  _vigCache=vg;_vigKey=key;return vg;}
 
 /* ============================================================
    INPUT & TOOLS
@@ -3022,7 +2930,6 @@ function cellAt(sx,sy){const w=s2w(sx,sy);
 function selPawns(){return ST.sel.filter(e=>e.kind==="pawn")}
 function pawnAt(wx,wy){let best=null,bd=.8;
   for(const p of ST.pawns){const d=DIST(wx/T,wy/T,p.px,p.py);if(d<bd){bd=d;best=p}}return best}
-function foeAt(wx,wy){return null;}
 function setTool(t){TOOL=t;$("cancelTool").style.display=t?"block":"none";refreshToolBtns()}
 function dragToolKind(){if(!TOOL)return null;
   if(TOOL.k==="build")return TOOL.type==="wall"?"paint":"single";
@@ -3048,12 +2955,6 @@ function paintTo(c){if(!PT.lastC){PT.lastC=c;paintCell(c.x,c.y);return}
   for(let i=1;i<=n;i++)paintCell(Math.round(x+(c.x-x)*i/n),Math.round(y+(c.y-y)*i/n));
   PT.lastC=c}
 
-function spreadCells(x,y,n){const out=[],seen=new Set([K(x,y)]),q=[{x,y}];
-  while(q.length&&out.length<n){const c=q.shift();
-    if(INB(c.x,c.y)&&colCost(c.x,c.y)>=0)out.push(c);
-    for(let k=0;k<8;k++){const X=c.x+DIRS[k][0],Y=c.y+DIRS[k][1];
-      if(INB(X,Y)&&!seen.has(K(X,Y))){seen.add(K(X,Y));q.push({x:X,y:Y})}}}
-  return out.length?out:[{x,y}]}
 function clickSelect(c){const p=pawnAt(c.wx,c.wy);
   if(p){ST.sel=[p];renderInspect();return}
   const s=structAt(c.x,c.y);if(s){ST.sel=[s];renderInspect();return}
@@ -4185,7 +4086,6 @@ function hasSave(){
   }catch(e){}
   return false}
 function snapPawn(p){return Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,unre:undefined,pi:0,pTx:-1,pTy:-1,claim:0})}
-function snapFoe(f){return Object.assign({},f,{path:null,tgt:null,pi:0,pTx:-1,pTy:-1})}
 function snapStruct(s){return Object.assign({},s,{res:0})}
 function serializeState(){
   return{v:2,tick:ST.tick,grp:ST.grp,rel:ST.rel,nextEv:ST.nextEv,lastCrackdown:ST.lastCrackdown,

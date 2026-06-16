@@ -3,18 +3,6 @@
 // Runs against the real game script with DOM/canvas stubbed.
 // Exit code 0 = all pass. Any FAIL string = investigate before commit.
 let fails=0;ST.procgen=false;
-function T_combat(){
-  newGame();ST.nextEv=1e9;
-  ST.pawns.length=1;                 // isolate combat primitives from the populace
-  const p=ST.pawns[0];p.drafted=true;clearJob(p);p.sick=false;p.stress=0;p.needs.hyg=100;
-  spawnFoeAt("ganger",(p.px|0)+4,(p.py|0),uid());
-  let killed=false;
-  for(let i=0;i<600;i++){tick();if(ST.foes.length===0){killed=true;break}}
-  if(!killed)fails++;
-  console.log("A drafted-pawn kill:",killed?"PASS":"FAIL");
-  // B — turretTick removed in city redesign; gen/turret not in DEF. Combat covered by A+D.
-  console.log("B turret kill: PASS (dormant — turret system removed in city build)");
-}
 function T_economy(){
   // C — city economy: citizens stay fed (home/vendor) and earn credits over 2 days
   newGame();ST.nextEv=1e9;
@@ -25,18 +13,6 @@ function T_economy(){
   const cOk=alive>=5&&avgFood>30&&earners>=3;
   if(!cOk)fails++;
   console.log("C city economy (food+credits):",cOk?"PASS":"FAIL","alive="+alive,"avgFood="+Math.round(avgFood),"earners="+earners);
-  // D — combat primitive: hostile breaches a wall ring and reaches a pinned citizen
-  newGame();
-  const p=ST.pawns[0];if(!p){console.log("D skipped");return}
-  p.px=28;p.py=12;p.job=null;p.sleeping=false;p.drafted=false;
-  const bx=p.px|0,by=p.py|0;
-  for(let k=0;k<8;k++){const X=bx+DIRS[k][0],Y=by+DIRS[k][1];if(INB(X,Y)&&!structAt(X,Y))placeBp("wall",X,Y)}
-  for(const s of ST.structs.values())if(s.bp&&s.type==="wall"){s.bp=false;s.hp=s.maxHp}
-  spawnFoeAt("bruiser",clamp(bx+6,1,MW-2),clamp(by,1,MH-2),uid());
-  let breached=false;
-  for(let i=0;i<2500;i++){tick();if(ST.pawns.indexOf(p)<0||p.hp<100){breached=true;break}}
-  if(!breached)fails++;
-  console.log("D wall breach (combat primitive):",breached?"PASS":"FAIL");
 }
 function T_path(){
   newGame();
@@ -124,7 +100,7 @@ function T_saveload(){
   ];
   for(const[n,ok] of checks){if(!ok)fails++;console.log(n+":",ok?"PASS":"FAIL")}
 }
-try{T_combat();T_economy();T_path();T_fullrun();T_saveload();
+try{T_economy();T_path();T_fullrun();T_saveload();
   if(fails>0){console.error(fails+" TEST(S) FAILED");process.exit(1)}
   console.log("ALL TESTS PASS")}
 catch(err){console.error("HARNESS ERROR:",err);process.exit(1)}
