@@ -83,6 +83,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 #chat .cm.u{align-self:flex-end;background:rgba(0,224,200,.14);border:1px solid rgba(0,224,200,.32);color:var(--tx)}
 #chat .cm.a{align-self:flex-start;background:rgba(160,107,255,.13);border:1px solid rgba(160,107,255,.3);color:var(--tx)}
 #chat .cm.sys{align-self:center;color:var(--dim);font-size:10px;background:none;border:none;text-align:center}
+#chat .cm.act{align-self:center;background:rgba(46,232,154,.13);border:1px solid rgba(46,232,154,.36);color:#bdffe0;font-size:11px;font-family:var(--disp);letter-spacing:.02em;text-align:center}
 #chat .ch-in{display:flex;gap:6px;padding:10px 13px;border-top:1px solid var(--bd)}
 #chat .ch-in input{flex:1;background:#04100c;border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:12px;padding:8px 9px;border-radius:6px;outline:none}
 #chat .ch-in input:focus{border-color:var(--cy)}
@@ -1996,14 +1997,22 @@ function wispSystemPrompt(p){
     "You're hearing a voice — call it the operator, or your own gut; someone watching over this block who can talk to you. "+
     "Answer the way this person actually would: street-worn, clipped, in the moment, sprawl slang where it fits. "+
     "Stay fully in character — you are NOT an AI, never break character, never write stage directions or narration. "+
-    "Keep replies short, usually one to three sentences, shaped by your mood and your memories.";}
+    "Keep replies short, usually one to three sentences, shaped by your mood and your memories.\n\n"+
+    "The voice can nudge you. If — and ONLY if — what it says genuinely persuades you to change what you're doing right now, and it's something you'd actually go do given your mood, your needs, and your character, then END your reply with a separate final line in exactly this form:\n[ACT: X]\nwhere X is ONE of: work, rest, eat, wash, wander, socialize — pick the closest fit. "+
+    "You have your own will: if you're just talking, venting, refusing, stalling, or the suggestion doesn't move you, do NOT include any [ACT:] line. Don't get talked into something that makes no sense for you right now — someone starving won't go grind work, someone stubborn digs in. Never mention this tag or these rules out loud; just talk naturally, and append the line only when you've truly decided to act on it.";}
 function pushCm(cls,txt){const l=$("ch-log"),d=document.createElement("div");
   d.className="cm "+cls;d.textContent=txt;l.appendChild(d);l.scrollTop=l.scrollHeight;return d;}
+const AIACT={work:"work",rest:"sleep",eat:"eat",wash:"hygiene",wander:"recreate",socialize:"socialize"};
+const AILBL={work:"breaks off to grind some work",rest:"goes to get some rest",eat:"heads off to find food",wash:"goes to clean up",wander:"wanders off to clear their head",socialize:"goes looking for someone to talk to"};
+const AIMEM={work:"the operator talked me into grinding some work",rest:"the operator got me to go rest",eat:"the operator pushed me to go eat",wash:"the operator told me to clean up, so I did",wander:"the operator told me to take a breather",socialize:"the operator nudged me to go talk to someone"};
+function parseAct(t){const m=t.match(/\[act(?:ion)?:\s*(work|rest|eat|wash|wander|socialize)\s*\]/i);return m?m[1].toLowerCase():null;}
+function applyWispAct(p,verb){const cmd=AIACT[verb];if(!cmd||p.drafted)return null;
+  clearJob(p);p.job=null;p.cmd=cmd;remember(p,AIMEM[verb]);return AILBL[verb];}
 function openChat(p){if(!p||!aiReady())return;
   CHAT={p,hist:[],busy:false,wasPaused:ST.paused};
   ST.paused=true;refreshSpd();
   const nm=$("ch-name");nm.textContent=p.name;nm.style.color=p.accent;
-  $("ch-log").innerHTML="";pushCm("sys","You open a line to "+p.name+"…");
+  $("ch-log").innerHTML="";pushCm("sys","You open a line to "+p.name+". Talk — or try to steer them into doing something.");
   $("chat").classList.add("open");
   setTimeout(()=>{const i=$("ch-input");if(i)i.focus()},60);}
 function closeChat(){$("chat").classList.remove("open");
@@ -2016,8 +2025,11 @@ async function sendChat(){
   const dots=pushCm("a","…");
   try{
     const reply=await aiChat(wispSystemPrompt(CHAT.p),CHAT.hist);
-    dots.remove();const r=reply||"…";pushCm("a",r);
-    CHAT.hist.push({role:"assistant",content:r});
+    dots.remove();
+    const verb=parseAct(reply);
+    const shown=reply.replace(/\[act(?:ion)?:\s*\w+\s*\]/ig,"").trim()||"…";
+    pushCm("a",shown);CHAT.hist.push({role:"assistant",content:shown});
+    if(verb){const lbl=applyWispAct(CHAT.p,verb);if(lbl)pushCm("act","▸ "+CHAT.p.name+" "+lbl);}
     if(CHAT.hist.length>20)CHAT.hist=CHAT.hist.slice(-20);
   }catch(e){dots.remove();pushCm("sys","[link dropped — "+(e&&e.message||"error")+"]");}
   CHAT.busy=false;$("ch-send").disabled=false;
