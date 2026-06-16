@@ -71,6 +71,23 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 .ob{font-family:var(--disp);font-weight:600;font-size:10px;background:#0f2a22;border:1px solid var(--bd);color:var(--tx);padding:8px 4px;border-radius:5px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;transition:border-color .12s,background .12s}
 .ob span{font-size:14px;line-height:1}
 .ob:hover{border-color:var(--cy);color:#eafff4;background:#11332b}
+.i-talk{background:rgba(160,107,255,.16)!important;border-color:rgba(160,107,255,.42)!important;color:#e7dcff!important}
+#chat{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:380px;max-width:calc(100vw - 28px);height:min(70vh,520px);display:none;flex-direction:column;background:var(--panel);border:1px solid var(--bd);border-radius:11px;box-shadow:0 0 40px rgba(0,0,0,.7);z-index:80;overflow:hidden}
+#chat.open{display:flex}
+#chat .ch-hd{display:flex;align-items:center;gap:8px;padding:11px 13px;border-bottom:1px solid var(--bd)}
+#chat .ch-hd h4{margin:0;font-family:var(--disp);font-size:14px;letter-spacing:.04em;flex:1}
+#chat .ch-x{cursor:pointer;color:var(--dim);font-size:15px;line-height:1;padding:2px 5px}
+#chat .ch-x:hover{color:var(--tx)}
+#chat .ch-log{flex:1;overflow-y:auto;padding:11px 13px;display:flex;flex-direction:column;gap:8px}
+#chat .cm{font-size:12px;line-height:1.45;padding:7px 10px;border-radius:8px;max-width:86%;white-space:pre-wrap;word-break:break-word}
+#chat .cm.u{align-self:flex-end;background:rgba(0,224,200,.14);border:1px solid rgba(0,224,200,.32);color:var(--tx)}
+#chat .cm.a{align-self:flex-start;background:rgba(160,107,255,.13);border:1px solid rgba(160,107,255,.3);color:var(--tx)}
+#chat .cm.sys{align-self:center;color:var(--dim);font-size:10px;background:none;border:none;text-align:center}
+#chat .ch-in{display:flex;gap:6px;padding:10px 13px;border-top:1px solid var(--bd)}
+#chat .ch-in input{flex:1;background:#04100c;border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:12px;padding:8px 9px;border-radius:6px;outline:none}
+#chat .ch-in input:focus{border-color:var(--cy)}
+#chat .ch-in button{background:var(--cy);color:#04100c;border:none;font-family:var(--disp);font-size:12px;font-weight:700;padding:8px 13px;border-radius:6px;cursor:pointer}
+#chat .ch-in button:disabled{opacity:.4;cursor:default}
 #toolbar{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);display:flex;gap:6px;
   padding:6px;max-width:96vw;overflow-x:auto}
 #submenu{position:fixed;bottom:52px;left:50%;transform:translateX(-50%);display:none;gap:6px;
@@ -148,6 +165,11 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 <div id="log" class="panel"></div>
 <div id="roster" class="panel"></div>
 <div id="inspect" class="panel"></div>
+<div id="chat">
+  <div class="ch-hd"><h4 id="ch-name">—</h4><span class="ch-x" id="ch-x">✕</span></div>
+  <div class="ch-log" id="ch-log"></div>
+  <div class="ch-in"><input id="ch-input" placeholder="say something…" maxlength="280" autocomplete="off"><button id="ch-send">SEND</button></div>
+</div>
 <div id="requests" class="panel"></div>
 <div id="submenu" class="panel"></div>
 <div id="toolbar" class="panel">
@@ -271,6 +293,22 @@ const ST={
 };
 function dayN(){return Math.floor(ST.tick/TPD)+1}
 function hourN(){return ((ST.tick%TPD)/100+6)%24}   // day starts 06:00
+
+/* ---------- AI soul layer (Phase 1: talk to a wisp) ---------- */
+let AI_PROXY="";              // set to your Worker URL, e.g. "https://neon-sprawl-ai.you.workers.dev"
+const AI_MODEL="claude-sonnet-4-6";
+try{const _o=localStorage.getItem("neonSprawlAIProxy");if(_o)AI_PROXY=_o}catch(e){}
+function aiReady(){return !!AI_PROXY}
+async function aiChat(system,messages){
+  const r=await fetch(AI_PROXY,{method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({model:AI_MODEL,max_tokens:512,system,messages})});
+  if(!r.ok)throw new Error("proxy returned "+r.status);
+  const d=await r.json();
+  if(d&&d.error)throw new Error((d.error&&d.error.message)||String(d.error));
+  return (d.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("").trim();
+}
+function remember(p,txt){if(!p)return;(p.mem||(p.mem=[])).push({d:dayN(),h:hourN()|0,t:txt});
+  if(p.mem.length>40)p.mem.shift()}
 
 /* ---------- structures / passability ---------- */
 function structAt(x,y){return ST.structs.get(K(x,y))||null}
@@ -505,7 +543,9 @@ function mkPawn(x,y,spec){const t1=CH(TRAITS);let t2=CH(TRAITS);while(t2===t1)t2
     carry:null,forced:0,order:null,unre:new Map(),flee:0,hurtT:-999,
     pers,sched:mkSched(pers,[t1,t2]),stress:0,addiction:0,rep:{corp:0,gang:0,neighbors:0,city:0},
     bias:{eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1},
-    drift:{day:0,used:0},credits:R(18,38),homeless:false}}
+    drift:{day:0,used:0},credits:R(18,38),
+    mem:[{d:0,h:6,t:"ended up on this dead block after the last squat got torched"}],
+    homeless:false}}
 function trMul(p,k){let m=1;for(const t of p.tr)if(t[k]!==undefined)m*=t[k];return m}
 function trAdd(p,k){let v=0;for(const t of p.tr)if(t[k]!==undefined)v+=t[k];return v}
 function hasTr(tr,id){return tr.some(t=>t&&t.id===id)}
@@ -1081,14 +1121,14 @@ function fireEvent(){
     case "mugging":{const p=CH(ST.pawns);if(p){const loss=RI(15,35);
       p.credits=(p.credits||0)-loss;p.stress=Math.min(100,(p.stress||0)+15);
       float(p.px,p.py,"MUGGED -"+loss+"c","#ff4757");
-      log(p.name+" was mugged in the sprawl — lost "+loss+" credits.","warn");banner("MUGGING","warn");SFX.alert()}break}
+      log(p.name+" was mugged in the sprawl — lost "+loss+" credits.","warn");banner("MUGGING","warn");SFX.alert();remember(p,"got jumped in the sprawl — lost "+loss+" creds, still rattled")}break}
     case "medbill":{const p=CH(ST.pawns);if(p){const bill=RI(18,32);
       p.credits=(p.credits||0)-bill;p.stress=Math.min(100,(p.stress||0)+10);
       float(p.px,p.py,"MED BILL -"+bill+"c","#ff9f2d");
-      log(p.name+" got hit with an unexpected medical bill ("+bill+"c).","warn");banner("MEDICAL BILL","warn");SFX.alert()}break}
+      log(p.name+" got hit with an unexpected medical bill ("+bill+"c).","warn");banner("MEDICAL BILL","warn");SFX.alert();remember(p,"got slammed with a "+bill+"c medical bill out of nowhere")}break}
     case "gigdrought":{const p=CH(ST.pawns);if(p){p.workCd=ST.tick+RI(600,1100);p.stress=Math.min(100,(p.stress||0)+8);
       float(p.px,p.py,"LAID OFF","#ff9f2d");
-      log(p.name+" lost their gig — no work for a while.","warn");banner("GIG DROUGHT","warn");SFX.alert()}break}}
+      log(p.name+" lost their gig — no work for a while.","warn");banner("GIG DROUGHT","warn");SFX.alert();remember(p,"lost my gig — no work coming in for a while")}break}}
   scheduleEv()}
 
 /* ---------- win / lose ---------- */
@@ -1150,7 +1190,7 @@ function tick(){ST.tick++;
   if(ST.tick>=ST.nextEv)fireEvent();
   if(ST.tick%30===0){updateFlags();genRequests();expireRequests()}
   if(ST.tick%TPD===0&&ST.tick>0)for(const q of ST.pawns){q.credits=(q.credits||0)-34;
-    if(q.credits<0&&!q.homeless){q.homeless=true;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad")}
+    if(q.credits<0&&!q.homeless){q.homeless=true;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad");remember(q,"couldn't make rent — got evicted, sleeping rough now")}
     else if(q.credits>=0&&q.homeless){q.homeless=false;log(q.name+" cleared their back rent.","good")}}
   if(ST.tick%100===0){
     if(ST.heat>0)ST.heat=Math.max(0,ST.heat-1);
@@ -1647,7 +1687,9 @@ cv.addEventListener("wheel",e=>{e.preventDefault();if(ST.phase!=="run")return;
   cam.x=w.wx-e.clientX/nz;cam.y=w.wy-e.clientY/nz;cam.z=nz;clampCam()},{passive:false});
 
 /* keyboard */
-window.addEventListener("keydown",e=>{const k=e.key.toLowerCase();KEYS[k]=true;
+window.addEventListener("keydown",e=>{const k=e.key.toLowerCase();
+  if(e.target&&e.target.tagName==="INPUT")return;
+  KEYS[k]=true;
   if($("modal").classList.contains("open")){
     if(k==="escape"&&ST.phase==="run")hideModal();return}
   if(ST.phase!=="run")return;
@@ -1884,6 +1926,7 @@ function renderInspect(){const el=$("inspect");
       "<button class='ob' data-o='recreate'><span>◈</span>Wander</button>"+
       "<button class='ob' data-o='socialize'><span>⚇</span>Commune</button></div>";
     h+="<button class='tb' id='i-draft'>"+(e.drafted?"UNDRAFT":"DRAFT")+"</button>";
+    if(aiReady())h+="<button class='tb i-talk' id='i-talk'>◆ TALK</button>";
     el.innerHTML=h}
   else if(e.kind==="foe"){
     el.innerHTML="<h3 style='color:"+e.col+"'>"+e.name+"</h3>"+
@@ -1913,10 +1956,77 @@ $("inspect").addEventListener("click",e=>{
   const id=e.target.id;if(!id)return;
   const sel=ST.sel[0];SFX.ui();
   if(id==="i-draft")toggleDraft();
+  else if(id==="i-talk"&&sel&&sel.kind==="pawn")openChat(sel);
   else if(id==="i-cancel"&&sel&&sel.bp){cancelBp(sel);ST.sel=[];renderInspect()}
   else if(id==="i-salv"&&sel){sel.desig=!sel.desig;
     if(sel.desig)ST.flags.salv=true;renderInspect()}
   else if(id==="i-decon"&&sel){sel.decon=!sel.decon;renderInspect()}});
+
+/* ---------- wisp conversation (Phase 1) ---------- */
+let CHAT={p:null,hist:[],busy:false,wasPaused:false};
+function axTraits(p){const a=p.pers,o=[];
+  if(a.amb>65)o.push("driven");else if(a.amb<35)o.push("unambitious");
+  if(a.ind>65)o.push("disciplined");else if(a.ind<35)o.push("flaky");
+  if(a.imp>65)o.push("impulsive");else if(a.cau>65)o.push("cautious and guarded");
+  if(a.soc>65)o.push("outgoing");else if(a.soc<35)o.push("withdrawn");
+  if(a.emp>65)o.push("warm");else if(a.emp<35)o.push("cold");
+  if(a.cur>65)o.push("restless and curious");
+  if(a.intg>65)o.push("principled");else if(a.intg<35)o.push("plays loose with the rules");
+  return o.join(", ")||"hard to read";}
+function feltState(p){const s=[],n=p.needs;
+  if(n.food<25)s.push("starving");else if(n.food<45)s.push("hungry");
+  if(n.rest<25)s.push("exhausted");else if(n.rest<45)s.push("tired");
+  if(n.hyg<30)s.push("filthy");
+  if(n.fun<30)s.push("bored and restless");
+  if(n.socN<30)s.push("lonely");
+  if((p.credits|0)<0)s.push("broke and behind on rent");else if((p.credits|0)<10)s.push("nearly broke");
+  if(p.homeless)s.push("evicted, sleeping rough");
+  if(p.sick)s.push("sick and needing a clinic");
+  if(p.addiction>40)s.push("strung out, craving a hit");
+  if(p.stress>70)s.push("on edge, badly stressed");else if(p.stress>45)s.push("stressed");
+  if(p.mood<25)s.push("low and bleak");else if(p.mood>70)s.push("in decent spirits");
+  return s.length?s.join(", "):"holding steady for now";}
+function wispSystemPrompt(p){
+  const mem=(p.mem||[]).slice(-12).map(m=>"- "+m.t).join("\n")||"- nothing worth dwelling on yet";
+  return "You ARE "+p.name+", a person scraping out a life on a dead block at the ragged edge of a neon megacity in 2087. "+
+    "Scrap is currency, protein is life, gangs hunt after dark, and corp enforcers shake people down.\n\n"+
+    "Your character: you come across as "+axTraits(p)+". You've got a streak of "+(p.tr.map(t=>t.n).join(" and ")||"hard sprawl grit")+" in you. "+
+    "Right now you are "+feltState(p)+". It is day "+dayN()+", around "+(hourN()|0)+":00.\n\n"+
+    "On your mind lately:\n"+mem+"\n\n"+
+    "You're hearing a voice — call it the operator, or your own gut; someone watching over this block who can talk to you. "+
+    "Answer the way this person actually would: street-worn, clipped, in the moment, sprawl slang where it fits. "+
+    "Stay fully in character — you are NOT an AI, never break character, never write stage directions or narration. "+
+    "Keep replies short, usually one to three sentences, shaped by your mood and your memories.";}
+function pushCm(cls,txt){const l=$("ch-log"),d=document.createElement("div");
+  d.className="cm "+cls;d.textContent=txt;l.appendChild(d);l.scrollTop=l.scrollHeight;return d;}
+function openChat(p){if(!p||!aiReady())return;
+  CHAT={p,hist:[],busy:false,wasPaused:ST.paused};
+  ST.paused=true;refreshSpd();
+  const nm=$("ch-name");nm.textContent=p.name;nm.style.color=p.accent;
+  $("ch-log").innerHTML="";pushCm("sys","You open a line to "+p.name+"…");
+  $("chat").classList.add("open");
+  setTimeout(()=>{const i=$("ch-input");if(i)i.focus()},60);}
+function closeChat(){$("chat").classList.remove("open");
+  ST.paused=CHAT.wasPaused;refreshSpd();CHAT.p=null;}
+async function sendChat(){
+  if(CHAT.busy||!CHAT.p)return;
+  const inp=$("ch-input"),txt=(inp.value||"").trim();if(!txt)return;
+  inp.value="";pushCm("u",txt);CHAT.hist.push({role:"user",content:txt});
+  CHAT.busy=true;$("ch-send").disabled=true;
+  const dots=pushCm("a","…");
+  try{
+    const reply=await aiChat(wispSystemPrompt(CHAT.p),CHAT.hist);
+    dots.remove();const r=reply||"…";pushCm("a",r);
+    CHAT.hist.push({role:"assistant",content:r});
+    if(CHAT.hist.length>20)CHAT.hist=CHAT.hist.slice(-20);
+  }catch(e){dots.remove();pushCm("sys","[link dropped — "+(e&&e.message||"error")+"]");}
+  CHAT.busy=false;$("ch-send").disabled=false;
+  const i=$("ch-input");if(i)i.focus();}
+$("ch-x").onclick=()=>{SFX.ui();closeChat()};
+$("ch-send").onclick=()=>{SFX.ui();sendChat()};
+$("ch-input").addEventListener("keydown",e=>{e.stopPropagation();
+  if(e.key==="Enter"){e.preventDefault();sendChat()}
+  else if(e.key==="Escape"){closeChat()}});
 
 /* toolbar */
 let subCat=null;
@@ -2048,9 +2158,11 @@ function newGame(){
   const cx=MW/2|0,cy=MH/2|0;
   const vex=mkPawn(21,15,"sal");
   vex.name="Vex";Object.assign(vex.pers,{ind:40,cau:30,soc:60,cur:80,amb:55,emp:55,imp:70,intg:35});vex.accent=tempCols(vex.pers)[0];vex.sched=mkSched(vex.pers,vex.tr);
+  vex.mem=[{d:0,h:6,t:"holed up in this dead district with Static when the daylight ran out"},{d:0,h:6,t:"I move fast and don't sweat the rules — it's what's kept me breathing"}];
   ST.pawns.push(vex);
   const sta=mkPawn(35,15,"bld");
   sta.name="Static";Object.assign(sta.pers,{ind:80,cau:65,soc:45,cur:25,amb:60,emp:50,imp:25,intg:75});sta.accent=tempCols(sta.pers)[0];sta.sched=mkSched(sta.pers,sta.tr);
+  sta.mem=[{d:0,h:6,t:"holed up here with Vex — somebody's got to keep this block standing"},{d:0,h:6,t:"I grind steady and careful; Vex thinks I'm too slow about it"}];
   ST.pawns.push(sta);
   cam.z=clamp(Math.min(VW/(MW*T),VH/(MH*T))*1.9,1,2.2);
   cam.x=cx*T-VW/cam.z/2;cam.y=cy*T-VH/cam.z/2;clampCam();
