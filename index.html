@@ -263,6 +263,12 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   font-size:11px;font-family:var(--disp);margin-bottom:10px}
 .cd-back:hover{text-decoration:underline}
 .hud-icon{font-size:14px;line-height:1}
+#follow-ind{position:fixed;top:calc(var(--hud-h) + 10px);left:50%;transform:translateX(-50%);
+  z-index:18;font-family:var(--disp);font-size:10px;letter-spacing:.12em;
+  background:rgba(0,212,255,.14);border:1px solid rgba(0,212,255,.4);color:var(--cy);
+  padding:4px 12px;border-radius:14px;pointer-events:none;
+  box-shadow:0 0 14px rgba(0,212,255,.25);backdrop-filter:blur(3px)}
+.tb.on{border-color:var(--cy);background:rgba(0,212,255,.16);color:var(--cy)}
 .task-badge{position:absolute;top:-5px;right:-5px;min-width:15px;height:15px;
   border-radius:8px;background:var(--rd);color:#fff;font-size:9px;font-weight:800;
   font-family:var(--disp);display:flex;align-items:center;justify-content:center;
@@ -403,6 +409,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 </div>
 <button id="cancelTool" class="tb warnb">✕ CANCEL</button>
 <div id="banner"></div>
+<div id="follow-ind" style="display:none"></div>
 <div id="modal"></div>
 <script>
 "use strict";
@@ -568,7 +575,7 @@ const ST={
   ter:new Uint8Array(MW*MH),
   structs:new Map(),
   pawns:[], foes:[], beams:[], floats:[], emotes:[], tombs:[],
-  grp:{}, rel:{}, nextEv:1e9, lastCrackdown:0,
+  grp:{}, rel:{}, relMeta:{}, nextEv:1e9, lastCrackdown:0,
   sel:[],
   stats:{built:0,deaths:0},
   flags:{},
@@ -635,6 +642,67 @@ function remember(p,txt){if(!p)return;(p.mem||(p.mem=[])).push({d:dayN(),h:hourN
 function relKey(a,b){return a<b?a+"|"+b:b+"|"+a}
 function relGet(a,b){return ST.rel[relKey(a,b)]||0}
 function relAdj(a,b,d){if(a===b)return;const k=relKey(a,b);ST.rel[k]=clamp((ST.rel[k]||0)+d,-100,100)}
+/* ============================================================
+   RELATIONSHIPS — typed bonds, partners, gossip, factions
+   ============================================================ */
+// derive a relationship TYPE from the scalar + flags stored per-pair
+function relType(a,b){
+  const v=relGet(a,b);
+  const pair=ST.relMeta&&ST.relMeta[relKey(a,b)];
+  if(pair&&pair.partner)return v>=0?"partner":"estranged partner";
+  if(pair&&pair.mentor)return "mentor";
+  if(v>=70)return "close friend";
+  if(v>=35)return "friend";
+  if(v>=12)return "warm";
+  if(v<=-70)return "enemy";
+  if(v<=-35)return "rival";
+  if(v<=-12)return "cold";
+  return "acquaintance";
+}
+function relMetaFor(a,b){const k=relKey(a,b);if(!ST.relMeta)ST.relMeta={};return ST.relMeta[k]||(ST.relMeta[k]={});}
+// gossip: when something notable happens to/by a pawn, nearby pawns "hear" it and adjust
+// their opinion of the subject, spreading reputation through the social graph.
+function gossip(subjectId,opinion,radius,originX,originY){
+  for(const q of ST.pawns){
+    if(q.id===subjectId||q.hp<=0||q.sleeping)continue;
+    if(originX!==undefined&&DIST(q.px,q.py,originX,originY)>(radius||7))continue;
+    // they shift their view of the subject, weighted by how much they trust the messenger context
+    relAdj(q.id,subjectId,opinion*0.5);
+  }
+}
+// partnerships form between close, compatible pawns who spend time together
+function tryFormPartnership(a,b){
+  if(a.id===b.id)return false;
+  const meta=relMetaFor(a.id,b.id);
+  if(meta.partner)return false;
+  // both must already be close, single, and socially inclined
+  if(relGet(a.id,b.id)<62)return false;
+  if(partnerOf(a)||partnerOf(b))return false;
+  if((a.pers.soc||50)<35&&(b.pers.soc||50)<35)return false;
+  meta.partner=true;
+  addMod(a,"newlove","Found someone",14,TPD*3);addMod(b,"newlove","Found someone",14,TPD*3);
+  if(typeof emote==="function"){emote(a,"love");emote(b,"love");}
+  log(a.name+" and "+b.name+" became partners.","good");
+  // partners drift to share a home
+  if(a.home&&!b.home)claimHome(b,a.home);else if(b.home&&!a.home)claimHome(a,b.home);
+  return true;
+}
+function partnerOf(p){
+  if(!ST.relMeta)return null;
+  for(const q of ST.pawns){if(q.id===p.id)continue;
+    const m=ST.relMeta[relKey(p.id,q.id)];if(m&&m.partner)return q;}
+  return null;
+}
+// when a fight breaks out, nearby friends of each combatant take sides
+function defendInFight(a,b){
+  for(const q of ST.pawns){
+    if(q.id===a.id||q.id===b.id||q.hp<=0||q.sleeping)continue;
+    if(DIST(q.px,q.py,a.px,a.py)>6)continue;
+    const fa=relGet(q.id,a.id),fb=relGet(q.id,b.id);
+    if(fa>30&&fa>fb+25){relAdj(q.id,b.id,-12);tryEmote(q,"anger",90);}      // sides with a, resents b
+    else if(fb>30&&fb>fa+25){relAdj(q.id,a.id,-12);tryEmote(q,"anger",90);} // sides with b
+  }
+}
 
 /* ---------- structures / passability ---------- */
 function structAt(x,y){return ST.structs.get(K(x,y))||null}
@@ -874,8 +942,159 @@ function mkPawn(x,y,spec){const t1=CH(TRAITS);let t2=CH(TRAITS);while(t2===t1)t2
     pers,sched:mkSched(pers,[t1,t2]),stress:0,addiction:0,rep:{corp:0,gang:0,neighbors:0,city:0},
     bias:{eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1},
     drift:{day:0,used:0},credits:R(28,50),
+    career:initCareer(sk,pers),   // vocation, aspiration, work ethic, satisfaction
+    attach:0,                     // attachment to owned property (builds with tenure)
     mem:[{d:0,h:6,t:"ended up on this dead block after the last squat got torched"}],
     homeless:false}}
+/* ============================================================
+   WORK & AMBITION — vocation, aspiration, ethic, satisfaction
+   ============================================================ */
+// Vocations map a pawn's strongest skill to a job identity + the fixtures they prefer.
+const VOCATIONS={
+  fabricator:{name:"Fabricator", sk:"bld",  fix:["workshop","gearshop"],         blurb:"builds and machines"},
+  techie:    {name:"Techie",     sk:"sal",  fix:["workstation","chemlab","stimlab"],blurb:"runs terminals and labs"},
+  grower:    {name:"Grower",     sk:"cook", fix:["farmplot"],                     blurb:"works the farms"},
+  laborer:   {name:"Laborer",    sk:"sht",  fix:["loggingcamp","mineshaft"],      blurb:"hauls wood and ore"},
+  trader:    {name:"Trader",     sk:"sal",  fix:["counter","bar","gearshop"],     blurb:"works the counters"},
+};
+function initCareer(sk,pers){
+  // vocation = whichever vocation's governing skill is highest (ties broken by ambition lean)
+  let best="laborer",bv=-1;
+  for(const k in VOCATIONS){const v=VOCATIONS[k];const s=sk[v.sk]||0;if(s>bv){bv=s;best=k}}
+  const amb=pers.amb||50;
+  // aspiration: ambitious pawns chase a wealth target; others want to master their craft
+  const aspKind=amb>58?"wealth":amb>34?"craft":"easy";
+  const aspTarget=aspKind==="wealth"?Math.round(180+amb*4):aspKind==="craft"?Math.min(10,(bv|0)+RI(3,5)):0;
+  return{voc:best, ethic:clamp(Math.round((amb*0.6+(pers.ind||50)*0.4)),0,100),
+    asp:{kind:aspKind,target:aspTarget,met:false}, sat:60, specialist:null, gripe:0, lastRaiseDay:0};
+}
+function vocationOf(p){return (p.career&&VOCATIONS[p.career.voc])||VOCATIONS.laborer;}
+// does this fixture match the pawn's vocation?
+function fitsVocation(p,type){const v=vocationOf(p);return v.fix.includes(type);}
+// work-ethic shifts how hard/long they work: high ethic = overwork, low = slack
+function ethicMul(p){const e=(p.career&&p.career.ethic)||50;return 0.7+e/100*0.6;} // 0.7..1.3
+/* ============================================================
+   OWNERSHIP & WEALTH — class, savings, property attachment, inheritance
+   ============================================================ */
+// wealth class from net worth (credits + owned-property value)
+function ownedValue(p){
+  let v=0;
+  for(const s of ST.structs.values())if(s.owner===p.id)v+=(DEF[s.type]&&DEF[s.type].hp)||40;
+  if(p.home)v+=120;            // a claimed home is real security
+  if(p.hasGear)v+=40;
+  return v;
+}
+function netWorth(p){return Math.max(0,p.credits||0)+ownedValue(p);}
+const WEALTH_TIERS=[
+  {t:0,name:"Destitute",  max:60},     // homeless or broke
+  {t:1,name:"Scraping",   max:200},    // housed, little savings
+  {t:2,name:"Comfortable",max:380},    // housed + a cushion
+  {t:3,name:"Affluent",   max:650},    // real savings
+  {t:4,name:"Kingpin",    max:Infinity},
+];
+function wealthTier(p){const w=netWorth(p);for(const tier of WEALTH_TIERS)if(w<=tier.max)return tier;return WEALTH_TIERS[WEALTH_TIERS.length-1];}
+// pawns claim ownership of the home + pod they sleep in; attachment grows over time
+function claimHome(p,home){
+  if(!home)return;
+  p.home=home;
+  const bedS=structAt(home.bed.x,home.bed.y);
+  if(bedS&&bedS.type==="pod"){bedS.owner=p.id;}
+  p.attach=(p.attach||0); // attachment to property, builds with tenure
+}
+// losing owned property: big mood hit + a grudge against whoever caused it
+function loseProperty(p,reason,culpritId){
+  const att=p.attach||0;
+  addMod(p,"propertyloss","Lost what was mine",-(6+att*0.1),TPD*2);
+  p.attach=Math.max(0,att*0.4);
+  if(culpritId&&culpritId!==p.id){relAdj(p.id,culpritId,-25);}
+  remember(p,reason);
+}
+// inheritance: on death, savings + property pass to closest living tie (partner/friend/family), else revert
+function inherit(dead){
+  // find the living pawn with the strongest positive bond to the deceased
+  let heir=null,best=14;  // require a real bond (>14) to inherit
+  for(const q of ST.pawns){if(q.id===dead.id)continue;
+    const r=relGet(dead.id,q.id);if(r>best){best=r;heir=q}}
+  const estate=Math.round((dead.credits||0));
+  if(heir){
+    heir.credits=(heir.credits||0)+estate;
+    // transfer owned structures (pods etc.) to the heir
+    for(const s of ST.structs.values())if(s.owner===dead.id)s.owner=heir.id;
+    addMod(heir,"inherit","Inherited from a lost friend",6,TPD*2);
+    remember(heir,"inherited "+dead.name+"'s estate — bittersweet, but it'll keep me afloat");
+    if(estate>0)log(heir.name+" inherited "+estate+"c and property from "+dead.name+".","info");
+  }else{
+    // no heir → estate reverts to the district treasury
+    if(estate>0){ST.income=(ST.income||0)+estate;
+      log(dead.name+"'s "+estate+"c reverted to the district (no heir).","info");}
+    for(const s of ST.structs.values())if(s.owner===dead.id)s.owner=0;
+  }
+}
+// after each completed shift: adjust job satisfaction based on fit, pay, and treatment
+function careerAfterShift(p,s,wage){
+  const c=p.career;if(!c)return;
+  const fit=fitsVocation(p,s.type);
+  const goodPay=wage>=(DEF[s.type].wage||10);
+  let d=0;
+  d+=fit?1.2:-1.5;            // doing what they're suited for feels good
+  d+=goodPay?0.8:-0.6;
+  d+=(c.specialist===K(s.x,s.y))?1.5:0;
+  c.sat=clamp(c.sat+d,0,100);
+  // aspiration progress
+  if(c.asp.kind==="wealth"&&!c.asp.met&&(p.credits||0)>=c.asp.target){
+    c.asp.met=true;addMod(p,"asphit","Hit my money goal!",16,TPD*2.5);
+    log(p.name+" reached their wealth goal of "+c.asp.target+"c — flush and proud.","good");
+    if(typeof emote==="function")emote(p,"party");}
+  if(c.asp.kind==="craft"&&!c.asp.met&&(p.sk[vocationOf(p).sk]||0)>=c.asp.target){
+    c.asp.met=true;addMod(p,"asphit","Mastered my craft!",16,TPD*2.5);
+    log(p.name+" mastered their craft as a "+vocationOf(p).name+".","good");
+    if(typeof emote==="function")emote(p,"idea");}
+}
+// daily: ambitious, unsatisfied pawns build up a gripe and may petition for a raise/transfer
+function careerTick(p){
+  const c=p.career;if(!c)return;
+  const amb=p.pers.amb||50;
+  // satisfaction slowly drifts toward neutral; low pay relative to credits-needs erodes it
+  if((p.credits||0)<15)c.sat=clamp(c.sat-1.5,0,100);
+  // gripe builds when an ambitious pawn is dissatisfied
+  if(amb>55&&c.sat<40)c.gripe=clamp(c.gripe+1,0,10);
+  else c.gripe=clamp(c.gripe-1,0,10);
+  // mood reflects work life (gentle — work is one factor among many)
+  if(c.sat>72)addMod(p,"satwork","Likes the work",5,TPD);
+  else if(c.sat<18)addMod(p,"badwork","Hates the grind",-3,TPD);
+}
+function genWorkPetitions(){
+  // at most one work petition per day, from the most aggrieved ambitious pawn
+  if(ST.requests&&ST.requests.some(r=>r.status==="pending"&&r.kind==="work"))return;
+  let worst=null;
+  for(const p of ST.pawns){
+    const c=p.career;if(!c)continue;
+    if(c.gripe>=4&&ST.tick-(c.lastRaiseDay||0)>TPD*2){
+      if(!worst||c.gripe>worst.career.gripe)worst=p;}}
+  if(!worst)return;
+  const p=worst,c=p.career,voc=vocationOf(p);
+  // pick the petition type: specialist promotion if skilled + at a fitting fixture, else raise
+  const atFit=p.assigned&&ST.structs.get(p.assigned)&&fitsVocation(p,ST.structs.get(p.assigned).type);
+  const skilled=(p.sk[voc.sk]||0)>=5;
+  const id="work_"+p.id+"_"+ST.tick;
+  const exp=ST.tick+TPD*1.5;
+  let text,options;
+  if(skilled&&atFit){
+    text=p.name+" ("+voc.name+") wants to be named specialist at their workplace — better pay, and they'll mentor the work.";
+    options=[
+      {label:"Promote to specialist",act:"promote"},
+      {label:"Give a small raise instead",act:"raise"},
+      {label:"Deny — they can deal with it",act:"deny"}];
+  }else{
+    text=p.name+" ("+voc.name+") is fed up with the pay and the grind. They want a raise or a transfer to work they're suited for.";
+    options=[
+      {label:"Approve a raise",act:"raise"},
+      {label:"Reassign to "+voc.name+" work",act:"transfer"},
+      {label:"Deny — hold the line",act:"deny"}];
+  }
+  ST.requests.push({id,kind:"work",agentId:p.id,agentName:p.name,created:ST.tick,expires:exp,status:"pending",text,options});
+  renderRequests();banner("WORK DISPUTE","warn");if(typeof SFX!=="undefined"&&SFX.alert)SFX.alert();
+}
 function trMul(p,k){let m=1;for(const t of p.tr)if(t[k]!==undefined)m*=t[k];return m}
 function trAdd(p,k){let v=0;for(const t of p.tr)if(t[k]!==undefined)v+=t[k];return v}
 function hasTr(tr,id){return tr.some(t=>t&&t.id===id)}
@@ -981,7 +1200,9 @@ function scoreJobs(p){
   const cred=p.credits??40;
   const isWorkable=s=>!s.bp&&(DEF[s.type].prod||DEF[s.type].refine||DEF[s.type].vendor);
   const assignedStr=p.assigned?ST.structs.get(p.assigned):null;
-  const workStr=ST.tick>(p.workCd||0)?((assignedStr&&!assignedStr.bp)?assignedStr:nearestStruct(p,isWorkable)):null;
+  // prefer a workplace matching this pawn's vocation; fall back to nearest workable
+  const vocStr=ST.tick>(p.workCd||0)?nearestStruct(p,s=>isWorkable(s)&&fitsVocation(p,s.type)):null;
+  const workStr=ST.tick>(p.workCd||0)?((assignedStr&&!assignedStr.bp)?assignedStr:(vocStr||nearestStruct(p,isWorkable))):null;
   // hospital preferred over medbed (better care); fall back to either
   const medStr=nearestStruct(p,s=>(s.type==="hospital"||s.type==="medbed")&&!s.bp);
   // school: citizens with spare time and ambition train skills
@@ -1002,7 +1223,12 @@ function scoreJobs(p){
     build:bpStr?50:0,
     idle:10,
     hygiene:showStr?clamp(70-hyg,0,100):0,recreate:funStr?clamp(60-fun,0,100):0,socialize:mate?clamp(60-socN,0,100):0,
-    work:(workStr&&ST.tick>(p.workCd||0))?clamp((isContracted?95:p.assigned?80:60)-cred*0.6,0,100):0,treat:p.sick&&medStr?95:0,
+    work:(workStr&&ST.tick>(p.workCd||0))?clamp(
+      ((isContracted?95:p.assigned?80:60)-cred*0.6)
+      *(fitsVocation(p,workStr.type)?1.15:0.9)   // do what they're good at
+      *ethicMul(p)                                 // hard workers push, slackers ease off
+      *(p.career?(0.7+p.career.sat/100*0.5):1)     // satisfied pawns show up
+      ,0,100):0,treat:p.sick&&medStr?95:0,
     substance:dlrStr?clamp((p.addiction||0)*0.6+((p.stress||0)>40?((p.stress||0)-40)*0.4:0),0,100):0,
     crime:(robTgt&&cred<20)?clamp(30-cred*1.1+turfBonus+nightBonus,0,100):0,
     steal:stealTgt?clamp(35-(cred*1.2)+turfBonus+nightBonus,0,100):0,
@@ -1089,10 +1315,17 @@ function killPawn(p,why){const i=ST.pawns.indexOf(p);if(i<0)return;
   spawnTombstone(p.px,p.py);
   onlookersReact(p.px,p.py,"shock",9);
   clearJob(p);ST.pawns.splice(i,1);ST.stats.deaths++;SFX.die();
-  for(const s of ST.structs.values())if(s.owner===p.id)s.owner=0;
+  inherit(p);   // estate + property pass to closest tie, or revert to district
   log(p.name+" "+why+".","bad");banner("RUNNER DOWN","bad");
   for(const o of ST.pawns){addMod(o,"loss","Lost a crewmate",-16,TPD*2.5);applyDrift(o,{cau:6,soc:-3});
-    if(DIST(o.px,o.py,p.px,p.py)<10)tryEmote(o,"cry",120);}
+    if(DIST(o.px,o.py,p.px,p.py)<10)tryEmote(o,"cry",120);
+    // partners and close friends grieve far harder
+    const meta=ST.relMeta&&ST.relMeta[relKey(o.id,p.id)];
+    if(meta&&meta.partner){addMod(o,"widowed","Lost my partner",-28,TPD*4);o.stress=clamp((o.stress||0)+18,0,100);
+      remember(o,"lost "+p.name+" — the one who mattered. nothing feels right now");
+      log(o.name+" is devastated — lost their partner "+p.name+".","bad");}
+    else if(relGet(o.id,p.id)>55){addMod(o,"grief","Lost a close friend",-15,TPD*2.5);
+      remember(o,"lost "+p.name+", a real friend on this block");}}
   ST.sel=ST.sel.filter(e=>e!==p);renderInspect();
   if(ST.pawns.length===0&&ST.phase==="run")gameOver()}
 // comedic mini-tombstone that lingers then fades
@@ -1136,6 +1369,77 @@ function gangTick(){
             log(a.name+" and "+b.name+" clashed over contested turf — violence in the sprawl.","bad");
             banner("GANG CONFLICT","bad");SFX.alert()}}
       }else{a.tension=Math.max(0,(a.tension||0)-1);b.tension=Math.max(0,(b.tension||0)-1)}}}}
+
+/* ============================================================
+   CRIME & GANGS (deeper) — recruitment, rackets, snitching, revenge
+   ============================================================ */
+function crimeTick(){
+  if(!ST.gangs.length)return;
+  // RECRUITMENT: a gang with room recruits a desperate, low-integrity, unaffiliated pawn nearby
+  if(ST.tick%180===0){
+    for(const g of ST.gangs){
+      if(g.crewIds.length>=4)continue;
+      const members=g.crewIds.map(id=>ST.pawns.find(p=>p.id===id)).filter(Boolean);
+      if(!members.length)continue;
+      const recruiter=members[0];
+      const prospect=ST.pawns.find(q=>!pawnGang(q)&&q.hp>0
+        &&(q.pers.intg||50)<42&&((q.credits||0)<15||q.homeless||(q.career&&q.career.sat<25))
+        &&DIST(q.px,q.py,recruiter.px,recruiter.py)<8
+        &&relGet(recruiter.id,q.id)>-20);
+      if(prospect&&Math.random()<0.5){
+        g.crewIds.push(prospect.id);
+        addMod(prospect,"joinedgang","Found a crew",8,TPD*2);
+        relAdj(prospect.id,recruiter.id,20);
+        remember(prospect,"threw in with "+g.name+" — beats starving alone");
+        log(prospect.name+" joined "+g.name+".","warn");
+        if(typeof emote==="function")emote(prospect,"idea");
+      }
+    }
+  }
+  // PROTECTION RACKET: established gangs shake down vendors on their turf for income
+  if(ST.tick%240===0){
+    for(const g of ST.gangs){
+      if(g.crewIds.length<2)continue;
+      // find a vendor structure on the gang's turf
+      let mark=null;
+      for(const s of ST.structs.values()){
+        if(s.bp||!DEF[s.type].vendor)continue;
+        if(g.turf.has(K(s.x,s.y))){mark=s;break}}
+      if(mark){
+        const take=RI(12,28);
+        ST.income=Math.max(0,(ST.income||0)-Math.round(take*0.5)); // skims district income
+        g.bank=(g.bank||0)+take;
+        g.gangHeat=Math.min(100,(g.gangHeat||0)+6);
+        float(mark.x+.5,mark.y+.5,"SHAKEDOWN","#ff7a3d");
+        log(g.name+" ran a protection racket on a local vendor.","warn");
+      }
+    }
+  }
+}
+// SNITCHING: a witness to a crime may report the perp, spiking heat on them
+function witnessCrime(perp,x,y){
+  for(const q of ST.pawns){
+    if(q.id===perp.id||q.hp<=0||q.sleeping)continue;
+    if(DIST(q.px,q.py,x,y)>6)continue;
+    if(pawnGang(q))continue;                 // gang members don't snitch
+    if((q.pers.intg||50)>62&&relGet(q.id,perp.id)<25&&Math.random()<0.3){
+      ST.heat=Math.min(100,(ST.heat||0)+8);
+      relAdj(perp.id,q.id,-20);              // perp resents the snitch (revenge fuel)
+      perp.snitchedBy=q.id;
+      tryEmote(q,"excl",120);
+      log(q.name+" reported "+perp.name+"'s crime — heat is rising.","warn");
+      return;
+    }
+  }
+}
+// REVENGE: a pawn wronged (robbed/snitched/attacked) may target the culprit back
+function seekRevenge(p){
+  if(!p.grudgeTarget)return null;
+  const t=ST.pawns.find(q=>q.id===p.grudgeTarget&&q.hp>0);
+  if(!t||DIST(p.px,p.py,t.px,t.py)>10)return null;
+  if((p.pers.imp||50)<45)return null;       // only impulsive types act on it
+  return t;
+}
 
 /* per-tick pawn logic */
 function pawnTick(p){
@@ -1239,7 +1543,7 @@ function pawnTick(p){
         for(const w of ST.pawns){if(w===p||w===q)continue;
           if(DIST(w.px,w.py,p.px,p.py)<8){relAdj(w.id,p.id,-5);relAdj(w.id,q.id,-5);
             remember(w,"watched "+p.name+" and "+q.name+" beat each other up")}}
-        float(p.px,p.py,"FIGHT!","#ff4757");emote(p,"anger");emote(q,"anger");onlookersReact(p.px,p.py,"shock",8);log(p.name+" and "+q.name+" came to blows.","warn");
+        float(p.px,p.py,"FIGHT!","#ff4757");emote(p,"anger");emote(q,"anger");onlookersReact(p.px,p.py,"shock",8);gossip(p.id,-3,7,p.px,p.py);gossip(q.id,-3,7,p.px,p.py);defendInFight(p,q);log(p.name+" and "+q.name+" came to blows.","warn");
         clearJob(p);clearJob(q);break}
       // ally mutual aid: ally is sick/starving nearby → offer 5c if can afford
       const aidRange=8+(trAdd(p,"emprange")||0);
@@ -1248,7 +1552,7 @@ function pawnTick(p){
         relAdj(p.id,q.id,4);
         remember(p,"slipped "+q.name+" some credits when they were struggling");
         remember(q,p.name+" looked out for me when I needed it — good people");
-        float(p.px,p.py,"-"+gift+"c help","#39ff88");emote(p,"heart")}}}
+        float(p.px,p.py,"-"+gift+"c help","#39ff88");emote(p,"heart");gossip(p.id,4,7,p.px,p.py)}}}
   // quarantine: if flagged, stay home
   if(p.quarantine&&p.sick){const h=p.home;
     if(h&&((p.px|0)<h.x0||(p.px|0)>=h.x0+h.w)){clearJob(p);p.cmd="sleep"}}
@@ -1342,7 +1646,10 @@ function pawnTick(p){
       if(!o||o===p){p.job=null;break}
       const r=gotoCell(p,o.px|0,o.py|0,1);
       if(r==="fail"){p.job=null;break}
-      if(r==="arr"){j.prog++;if(j.prog>=40){p.needs.socN=100;relAdj(p.id,o.id,2);p.job=null}}
+      if(r==="arr"){j.prog++;if(j.prog>=40){p.needs.socN=100;relAdj(p.id,o.id,2);
+        // close, compatible pairs may pair up
+        if(relGet(p.id,o.id)>=62&&Math.random()<0.04)tryFormPartnership(p,o);
+        p.job=null}}
       break}
     case "work":{const s=j.s;
       if(structAt(s.x,s.y)!==s||s.bp||(s.surgeT&&ST.tick<s.surgeT)){p.job=null;break}
@@ -1353,7 +1660,10 @@ function pawnTick(p){
         const hackerMul=d.prod==="data"?trMul(p,"dataprod"):1;
         const thresh=Math.round((d.prodRate||(d.refine?160:120))/hackerMul);
         if(j.prog>=thresh){
-          const wage=(p.contract&&p.contract.fixtureKey===K(s.x,s.y))?p.contract.wage:(d.wage||RI(10,15));
+          let wage=(p.contract&&p.contract.fixtureKey===K(s.x,s.y))?p.contract.wage:(d.wage||RI(10,15));
+          // specialist bonus + vocation-fit pay bump
+          if(p.career&&p.career.specialist===K(s.x,s.y))wage=Math.round(wage*1.4);
+          else if(fitsVocation(p,s.type))wage=Math.round(wage*1.1);
           let didWork=true;
           // raw material production (workstation/chemlab/workshop)
           if(d.prod){ST.goods[d.prod]=(ST.goods[d.prod]||0)+1;
@@ -1369,8 +1679,11 @@ function pawnTick(p){
               p.credits=(p.credits||0)+Math.round(wage*0.4);}}  // standby pay
           // vendor clerk earns district income cut passively via vendorTick
           else if(d.vendor){addMod(p,"clerking","Ran the counter",2,TPD*.3)}
-          if(didWork)p.credits=(p.credits||0)+wage;
-          p.workCd=ST.tick+(didWork?RI(240,380):RI(80,120));  // retry faster if no inputs
+          if(didWork){p.credits=(p.credits||0)+wage;
+            // train the vocation's skill a touch each shift
+            const vsk=vocationOf(p).sk;if(vsk&&p.sk[vsk]!==undefined)gainXp(p,vsk);
+            careerAfterShift(p,s,wage);}
+          p.workCd=ST.tick+(didWork?Math.round(RI(240,380)/ethicMul(p)):RI(80,120));  // hard workers return sooner
           applyDrift(p,{ind:didWork?1:0});p.job=null;syncHUD()}}
       break}
     case "treat":{const s=j.s;
@@ -1446,6 +1759,9 @@ function pawnTick(p){
           const take=Math.min((v.credits||0),RI(15,40));
           if(take<=0){p.job=null;break}
           v.credits=(v.credits||0)-take;p.credits=(p.credits||0)+take;
+          gossip(p.id,-6,8,p.px,p.py);relAdj(v.id,p.id,-30);  // victim + witnesses turn against the robber
+          witnessCrime(p,p.px,p.py);                          // bystanders may snitch
+          v.grudgeTarget=p.id;                                // victim now holds a grudge
           const rg=pawnGang(p);const onRTurf=rg&&rg.turf.has(K(p.px|0,p.py|0));
           if(onRTurf)rg.gangHeat=Math.min(100,(rg.gangHeat||0)+12);
           else ST.heat=(ST.heat||0)+10;
@@ -1635,8 +1951,7 @@ function fireEvent(){
     case "wander":{const open=openHomes();if(!open.length)break;
       const e=edgeCell();
       const p=mkPawn(e.x,e.y,CH(["sal","bld","sht"]));
-      const home=open[0];p.home=home;
-      const bedS=structAt(home.bed.x,home.bed.y);if(bedS&&bedS.type==="pod")bedS.owner=p.id;
+      const home=open[0];claimHome(p,home);
       ST.pawns.push(p);
       log(p.name+" drifted into the district from the sprawl — there's a home for them here.","good");
       banner("NEW ARRIVAL","good");SFX.good();break}
@@ -1781,12 +2096,23 @@ function tick(){ST.tick++;
   if(ST.tick%120===0)checkTier(); // district tier progression
   if(ST.tick%100===0)tickAmbient(); // background AI musings (rate-limited internally)
   if(ST.tick%200===0&&ST.gangs.length)gangTick();
+  if(ST.gangs.length)crimeTick();
   if(ST.tick%TPD===0&&ST.tick>0){
     // gear expiry check
     for(const p of ST.pawns){if(p.hasGear&&ST.tick>=(p.gearExpiry||0)){p.hasGear=false;p.gearExpiry=0}}
+    // daily career update (vocation satisfaction, aspiration, gripes)
+    for(const p of ST.pawns)careerTick(p);
+    // property attachment grows with tenure; wealth class mood effects
+    for(const p of ST.pawns){
+      if(p.home&&!p.homeless)p.attach=clamp((p.attach||0)+1,0,100);
+      const wt=wealthTier(p);
+      if(wt.t>=3)addMod(p,"affluent","Doing well for myself",4,TPD);
+      else if(wt.t===0)addMod(p,"destitute","Got nothing to my name",-2.5,TPD);
+    }
+    genWorkPetitions();
     // rent + eviction
     for(const q of ST.pawns){q.credits=(q.credits||0)-(ST.crisis?42:28);
-      if(q.credits<0&&!q.homeless){q.homeless=true;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad");remember(q,"couldn't make rent — got evicted, sleeping rough now")}
+      if(q.credits<0&&!q.homeless){q.homeless=true;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad");loseProperty(q,"couldn't make rent — got evicted, sleeping rough now and it stings to lose my place");q.home=null;}
       else if(q.credits>=0&&q.homeless){q.homeless=false;log(q.name+" cleared their back rent.","good")}}
     // soft collapse: track debt days
     if(ST.income<0){ST.debtDays=(ST.debtDays||0)+1;
@@ -1879,7 +2205,32 @@ function stampGlow(hex,wx,wy,radius,alpha){
   ctx.globalAlpha=1;
 }
 let VW=0,VH=0,dpr=1;
-const cam={x:0,y:0,z:1.6};
+const cam={x:0,y:0,z:1.6,follow:null};
+// smooth camera follow — eases toward the focused wisp each frame
+function tickFollow(){
+  const ind=$("follow-ind");
+  if(!cam.follow){if(ind&&ind.style.display!=="none")ind.style.display="none";return;}
+  const p=ST.pawns.find(q=>q.id===cam.follow);
+  if(!p){cam.follow=null;if(ind)ind.style.display="none";return;}   // followed wisp died/left → stop
+  const tx=p.px*T-VW/cam.z/2, ty=p.py*T-VH/cam.z/2;
+  const ease=0.12;                            // higher = snappier, lower = floatier
+  cam.x+=(tx-cam.x)*ease;
+  cam.y+=(ty-cam.y)*ease;
+  clampCam();
+  if(ind){ind.style.display="block";ind.textContent="◉ FOLLOWING "+p.name.toUpperCase()+"  ·  ESC to release";}
+}
+function setFollow(p){
+  if(!p){cam.follow=null;return;}
+  cam.follow=p.id;
+  // center immediately-ish so the ease starts from near the target
+  refreshFollowUI();
+}
+function stopFollow(){cam.follow=null;refreshFollowUI();}
+function refreshFollowUI(){
+  // update any visible FOLLOW buttons to reflect state
+  const ib=$("i-follow");if(ib){const on=cam.follow&&ST.sel[0]&&ST.sel[0].id===cam.follow;
+    ib.textContent=on?"◉ FOLLOWING":"◎ FOLLOW";ib.classList.toggle("on",!!on);}
+}
 function resize(){dpr=window.devicePixelRatio||1;
   VW=window.innerWidth;VH=window.innerHeight;
   cv.width=Math.floor(VW*dpr);cv.height=Math.floor(VH*dpr);
@@ -2990,7 +3341,7 @@ window.addEventListener("mousemove",e=>{
   PT.hoverX=c.x;PT.hoverY=c.y;PT.hwx=c.wx;PT.hwy=c.wy;
   if(PT.panning){const dx=e.clientX-PT.lx,dy=e.clientY-PT.ly;
     if(Math.abs(dx)+Math.abs(dy)>3)PT.moved=true;
-    cam.x-=dx/cam.z;cam.y-=dy/cam.z;clampCam();
+    cam.x-=dx/cam.z;cam.y-=dy/cam.z;clampCam();if(cam.follow)stopFollow();
     PT.lx=e.clientX;PT.ly=e.clientY;return}
   if(!PT.down)return;
   if(Math.hypot(e.clientX-PT.sx,e.clientY-PT.sy)>4)PT.moved=true;
@@ -3034,6 +3385,7 @@ window.addEventListener("keydown",e=>{const k=e.key.toLowerCase();
   else if(k==="l")openOverlay("district");
   else if(k==="t")openOverlay("tasks");
   else if(k==="escape"){if(TOOL)setTool(null);
+    else if(cam.follow){stopFollow();renderInspect();}
     else{ST.sel=[];renderInspect();closeSub();syncHUD()}}});
 window.addEventListener("keyup",e=>{KEYS[e.key.toLowerCase()]=false});
 
@@ -3070,7 +3422,7 @@ cv.addEventListener("touchmove",e=>{e.preventDefault();if(ST.phase!=="run")retur
         else{PT.marq.x1=c.wx;PT.marq.y1=c.wy}}
       return}
     if(moved>8&&r.px!==undefined){
-      cam.x-=(r.x-r.px)/cam.z;cam.y-=(r.y-r.py)/cam.z;clampCam()}}},{passive:false});
+      cam.x-=(r.x-r.px)/cam.z;cam.y-=(r.y-r.py)/cam.z;clampCam();if(cam.follow)stopFollow()}}},{passive:false});
 cv.addEventListener("touchend",e=>{e.preventDefault();if(ST.phase!=="run")return;
   for(const t of e.changedTouches){const r=PT.touches.get(t.identifier);
     PT.touches.delete(t.identifier);
@@ -3191,7 +3543,7 @@ function renderCrewOverlay(){
     h+="<div class='crew-card' data-cid='"+p.id+"'>"+
        "<div class='crew-ava' style='background:"+p.accent+"'>"+p.name.charAt(0)+"</div>"+
        "<div class='crew-meta'>"+
-         "<div class='crew-nm'>"+p.name+"</div>"+
+         "<div class='crew-nm'>"+p.name+(p.career?" <span style='color:var(--dim);font-weight:400;font-size:9px'>· "+vocationOf(p).name+"</span>":"")+"</div>"+
          "<div class='crew-st' style='color:"+moodCol+"'>"+task+" · mood "+mood+"</div>"+
          (crewFlagHTML(p)?"<div class='crew-flags'>"+crewFlagHTML(p)+"</div>":"")+
        "</div></div>";
@@ -3216,17 +3568,46 @@ function renderCrewDetail(){
   h+=barHtml("MOOD",p.mood,p.mood<25?"#ff4757":"#ffd84a");
   h+="<div class='sub' style='margin-top:8px'>TASK: "+jobLabel(p)+"</div>";
   h+="<div class='sub'>CREDITS "+(p.credits|0)+(p.homeless?" · <span style='color:var(--rd)'>EVICTED</span>":"")+"</div>";
+  {const wt=wealthTier(p);const wcol=wt.t>=3?"#39ff88":wt.t<=0?"#ff4757":"#ffd84a";
+   h+="<div class='sub'>WEALTH — <b style='color:"+wcol+"'>"+wt.name+"</b> · net worth "+netWorth(p)+(p.home?" · <span style='color:#7aa2ff'>has home</span>":"")+(p.attach>30?" · settled in":"")+"</div>";}
   h+="<div class='sub'>STRESS "+(p.stress|0)+(p.addiction>0?" · ADDICTION "+(p.addiction|0):"")+(p.hasGear?" · <span style='color:#7aa2ff'>GEARED</span>":"")+"</div>";
   if(p.sick)h+="<div class='sub' style='color:var(--rd)'>INFECTED — needs a clinic</div>";
+  {const g=pawnGang(p);if(g)h+="<div class='sub'>GANG — <b style='color:"+g.color+"'>"+g.name+"</b></div>";}
   if(p.rep&&(p.rep.city||p.rep.gang)){
     const cR=p.rep.city|0,gR=p.rep.gang|0;
     h+="<div class='sub'>CITY REP "+(cR>0?"+":"")+cR+" · GANG "+(gR>0?"+":"")+gR+"</div>";}
   h+="<div class='sub'>SKILLS — SAL "+p.sk.sal+" · BLD "+p.sk.bld+" · COOK "+p.sk.cook+" · SHT "+p.sk.sht+"</div>";
+  // ── CAREER ──
+  if(p.career){const c=p.career,voc=vocationOf(p);
+    const ws=p.assigned?ST.structs.get(p.assigned):null;
+    const isSpec=ws&&c.specialist===K(ws.x,ws.y);
+    const satCol=c.sat>=65?"#39ff88":c.sat>=35?"#ffd84a":"#ff4757";
+    const ethicLbl=c.ethic>=70?"hard worker":c.ethic>=40?"steady":"slacker";
+    const aspLbl=c.asp.met?"<span style='color:#39ff88'>achieved ✓</span>":
+      c.asp.kind==="wealth"?"reach "+c.asp.target+"c":
+      c.asp.kind==="craft"?"master "+voc.name+" (skill "+c.asp.target+")":"keep it easy";
+    h+="<div class='ordsec'>CAREER</div>";
+    h+="<div class='sub'>VOCATION — <b style='color:var(--cy)'>"+voc.name+"</b> <span style='opacity:.6'>("+voc.blurb+")</span>"+(isSpec?" · <span style='color:#ffd84a'>SPECIALIST</span>":"")+"</div>";
+    h+="<div class='sub'>ASPIRATION — "+aspLbl+"</div>";
+    h+="<div class='sub'>WORK ETHIC — "+ethicLbl+" ("+c.ethic+")</div>";
+    h+=barHtml("JOB SATISFACTION",c.sat,satCol);
+    if(c.gripe>=4)h+="<div class='sub' style='color:var(--or)'>⚠ Aggrieved — may petition for a raise or transfer</div>";
+    // management controls
+    h+="<div class='cmd-grid' style='margin-top:6px'>";
+    if(ws&&fitsVocation(p,ws.type)&&!isSpec)
+      h+="<button class='cmd-b' data-career='promote'><span class='ci'>★</span>Make Specialist</button>";
+    if(isSpec)
+      h+="<button class='cmd-b' data-career='unspec'><span class='ci'>☆</span>Remove Spec</button>";
+    h+="<button class='cmd-b' data-career='raise'><span class='ci'>↑</span>Give Raise</button>";
+    h+="<button class='cmd-b' data-career='transfer'><span class='ci'>⇄</span>To "+voc.name+"</button>";
+    h+="</div>";
+  }
   const rels=relsOf(p);
   if(rels.length){h+="<div class='ordsec'>TIES</div>";
     for(const tie of rels.slice(0,6)){const v=tie.v,col=v>0?"#39ff88":"#ff4757";
-      const lbl=v>=50?"ally":v>=15?"warm":v<=-50?"hostile":v<=-15?"rival":"·";
-      h+="<div class='sub' style='display:flex;justify-content:space-between;gap:8px'><span style='color:"+tie.o.accent+"'>"+tie.o.name+"</span><span style='color:"+col+"'>"+lbl+" "+(v>0?"+":"")+(v|0)+"</span></div>"}}
+      const lbl=relType(p.id,tie.o.id);
+      const star=relType(p.id,tie.o.id).includes("partner")?" ♥":"";
+      h+="<div class='sub' style='display:flex;justify-content:space-between;gap:8px'><span style='color:"+tie.o.accent+"'>"+tie.o.name+star+"</span><span style='color:"+col+"'>"+lbl+" "+(v>0?"+":"")+(v|0)+"</span></div>"}}
   if(p.mem&&p.mem.length)h+="<div class='sub' style='font-style:italic;opacity:.78;margin-top:6px'>\u201c"+p.mem[p.mem.length-1].t+"\u201d</div>";
   // direct orders
   h+="<div class='ordsec'>DIRECT ORDERS</div><div class='cmd-grid'>";
@@ -3234,6 +3615,7 @@ function renderCrewDetail(){
   h+="</div>";
   // locate + talk
   h+="<button class='tb' id='cd-locate' style='margin-top:8px'>◎ LOCATE ON MAP</button>";
+  h+="<button class='tb' id='cd-follow' style='margin-top:8px;margin-left:6px'>"+(cam.follow===p.id?"◉ FOLLOWING":"◎ FOLLOW")+"</button>";
   if(aiReady())h+="<button class='tb' id='cd-talk' style='margin-top:8px;margin-left:6px'>◆ TALK</button>";
   body.innerHTML=h;
 }
@@ -3248,6 +3630,16 @@ function collectAlerts(){
   // crisis state
   if(ST.crisis)alerts.push({sev:"crit",ic:"\u26a0",t:"District in crisis",s:"Income is negative — build revenue or cut losses fast."});
   if(ST.debtDays)alerts.push({sev:"crit",ic:"\u26a0",t:"Debt: day "+ST.debtDays+"/6",s:"The district is condemned at day 6 of debt."});
+  // gang recruitment risk — unaffiliated, desperate, disaffected citizens near a gang
+  if(ST.gangs&&ST.gangs.length){
+    for(const p of ST.pawns){
+      if(pawnGang(p))continue;
+      const atrisk=(p.pers.intg||50)<42&&((p.credits||0)<15||p.homeless||(p.career&&p.career.sat<25));
+      if(!atrisk)continue;
+      const nearGang=ST.gangs.some(g=>g.crewIds.some(id=>{const m=ST.pawns.find(x=>x.id===id);return m&&DIST(m.px,m.py,p.px,p.py)<10;}));
+      if(nearGang){alerts.push({sev:"warn",ic:"\u2620",t:p.name+" is drifting toward a crew",s:"Broke and disaffected near gang turf — a raise or better work could pull them back.",pid:p.id});}
+    }
+  }
   // citizens in trouble
   for(const p of ST.pawns){
     if(p.sick)alerts.push({sev:"crit",ic:"\u2716",t:p.name+" is infected",s:"Needs a clinic — build a Med Bay or Hospital nearby.",pid:p.id});
@@ -3334,9 +3726,33 @@ $("overlay").addEventListener("click",e=>{
   const cm=e.target.closest("[data-cdcmd]");
   if(cm){const p=ST.pawns.find(q=>q.id===OV.crewFocus);
     if(p){clearJob(p);p.job=null;p.cmd=cm.dataset.cdcmd;SFX.ui();}return;}
+  // career management
+  const cb=e.target.closest("[data-career]");
+  if(cb){const p=ST.pawns.find(q=>q.id===OV.crewFocus);
+    if(p&&p.career){SFX.ui();const act=cb.dataset.career,c=p.career;
+      const ws=p.assigned?ST.structs.get(p.assigned):null;
+      if(act==="promote"&&ws){c.specialist=K(ws.x,ws.y);c.sat=clamp(c.sat+30,0,100);c.gripe=0;
+        addMod(p,"promo","Made specialist",20,TPD*3);p.rep.city=clamp((p.rep.city||0)+15,-100,100);
+        log(p.name+" named specialist at their post.","good");}
+      else if(act==="unspec"){c.specialist=null;c.sat=clamp(c.sat-12,0,100);
+        log(p.name+" lost specialist status.","warn");}
+      else if(act==="raise"){const base=ws?(DEF[ws.type].wage||10):10;
+        const key=ws?K(ws.x,ws.y):(p.contract&&p.contract.fixtureKey);
+        p.contract={fixtureKey:key,wage:Math.round(base*1.35)};c.sat=clamp(c.sat+25,0,100);c.gripe=0;c.lastRaiseDay=ST.tick;
+        addMod(p,"raise","Got a raise",14,TPD*2);p.rep.city=clamp((p.rep.city||0)+10,-100,100);
+        log(p.name+" got a raise.","good");}
+      else if(act==="transfer"){const target=nearestStruct(p,s=>!s.bp&&fitsVocation(p,s.type));
+        if(target){p.assigned=K(target.x,target.y);c.sat=clamp(c.sat+20,0,100);c.gripe=0;
+          addMod(p,"transfer","Doing real work now",12,TPD*2);
+          log(p.name+" reassigned to "+vocationOf(p).name+" work.","good");}
+        else log("No "+vocationOf(p).name+" workplace available.","warn");}
+      renderCrewDetail();}return;}
   // locate
   if(e.target.id==="cd-locate"){const p=ST.pawns.find(q=>q.id===OV.crewFocus);
     if(p){ST.sel=[p];cam.x=p.px*T-VW/cam.z/2;cam.y=p.py*T-VH/cam.z/2;clampCam();closeOverlay();renderInspect();}return;}
+  // follow — start tracking, then close the overlay so you can watch
+  if(e.target.id==="cd-follow"){const p=ST.pawns.find(q=>q.id===OV.crewFocus);
+    if(p){SFX.ui();ST.sel=[p];setFollow(p);closeOverlay();renderInspect();}return;}
   // talk
   if(e.target.id==="cd-talk"){const p=ST.pawns.find(q=>q.id===OV.crewFocus);
     if(p){closeOverlay();openChat(p);}return;}
@@ -3395,6 +3811,48 @@ function applyRequest(rid,oi){
   if(!r||r.status!=="pending")return;
   const agent=ST.pawns.find(p=>p.id===r.agentId);
   const opt=r.options[oi];
+  if(r.kind==="work"){
+    const c=agent&&agent.career;
+    if(agent&&c){
+      if(opt.act==="raise"){
+        // bump their contract wage at their current workplace (or create one)
+        const ws=agent.assigned?ST.structs.get(agent.assigned):null;
+        const key=ws?K(ws.x,ws.y):(agent.contract&&agent.contract.fixtureKey);
+        const base=ws?(DEF[ws.type].wage||10):10;
+        agent.contract={fixtureKey:key,wage:Math.round(base*1.35)};
+        c.sat=clamp(c.sat+30,0,100);c.gripe=0;c.lastRaiseDay=ST.tick;
+        addMod(agent,"raise","Got a raise",14,TPD*2);agent.rep.city=clamp((agent.rep.city||0)+12,-100,100);
+        remember(agent,"the operator gave me a raise — I'll remember that");
+        log(agent.name+" got a raise and is back to work, motivated.","good");
+      }else if(opt.act==="promote"){
+        const ws=agent.assigned?ST.structs.get(agent.assigned):null;
+        if(ws){c.specialist=K(ws.x,ws.y);
+          c.sat=clamp(c.sat+35,0,100);c.gripe=0;c.lastRaiseDay=ST.tick;
+          addMod(agent,"promo","Made specialist",20,TPD*3);agent.rep.city=clamp((agent.rep.city||0)+18,-100,100);
+          remember(agent,"got named specialist — proud of that, this is my post now");
+          log(agent.name+" was promoted to specialist — loyalty up, output up.","good");}
+      }else if(opt.act==="transfer"){
+        // assign them to the nearest fixture matching their vocation
+        const target=nearestStruct(agent,s=>!s.bp&&fitsVocation(agent,s.type));
+        if(target){agent.assigned=K(target.x,target.y);
+          c.sat=clamp(c.sat+22,0,100);c.gripe=0;c.lastRaiseDay=ST.tick;
+          addMod(agent,"transfer","Doing real work now",12,TPD*2);agent.rep.city=clamp((agent.rep.city||0)+8,-100,100);
+          remember(agent,"finally moved to work I'm actually good at");
+          log(agent.name+" transferred to "+vocationOf(agent).name+" work.","good");}
+        else log("No suitable workplace to transfer "+agent.name+" to.","warn");
+      }else{ // deny
+        c.sat=clamp(c.sat-18,0,100);c.gripe=clamp(c.gripe-2,0,10);
+        agent.stress=clamp((agent.stress||0)+12,0,100);agent.rep.city=clamp((agent.rep.city||0)+-14,-100,100);
+        addMod(agent,"denied","Snubbed by the boss",-12,TPD*2);
+        remember(agent,"asked for better and got told no — I won't forget it");
+        log(agent.name+" was denied — resentment is building.","warn");
+        // a denied, very ambitious pawn may quit (leave) or turn to crime
+        if((agent.pers.amb||50)>72&&c.sat<18&&Math.random()<0.4){
+          agent.pers.intg=clamp((agent.pers.intg||50)-15,0,100); // more willing to bend rules
+          remember(agent,"if the straight path won't pay, maybe the crooked one will");}
+      }
+    }
+    r.status="answered";renderRequests();refreshTaskBadge&&refreshTaskBadge();return}
   if(r.kind==="feud"){
     const rival=ST.pawns.find(q=>q.id===r.rivalId);
     if(opt.mediate&&agent&&rival){
@@ -3644,6 +4102,7 @@ function renderInspectCore(){const el=$("inspect");
       "<button class='ob' data-o='recreate'><span>◈</span>Wander</button>"+
       "<button class='ob' data-o='socialize'><span>⚇</span>Commune</button></div>";
     if(aiReady())h+="<button class='tb i-talk' id='i-talk'>◆ TALK</button>";
+    h+="<button class='tb' id='i-follow'>"+(cam.follow===e.id?"◉ FOLLOWING":"◎ FOLLOW")+"</button>";
     h+="<button class='tb' id='i-profile'>☰ FULL PROFILE</button>";
     el.innerHTML=h}
   else if(e.kind==="foe"){
@@ -3689,6 +4148,9 @@ $("inspect").addEventListener("click",e=>{
   const id=e.target.id;if(!id)return;
   const sel=ST.sel[0];SFX.ui();
   if(id==="i-talk"&&sel&&sel.kind==="pawn")openChat(sel);
+  else if(id==="i-follow"&&sel&&sel.kind==="pawn"){
+    if(cam.follow===sel.id)stopFollow();else setFollow(sel);
+    renderInspect();}
   else if(id==="i-profile"&&sel&&sel.kind==="pawn"){OV.crewFocus=sel.id;openOverlay("crew");}
   else if(id==="i-hire"){
     const tgt=ST.sel.find(e=>e.kind!=="pawn");
@@ -4052,6 +4514,11 @@ function showHelp(){if(ST.phase==="run"){ST.paused=true;refreshSpd()}showModal(
   "<tr><td style='color:var(--cy)'>Speed</td><td>⏸ pauses. 1×/2×/3× sets speed.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Windows</td><td>The 📖 DIARY, 👥 CREW, 📋 TASKS, and 📊 DISTRICT icons open full-screen windows you can scroll and close (✕ or Esc). Hotkeys: J diary · K crew · L district. CREW lists everyone — tap a citizen for full profile and direct orders.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Tasks</td><td>📋 TASKS gathers every pending petition plus live alerts — sick, evicted, broke, or miserable citizens and district crises. A red badge on the icon counts what needs you; tap an alert to jump to that citizen.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Follow</td><td>Select a wisp and hit ◎ FOLLOW (in the inspect panel or their crew profile) and the camera smoothly tracks them around the block. Pan or press Esc to release.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Careers</td><td>Every citizen has a VOCATION (Fabricator, Techie, Grower, Laborer, Trader) matching their best skill — they seek out matching work and improve at it. Ambitious ones chase ASPIRATIONS (wealth or mastery) and, when underpaid or stuck in ill-suited work, file disputes asking for a raise, a specialist promotion, or a transfer. Manage them from the crew profile: grant raises, name specialists (higher pay + output), or reassign. They remember how you treat them — loyalty or resentment follows.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Wealth</td><td>Citizens own their home, pod, and savings, and stratify into wealth classes (Destitute → Kingpin) by net worth. They grow attached to property over time, so eviction and theft hit hard. When someone dies, their estate and property pass to their closest bond — or revert to the district if they had no one.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Relationships</td><td>Bonds have TYPES that evolve: acquaintance → friend → close friend, or rival → enemy, plus partners. Partners pair up, share a home, and grieve hard if lost. Reputation spreads by gossip — witness a robbery or an act of kindness and opinions shift across the block. Friends take sides in fights.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Crime</td><td>Gangs recruit broke, disaffected citizens (watch TASKS for at-risk warnings — a raise can pull them back), run protection rackets that skim vendor income, and war over turf. Witnesses may snitch, raising heat on the culprit, and victims hold grudges that fuel revenge. Keep people housed, paid, and content to keep crime down.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Progression</td><td>The district ranks up through Tiers (Squat → Settlement → District → Neon Sprawl) as population, income, and prosperity rise. The HUD shows your tier badge and a live PROSPERITY bar (red→green) blending economy, wellbeing, safety, and growth — push it as high as you can.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Saves</td><td>💾 SAVE / 📂 LOAD use three slots plus a daily autosave. Each slot shows day, population, tier, and income so you can manage multiple runs.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Diary</td><td>Day-grouped, timestamped event log. Filter tabs: ALL / CRIME / ECO / SOCIAL / HEALTH / DISTRICT.</td></tr>"+
@@ -4088,7 +4555,7 @@ function hasSave(){
 function snapPawn(p){return Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,unre:undefined,pi:0,pTx:-1,pTy:-1,claim:0})}
 function snapStruct(s){return Object.assign({},s,{res:0})}
 function serializeState(){
-  return{v:2,tick:ST.tick,grp:ST.grp,rel:ST.rel,nextEv:ST.nextEv,lastCrackdown:ST.lastCrackdown,
+  return{v:2,tick:ST.tick,grp:ST.grp,rel:ST.rel,relMeta:ST.relMeta||{},nextEv:ST.nextEv,lastCrackdown:ST.lastCrackdown,
     goods:ST.goods,income:ST.income,debtDays:ST.debtDays||0,crisis:ST.crisis||false,
     savedAt:Date.now(),
     gangs:(ST.gangs||[]).map(g=>({...g,turf:[...g.turf]})),
@@ -4099,7 +4566,7 @@ function serializeState(){
     rooms:ST.rooms}}
 function applyState(d){
   ST.tick=d.tick||0;
-  ST.grp=d.grp||{};ST.rel=d.rel||{};ST.nextEv=(d.nextEv==null?1e9:d.nextEv);ST.lastCrackdown=d.lastCrackdown||0;
+  ST.grp=d.grp||{};ST.rel=d.rel||{};ST.relMeta=d.relMeta||{};ST.nextEv=(d.nextEv==null?1e9:d.nextEv);ST.lastCrackdown=d.lastCrackdown||0;
   ST.goods=d.goods||{data:0,chem:0,parts:0,stims:0,gear:0,food:0,wood:0,materials:0};ST.income=d.income||0;
   ST.debtDays=d.debtDays||0;ST.crisis=d.crisis||false;
   ST.gangs=(d.gangs||[]).map(g=>({...g,turf:new Set(g.turf||[])}));
@@ -4107,6 +4574,7 @@ function applyState(d){
   ST.ter=new Uint8Array(d.ter||[]);
   ST.structs=new Map((d.structs||[]).map(s=>[K(s.x,s.y),s]));
   ST.pawns=(d.pawns||[]).map(p=>Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,unre:new Map()}));
+  for(const p of ST.pawns)if(!p.career)p.career=initCareer(p.sk||{},p.pers||{}); // backfill for pre-career saves
   ST.beams=[];ST.floats=[];ST.emotes=[];ST.tombs=[];ST.sel=[];ST.rooms=d.rooms||[];
   ST.phase="run";ST.paused=false;ST.speed=1;
   powerRecalc()}
@@ -4216,11 +4684,10 @@ function newGame(){
     if(colCost(x,y)<0)continue;
     if(ST.pawns.some(q=>(q.px|0)===x&&(q.py|0)===y))continue;
     ST.pawns.push(mkPawn(x,y))}}
-  {let hi=0;for(const p of ST.pawns){const home=ST.cityHomes[hi%ST.cityHomes.length];hi++;p.home=home;
-    const bedS=structAt(home.bed.x,home.bed.y);if(bedS&&bedS.type==="pod")bedS.owner=p.id}}
+  {let hi=0;for(const p of ST.pawns){const home=ST.cityHomes[hi%ST.cityHomes.length];hi++;claimHome(p,home);p.attach=RI(3,12);}}
   cam.z=1.4;  // start zoomed into the core on the bigger map
   cam.x=64*T-VW/cam.z/2;cam.y=50*T-VH/cam.z/2;clampCam();
-  ST.lastCrackdown=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.rel={};relAdj(vex.id,sta.id,25);ST.heat=0;ST.heatWarn=false;
+  ST.lastCrackdown=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.rel={};ST.relMeta={};relAdj(vex.id,sta.id,25);ST.heat=0;ST.heatWarn=false;
   $("log").innerHTML="";DIARY_ENTRIES.length=0;renderDiary();renderRoster();
   log("The sprawl wakes — citizens drifting to homes, jobs, and the night's vices.","info");
   log("You watch over the district. Build it out, steer who you can, and keep the block from tearing itself apart.","info");
@@ -4239,7 +4706,8 @@ function loop(ts){requestAnimationFrame(loop);
     if(KEYS.s||KEYS.arrowdown)dy+=sp;
     if(KEYS.a||KEYS.arrowleft)dx-=sp;
     if(KEYS.d||KEYS.arrowright)dx+=sp;
-    if(dx||dy){cam.x+=dx;cam.y+=dy;clampCam()}}
+    if(dx||dy){cam.x+=dx;cam.y+=dy;clampCam();if(cam.follow)stopFollow();}}
+  tickFollow();
   render()}
 
 window.addEventListener("resize",resize);
