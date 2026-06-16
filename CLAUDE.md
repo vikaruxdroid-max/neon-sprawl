@@ -1,6 +1,6 @@
-# NEON SPRAWL — Colony Protocol
+# NEON SPRAWL — City Protocol
 
-Single-file cyberpunk colony sim (RimWorld-style vertical slice). v0.1 built 2026-06-10.
+Single-file cyberpunk city sandbox (living city sim, not a colony survival roguelike). Redesigned from colony→city 2026-06-16.
 
 ## Hard constraints
 - **Everything lives in `index.html`.** Vanilla JS + canvas. No frameworks, no build step, no external dependencies. Same architecture as the owner's Neon Dungeon project.
@@ -16,20 +16,29 @@ Single-file cyberpunk colony sim (RimWorld-style vertical slice). v0.1 built 202
 
 ## Architecture map (section order inside the single <script>)
 1. Helpers + SFX (WebAudio) + data defs: `DEF` buildings, `WEAP`, `FOED`, `TRAITS`, names. Constants: `T=16` px/tile, `MW=56`, `MH=40`, `TPD=2400` ticks/day, `TPS=10`.
-2. Structures/passability (`structAt`, `colCost`, `foeCost`), binary-heap A* (`astar`, 8-dir, no corner cuts), `los`, items, stockpile zones, economy (`afford/pay/wealth`), placement/construction, power (`powerRecalc` — deficit disables ALL consumers), `genMap`.
-3. Pawns: `mkPawn`, traits (`tr`) + personality (`pers`: ind/cau/soc/cur/amb/emp/imp/intg), per-pawn daily schedule (`mkSched`, stored on `p.sched`), mood (`moodCalc`, mental break → dazed wander), movement (`gotoCell`). Job AI: **`chooseJob`** (hard gates: eat if food≤22, sleep if rest≤18) → **`scoreJobs`** — utility scoring (`base·weight·bias·sched`) over eat/sleep/cook/build/salvage/haul/hygiene/recreate/socialize/work/treat/substance/crime/idle, weighted by personality, schedule windows, needs and foe-proximity; also consumes one-shot direct orders (`p.cmd`). Job execution in `pawnTick` (which calls `chooseJob` at its `if(!p.job)` line). Reservations via `s.res` / `it.resv`; unreachable cache `p.unre`. **Note:** `findJob` still exists but is dead code (never called) — the live picker is `chooseJob`.
-4. Foes & events: **combat is currently dormant** — `spawnRaid` (and the only `spawnFoeAt` call, which lives inside it) is dead code; organic raids were cut (commit `37f97ea`), so the live game spawns no foes. Combat code is intact and test-covered: `foeTick` — foes path THROUGH player walls/doors at soft cost (door 15, wall 28) and breach what blocks the route; groups retreat when **≤34% remain alive** (`alive/n0≤.34`, i.e. ~66% losses) or after 1.2 days. Turrets (`turretTick`, rng 9.5, dmg 6–10, powered only). Live pressure: `fireEvent` (**pod / wander / storm / blackout / mugging / medbill / gigdrought** — no raid), the heat-based **non-lethal enforcer crackdown** (in `tick`, ~every 100t), and daily rent/eviction (−34 credits/day). Win = beacon charged a full day (`s.charge>=TPD`); lose = all pawns dead (`gameOver`). Master `tick()`. **Note:** re-enabling raids = wiring `spawnRaid` back into `tick`.
-5. Rendering: offscreen terrain canvas, per-frame structs/pawns/foes/beams/floats, night lighting overlay (destination-out), storm/vignette screen effects.
+2. Structures/passability (`structAt`, `colCost`, `foeCost`), binary-heap A* (`astar`, 8-dir, no corner cuts), `los`, items, placement/construction, `genMap` / `genCity`. **Dormant dead code** (intact, do not delete): stockpile zones, `ST.res` economy (`afford/pay/wealth`), power (`powerRecalc`).
+3. Pawns: `mkPawn`, traits (`tr`) + personality (`pers`: ind/cau/soc/cur/amb/emp/imp/intg), per-pawn daily schedule (`mkSched`, stored on `p.sched`), mood (`moodCalc`, mental break → dazed wander), movement (`gotoCell`). **Home assignment:** each pawn gets `p.home` pointing to a home structure; they sleep, wash, and eat there (free fridge food). Job AI: **`chooseJob`** (hard gates: eat if food≤22, sleep if rest≤18) → **`scoreJobs`** — utility scoring (`base·weight·bias·sched`) over job types weighted by personality, schedule windows, needs and foe-proximity; also consumes one-shot direct orders (`p.cmd`). Job execution in `pawnTick`. Reservations via `s.res` / `it.resv`; unreachable cache `p.unre`. **Dormant dead code:** `findJob` (never called), salvage/cook/haul job branches.
+4. Foes & events: **combat is dormant** — `spawnRaid` and the `spawnFoeAt` call inside it are dead code; live game spawns no foes. Combat code intact and test-covered: `foeTick` — foes path through walls/doors at soft cost (door 15, wall 28), breach blockers; groups retreat at ≤34% alive or after 1.2 days. Turrets (`turretTick`, rng 9.5, dmg 6–10, powered only — dormant). Live pressure: `fireEvent` (**pod / wander / storm / blackout / mugging / medbill / gigdrought**), the heat-based **non-lethal enforcer crackdown** (~every 100t), and **daily eviction** for citizens who run out of credits. **No win condition** — the extraction-beacon win condition was removed. Lose = all pawns dead (`gameOver`). Master `tick()`. **Note:** re-enabling raids = wiring `spawnRaid` back into `tick`.
+5. Rendering: offscreen terrain canvas, per-frame structs/pawns/foes/beams/floats, night lighting overlay (destination-out), storm/vignette screen effects. Wisp task-glyph icons + accent identity rings replace old text job-labels.
 6. Input: mouse (marquee select, wall paint-drag, rect designations, RMB commands, wheel zoom, WASD pan), touch (tap/pan/pinch), keyboard (space pause, 1/2/3 speed, R draft, Esc).
-7. UI/DOM: HUD, toolbar+submenus, inspector, log, modals. `newGame`, main loop (fixed-step, 100ms/speed, ≤10 ticks/frame). The legacy `checklist` panel was dropped (CSS `display:none`); `renderChecklist` still runs in `updateFlags` but feeds the hidden element.
+7. UI/DOM: HUD shows **POP / CR / EVICTED** (replaced old resource/power readout). Toolbar shows **14 city fixture blueprints** buildable with labor only (no material cost) — colony pieces (synth/vat/gen/turret/beacon) are off the menu. Inspector, log, modals, AI chat (TALK button). `newGame`, main loop (fixed-step, 100ms/speed, ≤10 ticks/frame). `updateFlags` is now a no-op (survival checklist removed). **Dormant dead code:** `renderChecklist`, SALVAGE order, STOCKPILE/ZONES tool, `ST.res` resource HUD, power readout, win-condition beacon.
+
+## City economy
+- **Food:** free at a home fridge (`pawn.home`); costs 5 credits at a shop/bar vendor. No salvage, scrap, synth food, or material stockpiles.
+- **Credits:** citizens earn credits through work jobs; spent on vendor food, lost to eviction rent, or transferred by crime events.
+- **Eviction:** citizens who exhaust credits are evicted (removed from play). HUD tracks the running evicted count.
+- **Build cost:** all 14 city fixtures require labor only — no `ST.res` material cost.
+
+## Dormant dead code (do NOT delete)
+The roguelike plumbing from the colony era is intentionally preserved for a future cleanup pass or potential re-use: raid spawner (`spawnRaid`), `ST.res` material resources, salvage/cook/haul job branches, stockpile zones, power system (`powerRecalc`, generator/turret structs), extraction-beacon win condition, survival checklist (`renderChecklist`/`updateFlags`), SALVAGE order, STOCKPILE/ZONES tool.
 
 ## Testing
 `node test/run.js` — extracts the script from index.html, prepends DOM/canvas stubs (test/stubs.js, including an in-memory localStorage shim), runs test/smoke.js. Current tests:
-A drafted-pawn kill · B turret kill · C salvage→haul · D wall-breach AI · E A* corner-to-corner · F1/F2/F3 job-AI decisions (industrious→build, curious→recreate, hunger hard-gate→eat) · G1–G14 save/load round-trip (Map/Set/Uint8Array rebuild, transient-ref stripping, reservation clearing, post-load AI re-derive).
-A/B/D drive combat by calling `spawnFoeAt` directly (the live game no longer spawns foes). The old "8-day auto-player baseline" was replaced by the F1–F3 decision tests.
+A drafted-pawn kill · B turret kill · C city economy (food+credits, 2-day run) · D wall-breach combat primitive · E A* corner-to-corner · F1/F2/F3 job-AI decisions (industrious→build, curious→recreate, hunger hard-gate→eat) · G1–G15 save/load round-trip (Map/Set/Uint8Array rebuild, transient-ref stripping, reservation clearing, post-load AI re-derive, relationship graph).
+A/B/D drive combat by calling `spawnFoeAt` directly (live game spawns no foes). C replaced the old salvage→haul chain test with a city-economy health check.
 
 ## Balance state — OPEN
-Human playtest data does not exist yet. **Note:** the previously-listed combat levers (raid points curve in `spawnRaid`, turret cost/DPS, `FOED.ganger`, `WEAP`) are **dormant** — raids are cut, so they affect only the test harness, not live difficulty. Live difficulty now lives in the social-sim economy: rent/eviction (−34 credits/day in `tick`), `fireEvent` social-shock frequency/severity, the enforcer **heat** system, and `scoreJobs` need/economy balance. Do not tune blind; require the owner's playtest verdict first.
+Human playtest data does not exist yet. Live difficulty levers: `fireEvent` social-shock frequency/severity, the enforcer **heat** system, eviction credit drain rate, and `scoreJobs` need/economy balance. Do not tune blind; require the owner's playtest verdict first.
 
 ## Roadmap (owner-approved candidates, in rough priority)
 1. ~~Save/load via localStorage~~ — **DONE** (`saveGame`/`loadGame`, single-slot, regression-tested as smoke test G). JSON export/import backup path still open.

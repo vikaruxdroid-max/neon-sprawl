@@ -145,11 +145,9 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 <canvas id="c"></canvas>
 <div id="hud" class="panel">
   <b id="h-day">DAY 1 06:00</b>
-  <span class="res"><i class="sw" style="background:#ff9f2d"></i>SCR <b id="h-scrap">0</b></span>
-  <span class="res"><i class="sw" style="background:#39ff88"></i>CMP <b id="h-comp">0</b></span>
-  <span class="res"><i class="sw" style="background:#b8ff5e"></i>PRO <b id="h-raw">0</b></span>
-  <span class="res"><i class="sw" style="background:#00e5ff"></i>MEAL <b id="h-meal">0</b></span>
-  <span class="res"><i class="sw" style="background:#ffd84a"></i><span id="h-pwr">PWR 0/0</span></span>
+  <span class="res"><i class="sw" style="background:#00e5ff"></i>POP <b id="h-pop">7</b></span>
+  <span class="res"><i class="sw" style="background:#39ff88"></i>CR <b id="h-cred">0</b></span>
+  <span class="res"><i class="sw" style="background:#ff9f2d"></i>EVICTED <b id="h-home">0</b></span>
   <span class="res"><i class="sw" style="background:#ff4757"></i>HEAT <b id="h-heat">0</b></span>
   <span id="h-extract" style="display:none">EXTRACT <b id="h-exv">0%</b></span>
   <span class="gap"></span>
@@ -178,7 +176,6 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 <div id="toolbar" class="panel">
   <button class="tb" id="t-build">BUILD</button>
   <button class="tb" id="t-orders">ORDERS</button>
-  <button class="tb" id="t-zones">ZONES</button>
   <button class="tb" id="t-draft" style="display:none">DRAFT [R]</button>
 </div>
 <button id="cancelTool" class="tb warnb">✕ CANCEL TOOL</button>
@@ -232,27 +229,27 @@ const DEF={
   ruin:  {name:"Derelict Wall", nat:1, blocks:1, hp:140, col:"#332f23"},
   scrap: {name:"Scrap Heap",    nat:1, blocks:1, hp:1, work:140},
   cache: {name:"Supply Cache",  nat:1, blocks:1, hp:1, work:60},
-  wall:  {name:"Plasteel Wall", cost:{scrap:4},          hp:220, blocks:1, work:60,  cat:"b", desc:"Cheap, sturdy barrier."},
-  door:  {name:"Blast Door",    cost:{scrap:7},          hp:170, blocks:2, work:90,  cat:"b", desc:"Runners pass. Raiders breach."},
-  pod:   {name:"Sleep Pod",     cost:{scrap:14},         hp:80,  blocks:0, work:120, cat:"b", desc:"Fast, comfortable rest."},
+  wall:  {name:"Plasteel Wall", cost:{},          hp:220, blocks:1, work:60,  cat:"b", desc:"Cheap, sturdy barrier."},
+  door:  {name:"Blast Door",    cost:{},          hp:170, blocks:2, work:90,  cat:"b", desc:"Citizens pass; controls flow."},
+  pod:   {name:"Sleep Pod",     cost:{},          hp:80,  blocks:0, work:120, cat:"b", desc:"A bed — assign a resident."},
   synth: {name:"Synth Station", cost:{scrap:20,comp:2},  hp:100, blocks:1, work:160, pw:2, cat:"b", desc:"Cooks meals from synth-protein."},
   vat:   {name:"Algae Vat",     cost:{scrap:25,comp:2},  hp:100, blocks:1, work:180, pw:3, cat:"b", desc:"Grows synth-protein over time."},
   gen:   {name:"Fusion Cell",   cost:{scrap:30,comp:3},  hp:120, blocks:1, work:200, pwGen:12, cat:"b", desc:"Generates 12 power."},
-  lamp:  {name:"Neon Lamp",     cost:{scrap:5,comp:1},   hp:40,  blocks:0, work:30,  pw:1, cat:"b", desc:"Light + small mood aura at night."},
+  lamp:  {name:"Neon Lamp",     cost:{},   hp:40,  blocks:0, work:30,  pw:1, cat:"b", desc:"Light + small mood aura at night."},
   turret:{name:"Auto-Turret",   cost:{scrap:30,comp:4},  hp:180, blocks:1, work:220, pw:4, cat:"b", desc:"Fires on hostiles in range."},
   beacon:{name:"Extraction Beacon", cost:{scrap:80,comp:12}, hp:240, blocks:1, work:420, pw:8, cat:"b", desc:"Keep powered one full day to escape the sprawl."},
-  fridge:     {name:"Cooler Unit",  hp:60, blocks:1, desc:"Stores food and drink."},
-  toilet:     {name:"San Unit",     hp:40, blocks:1, desc:"Hygiene fixture."},
-  shower:     {name:"Mist Shower",  hp:40, blocks:1, desc:"Hygiene fixture."},
-  tv:         {name:"Holoscreen",   hp:30, blocks:0, desc:"Entertainment."},
-  gym:        {name:"Flex Rig",     hp:60, blocks:1, desc:"Exercise, stress relief."},
-  workstation:{name:"Workstation",  hp:60, blocks:1, desc:"Corp terminal — paid work."},
-  counter:    {name:"Shop Counter", hp:80, blocks:1, desc:"Buy goods; clerk station."},
-  bar:        {name:"Bar Counter",  hp:80, blocks:1, desc:"Drinks, socializing, deals."},
-  medbed:     {name:"Med Bay",      hp:80, blocks:0, desc:"Treat injury and disease."},
-  dealer:     {name:"Dealer Spot",  hp:40, blocks:0, desc:"Substances, off the books."}
+  fridge:     {name:"Cooler Unit",  cost:{}, hp:60, blocks:1, work:90,  cat:"b", desc:"Home/vendor food source."},
+  toilet:     {name:"San Unit",     cost:{}, hp:40, blocks:1, work:80,  cat:"b", desc:"Hygiene fixture."},
+  shower:     {name:"Mist Shower",  cost:{}, hp:40, blocks:1, work:80,  cat:"b", desc:"Hygiene fixture."},
+  tv:         {name:"Holoscreen",   cost:{}, hp:30, blocks:0, work:80,  cat:"b", desc:"Entertainment, leisure."},
+  gym:        {name:"Flex Rig",     cost:{}, hp:60, blocks:1, work:120, cat:"b", desc:"Exercise, stress relief."},
+  workstation:{name:"Workstation",  cost:{}, hp:60, blocks:1, work:140, cat:"b", desc:"Corp terminal — paid work."},
+  counter:    {name:"Shop Counter", cost:{}, hp:80, blocks:1, work:120, cat:"b", desc:"Vendor — food/goods + clerk job."},
+  bar:        {name:"Bar Counter",  cost:{}, hp:80, blocks:1, work:120, cat:"b", desc:"Drinks, food, socializing, deals."},
+  medbed:     {name:"Med Bay",      cost:{}, hp:80, blocks:0, work:160, cat:"b", desc:"Treat injury and disease."},
+  dealer:     {name:"Dealer Spot",  cost:{}, hp:40, blocks:0, work:100, cat:"b", desc:"Substances, off the books."}
 };
-const BUILD_ORDER=["wall","door","pod","synth","vat","gen","lamp","turret","beacon"];
+const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","workstation","counter","bar","medbed","dealer"];
 const RESCOL={scrap:"#ff9f2d",comp:"#39ff88",raw:"#b8ff5e",meal:"#00e5ff"};
 const RESNAME={scrap:"scrap",comp:"components",raw:"protein",meal:"meals"};
 
@@ -509,7 +506,7 @@ function genCity(){
   // residential row — one home per citizen (bed + hygiene + screen)
   for(let i=0;i<7;i++){const x0=4+i*7,y0=6;
     placeRoom(x0,y0,5,4,{x:x0+2,y:y0+3},
-      [{t:"pod",x:1,y:1},{t:"shower",x:3,y:1},{t:"toilet",x:3,y:2},{t:"tv",x:1,y:2}]);
+      [{t:"pod",x:1,y:1},{t:"fridge",x:2,y:1},{t:"shower",x:3,y:1},{t:"tv",x:1,y:2},{t:"toilet",x:3,y:2}]);
     ST.cityHomes.push({x0,y0,w:5,h:4,bed:{x:x0+1,y:y0+1},door:{x:x0+2,y:y0+3}})}
   // workplaces along the strip, with an open plaza (x23-31) left between
   placeRoom(4,16,10,6,{x:8,y:21},[{t:"workstation",x:1,y:1},{t:"workstation",x:3,y:1},{t:"workstation",x:5,y:1},{t:"workstation",x:7,y:1},{t:"gym",x:1,y:4},{t:"fridge",x:8,y:4}]);   // corp office
@@ -630,6 +627,11 @@ function randNear(p,r){for(let i=0;i<10;i++){
   if(colCost(X,Y)>=0)return{x:X,y:Y}}return null}
 
 /* job search */
+function homeFixture(p,type){if(!p.home)return null;const h=p.home;
+  for(const s of ST.structs.values()){
+    if(s.bp||s.type!==type)continue;
+    if(s.x>=h.x0&&s.x<h.x0+h.w&&s.y>=h.y0&&s.y<h.y0+h.h&&!unre(p,s.x,s.y))return s}
+  return null}
 function nearestStruct(p,fn){let best=null,bd=1e9;
   for(const s of ST.structs.values()){if(!fn(s))continue;
     if(unre(p,s.x,s.y))continue;
@@ -641,15 +643,10 @@ function nearestItem(p){let best=null,bd=1e9;
     const d=DIST(p.px,p.py,it.x+.5,it.y+.5);if(d<bd){bd=d;best=it}}
   return best}
 function mkEat(p){
-  if(ST.res.meal>0||ST.res.raw>0){
-    let c=nearestZoneCell(p.px,p.py),adj=0;
-    if(!c){const stn=nearestStruct(p,s=>s.type==="synth"&&!s.bp);
-      if(stn){c={x:stn.x,y:stn.y};adj=1}}
-    if(!c)c={x:p.px|0,y:p.py|0};
-    return{t:"eat",x:c.x,y:c.y,adj,prog:0,buy:false}}
-  const fr=nearestStruct(p,s=>s.type==="fridge"&&!s.bp);
-  if(fr)return{t:"eat",x:fr.x,y:fr.y,adj:1,prog:0,buy:true};
-  return null}
+  const home=(!p.homeless)&&homeFixture(p,"fridge");
+  const src=home||nearestStruct(p,s=>(s.type==="fridge"||s.type==="counter"||s.type==="bar")&&!s.bp);
+  if(!src)return null;
+  return{t:"eat",x:src.x,y:src.y,adj:1,prog:0,home:!!home};}
 function mkSleep(p){let pod=null;
   for(const s of ST.structs.values()){
     if(s.type!=="pod"||s.bp||unre(p,s.x,s.y))continue;
@@ -666,7 +663,7 @@ function scoreJobs(p){
   const salvStr=nearestStruct(p,s=>s.desig&&!s.res&&(s.type==="scrap"||s.type==="cache"));
   const haulItem=ST.zone.size>0?nearestItem(p):null;
   const hyg=p.needs.hyg??80,fun=p.needs.fun??70,socN=p.needs.socN??70,soc=p.pers.soc;
-  const showStr=nearestStruct(p,s=>(s.type==="shower"||s.type==="toilet")&&!s.bp);
+  const showStr=(!p.homeless&&(homeFixture(p,"shower")||homeFixture(p,"toilet")))||nearestStruct(p,s=>(s.type==="shower"||s.type==="toilet")&&!s.bp);
   const funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar")&&!s.bp);
   let mate=null,_md=1e9;for(const q of ST.pawns){if(q.id===p.id)continue;const dd=DIST(p.px,p.py,q.px,q.py);if(dd<_md){_md=dd;mate=q}}
   const cred=p.credits??40;
@@ -847,11 +844,9 @@ function pawnTick(p){
       if(r==="fail"){markUnre(p,j.x,j.y);p.job=null;break}
       if(r==="arr"){j.prog++;
         if(j.prog>=22){
-          if(j.buy){p.credits=(p.credits||0)-5;p.needs.food=100;addMod(p,"meal","Bought a meal",4,TPD*.5)}
-          else if(ST.res.meal>0){ST.res.meal--;p.needs.food=100;addMod(p,"meal","Hot synth-meal",5,TPD*.5)}
-          else if(ST.res.raw>0){ST.res.raw--;p.needs.food=Math.min(100,p.needs.food+55);
-            addMod(p,"raw","Ate raw protein",-6,TPD*.4)}
-          else{p.needs.food=Math.min(100,p.needs.food+40);addMod(p,"scraps","Scrounged scraps",-4,TPD*.3)}
+          if(j.home){p.needs.food=100;addMod(p,"meal","Ate at home",4,TPD*.5)}
+          else if((p.credits||0)>=5){p.credits-=5;p.needs.food=100;addMod(p,"meal","Bought a meal",3,TPD*.5)}
+          else{p.needs.food=Math.min(100,p.needs.food+16);addMod(p,"hungry","Couldn't afford a real meal",-7,TPD*.3)}
           let other=null,od=1e9;for(const q of ST.pawns){if(q.id===p.id)continue;const dd=Math.hypot(p.px-q.px,p.py-q.py);if(dd<od){od=dd;other=q}}
           if(other&&od<6){relAdj(p.id,other.id,3);applyDrift(p,{soc:2})}
           p.job=null;syncHUD()}}
@@ -1168,32 +1163,12 @@ function win(){if(ST.phase!=="run")return;ST.phase="win";SFX.good();
     statRows()+"<button class='tb big' id='m-restart'>RUN IT AGAIN</button>")}
 
 /* ---------- master tick ---------- */
-function updateFlags(){const F=ST.flags;
-  if(!F.zone&&ST.zone.size>=4)F.zone=true;
-  let walls=0,doors=0,pods=0,synth=false,vat=false,gen=false,tur=false,bea=false;
-  for(const s of ST.structs.values()){if(s.bp)continue;
-    if(s.type==="wall")walls++;if(s.type==="door")doors++;if(s.type==="pod")pods++;
-    if(s.type==="synth")synth=true;if(s.type==="vat")vat=true;
-    if(s.type==="gen")gen=true;if(s.type==="turret")tur=true;if(s.type==="beacon")bea=true}
-  if(!F.haul&&ST.stats.hauled>=3)F.haul=true;
-  if(!F.wall&&walls>=8&&doors>=1)F.wall=true;
-  if(!F.pod&&pods>=2)F.pod=true;
-  if(!F.food&&synth&&vat)F.food=true;
-  if(!F.pwr&&gen)F.pwr=true;
-  if(!F.def&&tur)F.def=true;
-  if(!F.beacon&&bea)F.beacon=true;
-  renderChecklist()}
+function updateFlags(){}  // survival checklist retired — sandbox city has no win-objectives
 function tick(){ST.tick++;
   if(ST.tick%10===0)powerRecalc();
   if(ST.tick%5===0){const P=ST.pawns;for(let i=0;i<P.length;i++)for(let j=i+1;j<P.length;j++)
     if(DIST(P[i].px,P[i].py,P[j].px,P[j].py)<5)relAdj(P[i].id,P[j].id,0.02)}
-  if(ST.tick%20===0){
-    for(const s of ST.structs.values()){if(s.bp)continue;
-      if(s.type==="vat"&&s.powered){s.vt+=20;
-        if(s.vt>=600){s.vt=0;ST.res.raw+=3;
-          float(s.x+.5,s.y+.5,"+3 PROTEIN","#b8ff5e");syncHUD()}}
-      if(s.type==="beacon"&&s.powered){s.charge+=20;
-        if(s.charge>=TPD)win()}}}
+  // (roguelike vat-protein production + beacon-extraction win removed — the city has neither)
   for(let i=ST.pawns.length-1;i>=0;i--)pawnTick(ST.pawns[i]);
   for(const f of ST.foes)if(!f.gone&&f.hp>0)foeTick(f);
   for(const s of ST.structs.values())if(s.type==="turret")turretTick(s);
@@ -1932,10 +1907,9 @@ $("modal").addEventListener("click",e=>{const id=e.target.id;
   else if(id==="m-close"){SFX.ui();hideModal()}});
 
 function syncHUD(){
-  $("h-scrap").textContent=ST.res.scrap;$("h-comp").textContent=ST.res.comp;
-  $("h-raw").textContent=ST.res.raw;$("h-meal").textContent=ST.res.meal;
-  const pw=$("h-pwr");pw.textContent="PWR "+ST.pwU+"/"+ST.pwG;
-  pw.classList.toggle("bad",!ST.pwOk&&ST.pwU>0);
+  $("h-pop").textContent=ST.pawns.length;
+  $("h-cred").textContent=Math.round(ST.pawns.reduce((s,p)=>s+(p.credits||0),0));
+  $("h-home").textContent=ST.pawns.filter(p=>p.homeless).length;
   const h=hourN();
   const hh=String(Math.floor(h)).padStart(2,"0");
   const mm=String(Math.floor((h%1)*60)).padStart(2,"0");
@@ -2127,8 +2101,7 @@ $("ch-input").addEventListener("keydown",e=>{e.stopPropagation();
 /* toolbar */
 let subCat=null;
 function refreshCats(){$("t-build").classList.toggle("on",subCat==="b");
-  $("t-orders").classList.toggle("on",subCat==="o");
-  $("t-zones").classList.toggle("on",subCat==="z")}
+  $("t-orders").classList.toggle("on",subCat==="o")}
 function closeSub(){subCat=null;$("submenu").classList.remove("open");refreshCats()}
 function refreshToolBtns(){const sm=$("submenu");
   for(const b of sm.children){const dt=b.dataset.tool;let on=false;
@@ -2141,19 +2114,17 @@ function openSub(cat){if(subCat===cat){closeSub();return}
     b.dataset.tool=tool.k==="build"?"build:"+tool.type:tool.k;
     b.onclick=()=>{SFX.ui();setTool(tool)};sm.appendChild(b)}
   if(cat==="b"){for(const t of BUILD_ORDER){const d=DEF[t];
-    const cost=Object.entries(d.cost).map(([k,v])=>v+" "+k).join(" + ");
+    const cost=d.work?(" ⚒"+d.work):"";
     mk(d.name+"<span class='cost'>"+cost+"</span>",{k:"build",type:t},d.desc)}}
   else if(cat==="o"){
-    mk("SALVAGE",{k:"salv"},"Drag over scrap heaps and caches");
-    mk("DECONSTRUCT",{k:"decon"},"Drag over structures to tear down (50% refund / ruins yield scrap)");
-    mk("CANCEL",{k:"cancel"},"Drag to cancel blueprints and designations")}
+    mk("DECONSTRUCT",{k:"decon"},"Drag over structures to tear them down");
+    mk("CANCEL",{k:"cancel"},"Drag to cancel blueprints")}
   else{
     mk("STOCKPILE +",{k:"zadd"},"Drag to zone a stockpile — hauled goods become usable here");
     mk("STOCKPILE −",{k:"zdel"},"Drag to remove stockpile cells")}
   sm.classList.add("open");refreshCats();refreshToolBtns()}
 $("t-build").onclick=()=>{SFX.ui();openSub("b")};
 $("t-orders").onclick=()=>{SFX.ui();openSub("o")};
-$("t-zones").onclick=()=>{SFX.ui();openSub("z")};
 $("t-draft").onclick=toggleDraft;
 $("b-all").onclick=()=>{SFX.ui();ST.sel=ST.pawns.slice();renderInspect();syncHUD()};
 $("b-save").onclick=()=>{SFX.ui();saveGame()};
@@ -2254,11 +2225,11 @@ function newGame(){
   const cx=MW/2|0,cy=MH/2|0;
   const vex=mkPawn(21,15,"sal");
   vex.name="Vex";Object.assign(vex.pers,{ind:40,cau:30,soc:60,cur:80,amb:55,emp:55,imp:70,intg:35});vex.accent=tempCols(vex.pers)[0];vex.sched=mkSched(vex.pers,vex.tr);
-  vex.mem=[{d:0,h:6,t:"holed up in this dead district with Static when the daylight ran out"},{d:0,h:6,t:"I move fast and don't sweat the rules — it's what's kept me breathing"}];
+  vex.mem=[{d:0,h:6,t:"carved out a place in this sprawl alongside Static"},{d:0,h:6,t:"I move fast and don't sweat the rules — it's what's kept me breathing"}];
   ST.pawns.push(vex);
   const sta=mkPawn(35,15,"bld");
   sta.name="Static";Object.assign(sta.pers,{ind:80,cau:65,soc:45,cur:25,amb:60,emp:50,imp:25,intg:75});sta.accent=tempCols(sta.pers)[0];sta.sched=mkSched(sta.pers,sta.tr);
-  sta.mem=[{d:0,h:6,t:"holed up here with Vex — somebody's got to keep this block standing"},{d:0,h:6,t:"I grind steady and careful; Vex thinks I'm too slow about it"}];
+  sta.mem=[{d:0,h:6,t:"settled into this block with Vex — somebody's got to keep it running straight"},{d:0,h:6,t:"I grind steady and careful; Vex thinks I'm too slow about it"}];
   ST.pawns.push(sta);
   // populace — scatter procedural agents across walkable cells until POP is reached
   {let tries=0;while(ST.pawns.length<POP&&tries<4000){tries++;
@@ -2266,12 +2237,14 @@ function newGame(){
     if(colCost(x,y)<0)continue;
     if(ST.pawns.some(q=>(q.px|0)===x&&(q.py|0)===y))continue;
     ST.pawns.push(mkPawn(x,y))}}
+  {let hi=0;for(const p of ST.pawns){const home=ST.cityHomes[hi%ST.cityHomes.length];hi++;p.home=home;
+    const bedS=structAt(home.bed.x,home.bed.y);if(bedS&&bedS.type==="pod")bedS.owner=p.id}}
   cam.z=clamp(Math.min(VW/(MW*T),VH/(MH*T))*1.9,1,2.2);
   cam.x=cx*T-VW/cam.z/2;cam.y=cy*T-VH/cam.z/2;clampCam();
   ST.lastRaid=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.rel={};relAdj(vex.id,sta.id,25);ST.heat=0;ST.heatWarn=false;
   $("log").innerHTML="";renderRoster();
-  log("Vex and Static holed up in the dead district. Daylight won't last.","info");
-  log("Zone a stockpile, mark scrap for salvage, and get walls up before the gangs notice.","info");
+  log("The sprawl wakes — citizens drifting to homes, jobs, and the night's vices.","info");
+  log("You watch over the district. Build it out, steer who you can, and keep the block from tearing itself apart.","info");
   powerRecalc();updateFlags();syncHUD();renderInspect();refreshSpd();hideModal();
   banner("DAY 1 — THE SPRAWL","good")}
 

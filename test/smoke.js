@@ -24,28 +24,27 @@ function T_combat(){
   console.log("B turret kill:",tkill?"PASS":"FAIL");
 }
 function T_economy(){
+  // C — city economy: citizens stay fed (home/vendor) and earn credits over 2 days
   newGame();ST.nextEv=1e9;
-  const cx=MW/2|0,cy=MH/2|0;
-  for(let y=cy;y<=cy+1;y++)for(let x=cx-1;x<=cx+1;x++)
-    if(colCost(x,y)>=0)ST.zone.add(K(x,y));
-  for(const s of ST.structs.values())if(s.type==="scrap")s.desig=true;
-  const start=ST.res.scrap;
-  for(let i=0;i<TPD;i++)tick();
-  const ok=ST.res.scrap>start+30&&ST.stats.salv>3;
-  if(!ok)fails++;
-  console.log("C salvage->haul chain:",ok?"PASS":"FAIL",
-    "scrap="+ST.res.scrap,"salv="+ST.stats.salv,"hauled="+ST.stats.hauled);
+  for(let i=0;i<TPD*2;i++)tick();
+  const alive=ST.pawns.length;
+  const avgFood=alive?ST.pawns.reduce((s,p)=>s+p.needs.food,0)/alive:0;
+  const earners=ST.pawns.filter(p=>(p.credits||0)>0).length;
+  const cOk=alive>=5&&avgFood>30&&earners>=3;
+  if(!cOk)fails++;
+  console.log("C city economy (food+credits):",cOk?"PASS":"FAIL","alive="+alive,"avgFood="+Math.round(avgFood),"earners="+earners);
+  // D — combat primitive: hostile breaches a wall ring and reaches a pinned citizen
+  newGame();
   const p=ST.pawns[0];if(!p){console.log("D skipped");return}
-  const bx=p.px|0,by=p.py|0;ST.res.scrap+=100;
-  for(let k=0;k<8;k++){const X=bx+DIRS[k][0],Y=by+DIRS[k][1];
-    if(INB(X,Y)&&!structAt(X,Y))placeBp("wall",X,Y)}
+  p.px=28;p.py=12;p.job=null;p.sleeping=false;p.drafted=false;
+  const bx=p.px|0,by=p.py|0;
+  for(let k=0;k<8;k++){const X=bx+DIRS[k][0],Y=by+DIRS[k][1];if(INB(X,Y)&&!structAt(X,Y))placeBp("wall",X,Y)}
   for(const s of ST.structs.values())if(s.bp&&s.type==="wall"){s.bp=false;s.hp=s.maxHp}
   spawnFoeAt("bruiser",clamp(bx+6,1,MW-2),clamp(by,1,MH-2),uid());
   let breached=false;
-  for(let i=0;i<2500;i++){tick();
-    if(ST.pawns.indexOf(p)<0||p.hp<100){breached=true;break}}
+  for(let i=0;i<2500;i++){tick();if(ST.pawns.indexOf(p)<0||p.hp<100){breached=true;break}}
   if(!breached)fails++;
-  console.log("D wall breach AI:",breached?"PASS":"FAIL");
+  console.log("D wall breach (combat primitive):",breached?"PASS":"FAIL");
 }
 function T_path(){
   newGame();
