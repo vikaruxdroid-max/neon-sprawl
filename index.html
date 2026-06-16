@@ -224,10 +224,50 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   background:rgba(4,10,22,.95);border:1px solid var(--bd);border-radius:8px;
   box-shadow:0 -4px 20px rgba(0,0,0,.5)}
 #submenu{position:fixed;bottom:54px;left:50%;transform:translateX(-50%);
-  display:none;gap:5px;padding:5px;max-width:96vw;overflow-x:auto;
-  background:rgba(4,10,22,.95);border:1px solid var(--bd);border-radius:8px}
+  display:none;flex-direction:column;gap:6px;padding:8px;max-width:96vw;max-height:62vh;overflow-y:auto;
+  background:rgba(4,10,22,.97);border:1px solid var(--bd);border-radius:10px;
+  box-shadow:0 -4px 24px rgba(0,0,0,.6);min-width:280px}
 #submenu.open{display:flex}
 #submenu .cost{color:var(--or);font-size:10px;margin-left:4px}
+/* submenu header — wallet readout */
+.sm-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:2px 4px 6px;border-bottom:1px solid var(--bd);margin-bottom:2px}
+.sm-title{font-family:var(--disp);font-size:11px;letter-spacing:.14em;color:var(--cy)}
+.sm-wallet{display:flex;align-items:center;gap:5px;font-family:var(--disp);font-size:13px;font-weight:700;color:var(--yl)}
+.sm-wallet .coin{width:13px;height:13px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#ffe07a,#e0a020 70%);
+  border:1px solid #b8851a;box-shadow:0 0 6px rgba(255,200,80,.4)}
+/* build category section */
+.bcat{font-family:var(--disp);font-size:9px;letter-spacing:.18em;color:var(--dim);
+  margin:4px 2px 1px;text-transform:uppercase}
+.bgrid{display:grid;grid-template-columns:repeat(2,minmax(125px,1fr));gap:5px}
+/* build card — the affordability is the whole story */
+.bcard{display:flex;align-items:center;gap:7px;padding:6px 8px;cursor:pointer;
+  background:rgba(8,18,36,.7);border:1px solid var(--bd);border-radius:7px;
+  transition:border-color .12s,background .12s,opacity .12s;text-align:left}
+.bcard .ic{font-size:16px;line-height:1;width:18px;text-align:center;flex-shrink:0}
+.bcard .nm{flex:1;font-size:11px;font-weight:600;line-height:1.15}
+.bcard .pr{display:flex;align-items:center;gap:3px;font-size:10px;font-weight:700;font-family:var(--disp)}
+.bcard .pr .coin{width:10px;height:10px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#ffe07a,#e0a020 70%);border:1px solid #b8851a}
+.bcard .pr.free{color:var(--gn)}
+/* affordable: bright, cyan-edged. unaffordable: dim, red price */
+.bcard.afford{border-color:rgba(0,212,255,.3)}
+.bcard.afford:hover{border-color:var(--cy);background:rgba(0,212,255,.08)}
+.bcard.afford .pr{color:var(--yl)}
+.bcard.broke{opacity:.45;cursor:not-allowed}
+.bcard.broke .pr{color:var(--rd)}
+.bcard.on{border-color:var(--cy);background:rgba(0,212,255,.14);box-shadow:0 0 0 1px var(--cy) inset}
+/* command grid */
+.cmd-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.cmd-b{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px;cursor:pointer;
+  background:rgba(8,18,36,.7);border:1px solid var(--bd);border-radius:7px;
+  font-family:var(--disp);font-weight:600;font-size:9.5px;letter-spacing:.04em;
+  transition:border-color .12s,background .12s}
+.cmd-b:hover{border-color:var(--cy);background:rgba(0,212,255,.08);color:var(--cy)}
+.cmd-b .ci{font-size:17px;line-height:1}
+.cmd-sel{font-size:10px;color:var(--dim);padding:2px 4px}
+.cmd-sel b{color:var(--cy)}
 #cancelTool{position:fixed;bottom:62px;left:50%;transform:translateX(-50%);
   display:none;z-index:21;padding:9px 14px;font-size:12px}
 
@@ -246,6 +286,46 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   align-items:center;justify-content:center;z-index:50;
   backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
 #modal.open{display:flex}
+/* ── FULL-SCREEN OVERLAY WINDOWS (diary / crew / district) ── */
+#overlay{position:fixed;inset:0;background:rgba(1,4,8,.9);display:none;z-index:55;
+  backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  flex-direction:column;align-items:center;padding:24px 16px}
+#overlay.open{display:flex}
+.ov-box{width:min(860px,96vw);max-height:90vh;display:flex;flex-direction:column;
+  border:1px solid rgba(0,212,255,.3);background:rgba(4,10,22,.99);border-radius:12px;
+  box-shadow:0 0 70px rgba(0,212,255,.14);overflow:hidden}
+.ov-head{display:flex;align-items:center;justify-content:space-between;
+  padding:14px 18px;border-bottom:1px solid var(--bd);flex-shrink:0}
+.ov-head h2{margin:0;font-family:var(--disp);font-size:16px;letter-spacing:.22em;color:var(--cy)}
+.ov-x{cursor:pointer;font-size:18px;color:var(--dim);padding:2px 8px;line-height:1;border-radius:6px;transition:.12s}
+.ov-x:hover{color:var(--rd);background:rgba(255,61,90,.1)}
+.ov-tabs{display:flex;gap:4px;flex-wrap:wrap;padding:10px 18px 0;flex-shrink:0}
+.ov-tab{font-family:var(--disp);font-size:10px;letter-spacing:.1em;color:var(--dim);
+  padding:5px 12px;cursor:pointer;border:1px solid var(--bd);border-radius:6px;transition:.12s}
+.ov-tab:hover{color:var(--tx);border-color:var(--cy)}
+.ov-tab.on{color:var(--cy);border-color:var(--cy);background:rgba(0,212,255,.1)}
+.ov-body{flex:1;overflow-y:auto;padding:14px 18px;min-height:120px}
+.ov-body::-webkit-scrollbar{width:5px}
+.ov-body::-webkit-scrollbar-thumb{background:var(--bd);border-radius:3px}
+/* crew grid */
+.crew-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.crew-card{display:flex;align-items:center;gap:9px;padding:9px 11px;cursor:pointer;
+  background:rgba(8,18,36,.7);border:1px solid var(--bd);border-radius:9px;transition:.12s}
+.crew-card:hover{border-color:var(--cy);background:rgba(0,212,255,.07)}
+.crew-card.sel{border-color:var(--cy);box-shadow:0 0 0 1px var(--cy) inset}
+.crew-ava{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-family:var(--disp);font-weight:700;font-size:14px;color:#04101a;flex-shrink:0}
+.crew-meta{flex:1;min-width:0}
+.crew-nm{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crew-st{font-size:9.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crew-flags{display:flex;gap:3px;margin-top:2px}
+.crew-flag{font-size:8px;padding:1px 4px;border-radius:3px;font-weight:700;letter-spacing:.03em}
+/* crew detail (focused citizen) */
+.crew-detail{padding:0}
+.cd-back{display:inline-flex;align-items:center;gap:5px;cursor:pointer;color:var(--cy);
+  font-size:11px;font-family:var(--disp);margin-bottom:10px}
+.cd-back:hover{text-decoration:underline}
+.hud-icon{font-size:14px;line-height:1}
 .mbox{width:min(580px,92vw);max-height:88vh;overflow-y:auto;padding:26px 30px;
   border:1px solid rgba(0,212,255,.25);background:rgba(4,10,22,.98);
   box-shadow:0 0 60px rgba(0,212,255,.12);border-radius:10px}
@@ -313,37 +393,20 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
     <button class="tb spd" id="sp-2">2×</button>
     <button class="tb spd" id="sp-3">3×</button>
     <span style="width:1px;background:var(--bd);height:20px;margin:0 4px"></span>
-    <button class="tb" id="b-save">SAVE</button>
-    <button class="tb" id="b-load">LOAD</button>
-    <button class="tb" id="b-all">SQUAD</button>
-    <button class="tb" id="b-stats">DISTRICT</button>
-    <button class="tb" id="b-mute">SND</button>
-    <button class="tb" id="b-help">?</button>
+    <button class="tb" id="b-diary" title="Diary"><span class="hud-icon">📖</span></button>
+    <button class="tb" id="b-crew" title="Crew"><span class="hud-icon">👥</span></button>
+    <button class="tb" id="b-stats" title="District"><span class="hud-icon">📊</span></button>
+    <span style="width:1px;background:var(--bd);height:20px;margin:0 4px"></span>
+    <button class="tb" id="b-save" title="Save">💾</button>
+    <button class="tb" id="b-load" title="Load">📂</button>
+    <button class="tb" id="b-mute" title="Sound">🔊</button>
+    <button class="tb" id="b-help" title="Help">?</button>
   </div>
-</div>
-
-<!-- DIARY (replaces log) -->
-<div id="diary" class="panel">
-  <button id="diary-toggle" title="Collapse diary">◀</button>
-  <div class="diary-tabs">
-    <span class="dtab on" data-cat="all">ALL</span>
-    <span class="dtab" data-cat="crime">CRIME</span>
-    <span class="dtab" data-cat="eco">ECO</span>
-    <span class="dtab" data-cat="social">SOCIAL</span>
-    <span class="dtab" data-cat="health">HEALTH</span>
-    <span class="dtab" data-cat="district">DISTRICT</span>
-  </div>
-  <div class="diary-body" id="diary-body"></div>
 </div>
 
 <div id="checklist" class="panel"><ul id="ck"></ul></div>
-<div id="stats-panel" class="panel"></div>
 <!-- keep #log hidden for compatibility — diary is the visible log now -->
 <div id="log" style="display:none"></div>
-<div id="roster" class="panel" style="background:none;border:none;box-shadow:none">
-  <button id="roster-toggle" title="Collapse roster">▶</button>
-  <div id="roster-inner"></div>
-</div>
 <div id="inspect" class="panel"></div>
 <div id="chat">
   <div class="ch-hd"><h4 id="ch-name">—</h4><span class="ch-x" id="ch-x">✕</span></div>
@@ -352,10 +415,19 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 </div>
 <div id="aimeter"></div>
 <div id="requests" class="panel"></div>
+<!-- FULL-SCREEN OVERLAY (diary / crew / district) -->
+<div id="overlay">
+  <div class="ov-box">
+    <div class="ov-head"><h2 id="ov-title">—</h2><span class="ov-x" id="ov-x">✕</span></div>
+    <div class="ov-tabs" id="ov-tabs"></div>
+    <div class="ov-body" id="ov-body"></div>
+  </div>
+</div>
 <div id="submenu" class="panel"></div>
 <div id="toolbar">
-  <button class="tb" id="t-build">BUILD</button>
-  <button class="tb" id="t-orders">ORDERS</button>
+  <button class="tb mode" id="t-build">⛏ BUILD</button>
+  <button class="tb mode" id="t-zone">▦ ZONE</button>
+  <button class="tb mode" id="t-command">⚇ COMMAND</button>
 </div>
 <button id="cancelTool" class="tb warnb">✕ CANCEL</button>
 <div id="banner"></div>
@@ -478,6 +550,19 @@ const DEF={
   planter:    {name:"Planter",     nat:1, hp:30, blocks:0}
 };
 const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","workstation","chemlab","workshop","stimlab","gearshop","counter","bar","medbed","dealer","farmplot","loggingcamp","mineshaft","park","arcade","hospital","school","housing"];
+// Build menu: curated minimal categories (start small, expand later). Each entry: type.
+const BUILD_CATS=[
+  {name:"Essentials", items:["wall","door","pod","lamp"]},
+  {name:"Living",     items:["fridge","shower","toilet","tv"]},
+  {name:"Industry",   items:["workstation","chemlab","workshop"]},
+  {name:"Trade",      items:["counter","bar"]},
+  {name:"Civic",      items:["medbed","park","school"]},
+  {name:"Growth",     items:["housing"]},
+];
+// glyph per fixture for the build cards
+const BUILD_ICON={wall:"▦",door:"⌷",pod:"☖",lamp:"✦",fridge:"❄",shower:"♒",toilet:"⊡",tv:"▭",gym:"⛏",
+  workstation:"⌨",chemlab:"⚗",workshop:"⚙",stimlab:"⚕",gearshop:"⛭",counter:"▤",bar:"♨",medbed:"✚",
+  dealer:"☠",farmplot:"❀",loggingcamp:"🪓",mineshaft:"⛏",park:"❦",arcade:"►",hospital:"✚",school:"✎",housing:"⌂"};
 
 
 // weapons removed — city sim mode
@@ -581,7 +666,7 @@ function relAdj(a,b,d){if(a===b)return;const k=relKey(a,b);ST.rel[k]=clamp((ST.r
 function structAt(x,y){return ST.structs.get(K(x,y))||null}
 function addStruct(s){ST.structs.set(K(s.x,s.y),s)}
 function removeStruct(s){if(ST.structs.get(K(s.x,s.y))===s)ST.structs.delete(K(s.x,s.y))}
-function terCost(x,y){return ST.ter[x+y*MW]===3?1.2:1}
+function terCost(x,y){const t=ST.ter[x+y*MW];return t===3?0.55:1;}  // roads are cheap → pawns prefer streets
 function colCost(x,y){const s=structAt(x,y);if(!s||s.bp)return terCost(x,y);
   const b=DEF[s.type].blocks;if(b===0)return terCost(x,y);if(b===2)return 1.7;return -1}
 function foeCost(x,y){const s=structAt(x,y);if(!s||s.bp)return 1;const d=DEF[s.type];
@@ -642,10 +727,12 @@ function canPlace(type,x,y){if(!INB(x,y))return false;if(structAt(x,y))return fa
   if(DEF[type].blocks!==0&&entityOn(x,y))return false;return true}
 function placeBp(type,x,y){const d=DEF[type];
   if(!canPlace(type,x,y))return false;
+  if(!afford(d.cost||{}))return false;       // gate: can't queue what you can't pay for
+  pay(d.cost||{});                            // charge district credits up front
   addStruct({id:uid(),kind:"s",type,x,y,hp:1,maxHp:d.hp,bp:true,prog:0,need:d.work,
-    res:0,desig:false,decon:false,owner:0});
+    res:0,desig:false,decon:false,owner:0,paid:(d.cost&&d.cost.income)||0});
   syncHUD();return true}
-function cancelBp(s){removeStruct(s);syncHUD()}
+function cancelBp(s){if(s.paid)ST.income+=s.paid;removeStruct(s);syncHUD()}
 function finishBuild(s){s.bp=false;s.hp=s.maxHp;s.prog=0;ST.stats.built++;
   SFX.build();powerRecalc();
   if(s.type==="housing"){
@@ -791,10 +878,21 @@ function genCity(){
   decor("vendmachine",39,54);decor("vendmachine",39,55);
   decor("vendmachine",93,54);decor("vendmachine",93,55);
 }
+function buildRoadTiles(){
+  // write road type (3) into the terrain grid from the ROADS arterial definitions,
+  // so pathfinding (terCost) and movement prefer the streets.
+  ROADS.h.forEach(([x0,x1,ry])=>{for(let rx=x0;rx<=x1;rx++){
+    if(INB(rx,ry))ST.ter[rx+ry*MW]=3;
+    if(INB(rx,ry+1))ST.ter[rx+(ry+1)*MW]=3;}});
+  ROADS.v.forEach(([rx,y0,y1])=>{for(let ry=y0;ry<=y1;ry++){
+    if(INB(rx,ry))ST.ter[rx+ry*MW]=3;
+    if(INB(rx+1,ry))ST.ter[(rx+1)+ry*MW]=3;}});
+}
 function genMap(){
   ST.ter=new Uint8Array(MW*MH);ST.structs.clear();ST.rooms=[];
   for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){
     const h=hash2(x,y);ST.ter[x+y*MW]=h<.62?0:(h<.88?1:2)}
+  buildRoadTiles();   // mark streets BEFORE the city places structures
   genCity()}
 
 /* ---------- pawns ---------- */
@@ -2309,33 +2407,9 @@ function dayRing(p){
   return{grad:"conic-gradient(from 0deg,"+out.join(",")+")",
     nx:Math.sin(ang*Math.PI/180)*r-2,ny:-Math.cos(ang*Math.PI/180)*r-2};}
 function renderRoster(){
-  const el=$("roster-inner");if(!el)return;
-  let h="<div class='rhdr'>CREW · "+ST.pawns.length+"</div>";
-  for(const p of ST.pawns){
-    const sel=ST.sel.includes(p),mood=p.mood|0;
-    const moodCol=mood>60?"var(--gn)":mood>35?"var(--yl)":"var(--rd)";
-    const task=p.dazed>ST.tick?"dazed":(p.job?(p.job.t||"busy"):"idle");
-    const r=dayRing(p);
-    const tags=[];
-    if(p.sick)tags.push("SICK");if(p.homeless)tags.push("EVICTED");
-    if(p.dazed>ST.tick)tags.push("DAZED");if(p.addiction>40)tags.push("HOOKED");
-    if((p.credits||0)<0)tags.push("BROKE");
-    h+="<div class='rchip"+(sel?" sel":"")+"' data-id='"+p.id+"'>";
-    h+="<div class='rring' style='background:"+r.grad+"'></div>";
-    h+="<div class='rnow' style='transform:translate("+r.nx.toFixed(1)+"px,"+r.ny.toFixed(1)+"px)'></div>";
-    h+="<div class='rava' style='background:"+p.accent+"'>"+p.name.charAt(0)+"</div>";
-    h+="<div class='rmood' style='background:"+moodCol+"'></div>";
-    h+="<div class='rfly'><b style='color:"+p.accent+"'>"+p.name+"</b><span>"+task+"</span>"+(tags.length?"<em>"+tags.join(" · ")+"</em>":"")+"</div>";
-    h+="</div>";
-  }
-  el.innerHTML=h;
-  const hb=$("h-heat");if(hb){hb.textContent=ST.heat|0;hb.className="hud-val"+(ST.heat>60?" danger":ST.heat>30?" warn":"");}}
-const _rEl=$("roster-inner");
-if(_rEl)_rEl.addEventListener("click",function(e){
-  const row=e.target.closest&&e.target.closest(".rchip");if(!row)return;
-  const p=ST.pawns.find(q=>q.id==row.dataset.id);if(!p)return;
-  ST.sel=[p];cam.x=p.px*T-VW/cam.z/2;cam.y=p.py*T-VH/cam.z/2;clampCam();
-  renderInspect();renderRoster()});
+  // roster panel removed from home screen — keep the heat HUD update + live overlay refresh
+  const hb=$("h-heat");if(hb){hb.textContent=ST.heat|0;hb.className="hud-val"+(ST.heat>60?" danger":ST.heat>30?" warn":"");}
+  if(OV.view==="crew"||OV.view==="district")renderOverlay();}
 function animaColor(p){
   const s=clamp(p.stress||0,0,100)/100,m=clamp(p.mood||0,0,100)/100;
   let r,g,b;
@@ -2815,11 +2889,17 @@ cv.addEventListener("wheel",e=>{e.preventDefault();if(ST.phase!=="run")return;
 window.addEventListener("keydown",e=>{const k=e.key.toLowerCase();
   if(e.target&&e.target.tagName==="INPUT")return;
   KEYS[k]=true;
+  // overlay open: Esc closes it (takes priority)
+  if($("overlay").classList.contains("open")){
+    if(k==="escape"){closeOverlay();SFX.ui();}return}
   if($("modal").classList.contains("open")){
     if(k==="escape"&&ST.phase==="run")hideModal();return}
   if(ST.phase!=="run")return;
   if(k===" "){togglePause();e.preventDefault()}
   else if(k==="1")setSpeed(1);else if(k==="2")setSpeed(2);else if(k==="3")setSpeed(3);
+  else if(k==="j")openOverlay("diary");
+  else if(k==="k")openOverlay("crew");
+  else if(k==="l")openOverlay("district");
   else if(k==="escape"){if(TOOL)setTool(null);
     else{ST.sel=[];renderInspect();closeSub();syncHUD()}}});
 window.addEventListener("keyup",e=>{KEYS[e.key.toLowerCase()]=false});
@@ -2904,11 +2984,13 @@ function log(msg,cls){
   if(DIARY_ENTRIES.length>120)DIARY_ENTRIES.pop();
   renderDiary();}
 function renderDiary(){
-  const body=$("diary-body");if(!body)return;
+  // renders into the overlay body when the diary view is active
+  if(OV.view!=="diary")return;
+  const body=$("ov-body");if(!body)return;
   const f=DIARY_FILTER;
   const filtered=f==="all"?DIARY_ENTRIES:DIARY_ENTRIES.filter(e=>e.cat===f);
   let h="",lastDay=-1;
-  for(const e of filtered.slice(0,60)){
+  for(const e of filtered.slice(0,120)){
     if(e.day!==lastDay){
       h+="<div class='dday'>DAY "+e.day+"</div>";lastDay=e.day}
     const hh=String(Math.floor(e.h)).padStart(2,"0");
@@ -2917,15 +2999,139 @@ function renderDiary(){
     h+="<div class='dent'><span class='dtime'>"+hh+":00</span>"
       +"<span class='dtag "+tagCls+"'>"+tagLabel+"</span>"
       +"<span class='dmsg' style='color:"+(e.cls==="bad"?"var(--rd)":e.cls==="warn"?"var(--yl)":e.cls==="good"?"var(--gn)":"var(--tx)")+"'>"+e.msg+"</span></div>"}
-  body.innerHTML=h||"<div style='color:var(--dim);font-size:10px;padding:8px'>No entries yet.</div>";}
-// wire diary tabs (browser only)
-if(typeof document!=="undefined"&&document.addEventListener){
-  document.addEventListener("DOMContentLoaded",()=>{
-    document.querySelectorAll(".dtab").forEach(t=>{
-      t.addEventListener("click",()=>{
-        DIARY_FILTER=t.dataset.cat;
-        document.querySelectorAll(".dtab").forEach(x=>x.classList.remove("on"));
-        t.classList.add("on");renderDiary();})})});}
+  body.innerHTML=h||"<div style='color:var(--dim);font-size:11px;padding:12px'>No entries yet. Events will appear here as the district lives.</div>";}
+
+/* ============================================================
+   OVERLAY WINDOWS — diary / crew / district
+   ============================================================ */
+const OV={view:null,crewFocus:null};
+function openOverlay(view){
+  OV.view=view;
+  if(ST.phase==="run"){OV.wasPaused=ST.paused;}
+  $("overlay").classList.add("open");
+  renderOverlay();
+}
+function closeOverlay(){
+  OV.view=null;OV.crewFocus=null;
+  $("overlay").classList.remove("open");
+}
+function renderOverlay(){
+  if(!OV.view)return;
+  if(OV.view==="diary")renderDiaryOverlay();
+  else if(OV.view==="crew")renderCrewOverlay();
+  else if(OV.view==="district")renderDistrictOverlay();
+}
+function renderDiaryOverlay(){
+  $("ov-title").textContent="DIARY";
+  const cats=[["all","ALL"],["crime","CRIME"],["eco","ECO"],["social","SOCIAL"],["health","HEALTH"],["district","DISTRICT"]];
+  $("ov-tabs").innerHTML=cats.map(([c,l])=>
+    "<span class='ov-tab"+(DIARY_FILTER===c?" on":"")+"' data-dcat='"+c+"'>"+l+"</span>").join("");
+  $("ov-tabs").style.display="flex";
+  renderDiary();
+}
+function crewFlagHTML(p){
+  const flags=[];
+  if(p.sick)flags.push(["SICK","#ff4757"]);
+  if(p.homeless)flags.push(["EVICTED","#ff8c42"]);
+  if((p.addiction||0)>40)flags.push(["HOOKED","#c98bff"]);
+  if((p.credits||0)<0)flags.push(["BROKE","#ff4757"]);
+  if(p.hasGear)flags.push(["GEARED","#7aa2ff"]);
+  if(p.dazed>ST.tick)flags.push(["DAZED","#b06fff"]);
+  return flags.map(([t,c])=>"<span class='crew-flag' style='background:"+c+"22;color:"+c+"'>"+t+"</span>").join("");
+}
+function renderCrewOverlay(){
+  if(OV.crewFocus){renderCrewDetail();return;}
+  $("ov-title").textContent="CREW · "+ST.pawns.length;
+  $("ov-tabs").style.display="none";$("ov-tabs").innerHTML="";
+  const body=$("ov-body");
+  let h="<div class='crew-grid'>";
+  // sort: trouble first (sick/evicted/broke), then by name
+  const sorted=[...ST.pawns].sort((a,b)=>{
+    const score=p=>(p.sick?4:0)+(p.homeless?3:0)+((p.credits||0)<0?2:0)+(p.mood<25?1:0);
+    return score(b)-score(a);});
+  for(const p of sorted){
+    const mood=p.mood|0;
+    const moodCol=mood>60?"var(--gn)":mood>35?"var(--yl)":"var(--rd)";
+    const task=p.dazed>ST.tick?"dazed":jobLabel(p);
+    h+="<div class='crew-card' data-cid='"+p.id+"'>"+
+       "<div class='crew-ava' style='background:"+p.accent+"'>"+p.name.charAt(0)+"</div>"+
+       "<div class='crew-meta'>"+
+         "<div class='crew-nm'>"+p.name+"</div>"+
+         "<div class='crew-st' style='color:"+moodCol+"'>"+task+" · mood "+mood+"</div>"+
+         (crewFlagHTML(p)?"<div class='crew-flags'>"+crewFlagHTML(p)+"</div>":"")+
+       "</div></div>";
+  }
+  h+="</div>";
+  body.innerHTML=h;
+}
+function renderCrewDetail(){
+  const p=ST.pawns.find(q=>q.id===OV.crewFocus);
+  if(!p){OV.crewFocus=null;renderCrewOverlay();return;}
+  $("ov-title").textContent=p.name.toUpperCase();
+  $("ov-tabs").style.display="none";$("ov-tabs").innerHTML="";
+  const body=$("ov-body");
+  let h="<div class='cd-back' id='cd-back'>◀ back to crew</div>";
+  h+="<div class='sub' style='margin-bottom:8px'>"+p.tr.map(t=>t.n).join(" · ")+"</div>";
+  h+=barHtml("HP",p.hp,"#39ff88");
+  h+=barHtml("FOOD",p.needs.food,"#b8ff5e");
+  h+=barHtml("REST",p.needs.rest,"#7aa2ff");
+  h+=barHtml("HYGIENE",p.needs.hyg??80,"#4ec3ff");
+  h+=barHtml("FUN",p.needs.fun??70,"#ffd84a");
+  h+=barHtml("SOCIAL",p.needs.socN??70,"#8be0ff");
+  h+=barHtml("MOOD",p.mood,p.mood<25?"#ff4757":"#ffd84a");
+  h+="<div class='sub' style='margin-top:8px'>TASK: "+jobLabel(p)+"</div>";
+  h+="<div class='sub'>CREDITS "+(p.credits|0)+(p.homeless?" · <span style='color:var(--rd)'>EVICTED</span>":"")+"</div>";
+  h+="<div class='sub'>STRESS "+(p.stress|0)+(p.addiction>0?" · ADDICTION "+(p.addiction|0):"")+(p.hasGear?" · <span style='color:#7aa2ff'>GEARED</span>":"")+"</div>";
+  if(p.sick)h+="<div class='sub' style='color:var(--rd)'>INFECTED — needs a clinic</div>";
+  if(p.rep&&(p.rep.city||p.rep.gang)){
+    const cR=p.rep.city|0,gR=p.rep.gang|0;
+    h+="<div class='sub'>CITY REP "+(cR>0?"+":"")+cR+" · GANG "+(gR>0?"+":"")+gR+"</div>";}
+  h+="<div class='sub'>SKILLS — SAL "+p.sk.sal+" · BLD "+p.sk.bld+" · COOK "+p.sk.cook+" · SHT "+p.sk.sht+"</div>";
+  const rels=relsOf(p);
+  if(rels.length){h+="<div class='ordsec'>TIES</div>";
+    for(const tie of rels.slice(0,6)){const v=tie.v,col=v>0?"#39ff88":"#ff4757";
+      const lbl=v>=50?"ally":v>=15?"warm":v<=-50?"hostile":v<=-15?"rival":"·";
+      h+="<div class='sub' style='display:flex;justify-content:space-between;gap:8px'><span style='color:"+tie.o.accent+"'>"+tie.o.name+"</span><span style='color:"+col+"'>"+lbl+" "+(v>0?"+":"")+(v|0)+"</span></div>"}}
+  if(p.mem&&p.mem.length)h+="<div class='sub' style='font-style:italic;opacity:.78;margin-top:6px'>\u201c"+p.mem[p.mem.length-1].t+"\u201d</div>";
+  // direct orders
+  h+="<div class='ordsec'>DIRECT ORDERS</div><div class='cmd-grid'>";
+  for(const c of CMD_LIST)h+="<button class='cmd-b' data-cdcmd='"+c.o+"'><span class='ci'>"+c.ci+"</span>"+c.l+"</button>";
+  h+="</div>";
+  // locate + talk
+  h+="<button class='tb' id='cd-locate' style='margin-top:8px'>◎ LOCATE ON MAP</button>";
+  if(aiReady())h+="<button class='tb' id='cd-talk' style='margin-top:8px;margin-left:6px'>◆ TALK</button>";
+  body.innerHTML=h;
+}
+function renderDistrictOverlay(){
+  $("ov-title").textContent="DISTRICT";
+  $("ov-tabs").style.display="none";$("ov-tabs").innerHTML="";
+  $("ov-body").innerHTML=districtStatsHTML();
+}
+
+// overlay event delegation
+$("overlay").addEventListener("click",e=>{
+  // diary tab
+  const dt=e.target.closest("[data-dcat]");
+  if(dt){DIARY_FILTER=dt.dataset.dcat;SFX.ui();renderDiaryOverlay();return;}
+  // crew card → focus
+  const cc=e.target.closest("[data-cid]");
+  if(cc){OV.crewFocus=+cc.dataset.cid;SFX.ui();renderCrewDetail();return;}
+  // back from detail
+  if(e.target.closest("#cd-back")){OV.crewFocus=null;SFX.ui();renderCrewOverlay();return;}
+  // detail orders
+  const cm=e.target.closest("[data-cdcmd]");
+  if(cm){const p=ST.pawns.find(q=>q.id===OV.crewFocus);
+    if(p){clearJob(p);p.job=null;p.cmd=cm.dataset.cdcmd;SFX.ui();}return;}
+  // locate
+  if(e.target.id==="cd-locate"){const p=ST.pawns.find(q=>q.id===OV.crewFocus);
+    if(p){ST.sel=[p];cam.x=p.px*T-VW/cam.z/2;cam.y=p.py*T-VH/cam.z/2;clampCam();closeOverlay();renderInspect();}return;}
+  // talk
+  if(e.target.id==="cd-talk"){const p=ST.pawns.find(q=>q.id===OV.crewFocus);
+    if(p){closeOverlay();openChat(p);}return;}
+});
+$("ov-x").onclick=()=>{SFX.ui();closeOverlay();};
+// click outside the box closes
+$("overlay").addEventListener("mousedown",e=>{if(e.target.id==="overlay"){SFX.ui();closeOverlay();}});
 let banT=0;
 function banner(txt,cls){const b=$("banner");
   b.textContent=txt;b.className=cls||"";b.classList.add("show");
@@ -3152,7 +3358,21 @@ function syncHUD(){
   const h=hourN();
   const hh=String(Math.floor(h)).padStart(2,"0");
   const mm=String(Math.floor((h%1)*60)).padStart(2,"0");
-  $("h-day").textContent="DAY "+dayN()+" · "+hh+":"+mm;}
+  $("h-day").textContent="DAY "+dayN()+" · "+hh+":"+mm;
+  refreshBuildAfford();}
+
+// lightweight: update build-card affordability classes without rebuilding the menu
+function refreshBuildAfford(){
+  if(subCat!=="b")return;
+  const sm=$("submenu");if(!sm||!sm.querySelectorAll)return;
+  const credits=Math.round(ST.income||0);
+  const w=sm.querySelector(".sm-wallet");
+  if(w)w.innerHTML="<span class='coin'></span>"+credits;
+  sm.querySelectorAll(".bcard[data-bt]").forEach(card=>{
+    const t=card.dataset.bt,d=DEF[t];const cost=(d.cost&&d.cost.income)||0;
+    const afford=cost<=credits;
+    card.classList.toggle("afford",afford||cost===0);
+    card.classList.toggle("broke",!afford&&cost>0);});}
 
 function barHtml(lab,val,col){
   return "<div class='blab'><span>"+lab+"</span><span>"+Math.round(val)+"</span></div>"+
@@ -3164,7 +3384,8 @@ function relsOf(p){const out=[];
     const o=ST.pawns.find(q=>q.id==oid);if(!o)continue;
     out.push({o,v})}
   out.sort((a,b)=>Math.abs(b.v)-Math.abs(a.v));return out}
-function renderInspect(){const el=$("inspect");
+function renderInspect(){renderInspectCore();if(subCat==="c")renderSub();}
+function renderInspectCore(){const el=$("inspect");
   ST.sel=ST.sel.filter(e=>e.kind==="pawn"?ST.pawns.includes(e):
     false?false:structAt(e.x,e.y)===e);
   if(!ST.sel.length){el.style.display="none";return}
@@ -3205,6 +3426,7 @@ function renderInspect(){const el=$("inspect");
       "<button class='ob' data-o='recreate'><span>◈</span>Wander</button>"+
       "<button class='ob' data-o='socialize'><span>⚇</span>Commune</button></div>";
     if(aiReady())h+="<button class='tb i-talk' id='i-talk'>◆ TALK</button>";
+    h+="<button class='tb' id='i-profile'>☰ FULL PROFILE</button>";
     el.innerHTML=h}
   else if(e.kind==="foe"){
     el.innerHTML="<h3 style='color:"+e.col+"'>"+e.name+"</h3>"+
@@ -3249,6 +3471,7 @@ $("inspect").addEventListener("click",e=>{
   const id=e.target.id;if(!id)return;
   const sel=ST.sel[0];SFX.ui();
   if(id==="i-talk"&&sel&&sel.kind==="pawn")openChat(sel);
+  else if(id==="i-profile"&&sel&&sel.kind==="pawn"){OV.crewFocus=sel.id;openOverlay("crew");}
   else if(id==="i-hire"){
     const tgt=ST.sel.find(e=>e.kind!=="pawn");
     if(tgt){const fk=K(tgt.x,tgt.y);
@@ -3409,39 +3632,118 @@ $("ch-input").addEventListener("keydown",e=>{e.stopPropagation();
 
 /* toolbar */
 let subCat=null;
-function refreshCats(){$("t-build").classList.toggle("on",subCat==="b");
-  $("t-orders").classList.toggle("on",subCat==="o")}
+function refreshCats(){
+  $("t-build").classList.toggle("on",subCat==="b");
+  $("t-zone").classList.toggle("on",subCat==="z");
+  $("t-command").classList.toggle("on",subCat==="c");}
 function closeSub(){subCat=null;$("submenu").classList.remove("open");refreshCats()}
 function refreshToolBtns(){const sm=$("submenu");
-  for(const b of sm.children){const dt=b.dataset.tool;let on=false;
+  if(!sm||!sm.querySelectorAll)return;
+  sm.querySelectorAll("[data-tool]").forEach(b=>{const dt=b.dataset.tool;let on=false;
     if(TOOL&&dt){if(TOOL.k==="build")on=dt==="build:"+TOOL.type;else on=dt===TOOL.k}
-    b.classList.toggle("on",on)}}
+    b.classList.toggle("on",on)})}
+
+// district credits header (the one number that matters for building)
+function smHeader(title){
+  const credits=Math.round(ST.income||0);
+  return "<div class='sm-head'><span class='sm-title'>"+title+"</span>"+
+    "<span class='sm-wallet'><span class='coin'></span>"+credits+"</span></div>";}
+
+function buildCardHTML(t){
+  const d=DEF[t];const ic=BUILD_ICON[t]||"▪";
+  const credits=Math.round(ST.income||0);
+  const cost=(d.cost&&d.cost.income)||0;
+  const afford=cost<=credits;
+  const cls=cost===0?"afford":(afford?"afford":"broke");
+  const priceHTML=cost===0
+    ?"<span class='pr free'>FREE</span>"
+    :"<span class='pr'><span class='coin'></span>"+cost+"</span>";
+  return "<button class='bcard "+cls+"' data-tool='build:"+t+"' data-bt='"+t+"' title='"+(d.desc||"")+"'>"+
+    "<span class='ic'>"+ic+"</span><span class='nm'>"+d.name+"</span>"+priceHTML+"</button>";}
+
+function renderBuildMenu(){
+  let h=smHeader("BUILD");
+  for(const cat of BUILD_CATS){
+    h+="<div class='bcat'>"+cat.name+"</div><div class='bgrid'>";
+    for(const t of cat.items)h+=buildCardHTML(t);
+    h+="</div>";}
+  return h;}
+
+function renderZoneMenu(){
+  let h=smHeader("ZONE");
+  h+="<div class='bcat'>Designate</div><div class='bgrid'>";
+  h+="<button class='bcard afford' data-tool='decon' title='Drag over structures to tear them down'>"+
+     "<span class='ic'>⊗</span><span class='nm'>Deconstruct</span></button>";
+  h+="<button class='bcard afford' data-tool='cancel' title='Drag to cancel blueprints'>"+
+     "<span class='ic'>✕</span><span class='nm'>Cancel</span></button>";
+  h+="<button class='bcard afford' data-tool='salv' title='Mark scrap/caches to salvage'>"+
+     "<span class='ic'>♺</span><span class='nm'>Salvage</span></button>";
+  h+="</div>";
+  return h;}
+
+const CMD_LIST=[
+  {o:"work",     ci:"⚒", l:"Work"},
+  {o:"sleep",    ci:"☾", l:"Rest"},
+  {o:"eat",      ci:"⊕", l:"Feed"},
+  {o:"hygiene",  ci:"≈", l:"Cleanse"},
+  {o:"recreate", ci:"◈", l:"Unwind"},
+  {o:"socialize",ci:"⚇", l:"Commune"},
+];
+function renderCommandMenu(){
+  const sel=ST.sel.filter(e=>e.kind==="pawn");
+  let h="<div class='sm-head'><span class='sm-title'>COMMAND</span>"+
+    "<button class='tb' id='cmd-all' style='padding:3px 8px;font-size:9px'>SELECT ALL</button></div>";
+  if(!sel.length){
+    h+="<div class='cmd-sel'>No citizens selected. Tap a wisp on the map, marquee-drag to select several, or hit <b>SELECT ALL</b>.</div>";
+    return h;}
+  h+="<div class='cmd-sel'>Ordering <b>"+(sel.length===1?sel[0].name:sel.length+" citizens")+"</b></div>";
+  h+="<div class='cmd-grid'>";
+  for(const c of CMD_LIST)
+    h+="<button class='cmd-b' data-cmd='"+c.o+"'><span class='ci'>"+c.ci+"</span>"+c.l+"</button>";
+  h+="</div>";
+  if(aiReady()&&sel.length===1)
+    h+="<button class='tb' id='cmd-talk' style='margin-top:6px;width:100%'>◆ TALK TO "+sel[0].name.toUpperCase()+"</button>";
+  return h;}
+
+function renderSub(){
+  const sm=$("submenu");
+  if(subCat==="b")sm.innerHTML=renderBuildMenu();
+  else if(subCat==="z")sm.innerHTML=renderZoneMenu();
+  else if(subCat==="c")sm.innerHTML=renderCommandMenu();
+  refreshToolBtns();}
+
 function openSub(cat){if(subCat===cat){closeSub();return}
-  subCat=cat;const sm=$("submenu");sm.innerHTML="";
-  function mk(label,tool,title){const b=document.createElement("button");
-    b.className="tb";b.innerHTML=label;if(title)b.title=title;
-    b.dataset.tool=tool.k==="build"?"build:"+tool.type:tool.k;
-    b.onclick=()=>{SFX.ui();setTool(tool)};sm.appendChild(b)}
-  if(cat==="b"){for(const t of BUILD_ORDER){const d=DEF[t];
-    const wc=d.work?(" \u2692"+d.work):"";
-    const cc=(d.cost&&d.cost.income)?(" <span style='color:var(--or)'>"+d.cost.income+"c</span>"):"";
-    mk(d.name+"<span class='cost'>"+wc+cc+"</span>",{k:"build",type:t},d.desc)}}
-  else if(cat==="o"){
-    mk("DECONSTRUCT",{k:"decon"},"Drag over structures to tear them down");
-    mk("CANCEL",{k:"cancel"},"Drag to cancel blueprints")}
-  sm.classList.add("open");refreshCats();refreshToolBtns()}
+  subCat=cat;renderSub();$("submenu").classList.add("open");refreshCats();}
+
+// delegated clicks inside the submenu
+$("submenu").addEventListener("click",e=>{
+  const card=e.target.closest("[data-tool]");
+  if(card){SFX.ui();
+    const dt=card.dataset.tool;
+    if(dt.startsWith("build:"))setTool({k:"build",type:dt.slice(6)});
+    else setTool({k:dt});
+    refreshToolBtns();return;}
+  const cmd=e.target.closest("[data-cmd]");
+  if(cmd){SFX.ui();const o=cmd.dataset.cmd;
+    const sel=ST.sel.filter(x=>x.kind==="pawn");
+    for(const p of sel){clearJob(p);p.job=null;p.cmd=o}
+    renderInspect();return;}
+  if(e.target.id==="cmd-all"){SFX.ui();ST.sel=ST.pawns.slice();renderInspect();syncHUD();renderSub();return;}
+  if(e.target.id==="cmd-talk"){const sel=ST.sel.filter(x=>x.kind==="pawn");
+    if(sel.length===1){SFX.ui();openChat(sel[0])}return;}
+});
+
 $("t-build").onclick=()=>{SFX.ui();openSub("b")};
-$("t-orders").onclick=()=>{SFX.ui();openSub("o")};
-$("b-all").onclick=()=>{SFX.ui();ST.sel=ST.pawns.slice();renderInspect();syncHUD()};
+$("t-zone").onclick=()=>{SFX.ui();openSub("z")};
+$("t-command").onclick=()=>{SFX.ui();openSub("c")};
 $("b-save").onclick=()=>{SFX.ui();saveGame()};
 $("b-load").onclick=()=>{SFX.ui();loadGame()};
-$("b-stats").onclick=()=>{SFX.ui();const p=$("stats-panel");
-  if(p.style.display==="block"){p.style.display="none";return}
-  renderStats();p.style.display="block"};
-function renderStats(){
-  const p=$("stats-panel");if(!p)return;
+$("b-diary").onclick=()=>{SFX.ui();openOverlay("diary")};
+$("b-crew").onclick=()=>{SFX.ui();openOverlay("crew")};
+$("b-stats").onclick=()=>{SFX.ui();openOverlay("district")};
+function districtStatsHTML(){
   const pawns=ST.pawns;
-  let h="<b style='color:var(--cy);letter-spacing:.14em'>DISTRICT STATUS</b>";
+  let h="";
   // economy
   h+="<h4>Economy</h4>";
   const g=ST.goods||{};
@@ -3487,18 +3789,9 @@ function renderStats(){
       h+="<div class='srow'><span style='color:var(--gn)'>✓ "+m.label+"</span></div>";}
     const pending=MILESTONES.filter(m=>!ST.milestones.includes(m.id));
     if(pending.length)h+="<div class='srow' style='opacity:.4'><span>Next: "+pending[0].label+"</span></div>";}
-  p.innerHTML=h}
+  return h}
 $("b-mute").onclick=function(){this.classList.toggle("on",SFX.toggleMute())};
 $("b-help").onclick=()=>{SFX.ui();showHelp()};
-// collapsible panel toggles
-$("diary-toggle").onclick=()=>{
-  const d=$("diary");d.classList.toggle("collapsed");
-  $("diary-toggle").textContent=d.classList.contains("collapsed")?"▶":"◀";
-  SFX.ui();};
-$("roster-toggle").onclick=()=>{
-  const r=$("roster");r.classList.toggle("collapsed");
-  $("roster-toggle").textContent=r.classList.contains("collapsed")?"◀":"▶";
-  SFX.ui();};
 $("cancelTool").onclick=()=>{SFX.ui();setTool(null)};
 function setSpeed(s){ST.speed=s;ST.paused=false;refreshSpd()}
 function togglePause(){ST.paused=!ST.paused;refreshSpd()}
@@ -3525,10 +3818,11 @@ function showHelp(){if(ST.phase==="run"){ST.paused=true;refreshSpd()}showModal(
   "<tr><td style='color:var(--cy)'>Gangs</td><td>When a crew of 3+ citizens forms, you can sanction them — they claim territory (colored tint on the map). Gangs reduce crime heat on their turf but create tension with other gangs. Overlapping turf escalates to gang war.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Hire / Fire</td><td>Select a citizen + a production fixture → HIRE to give them a contract (priority work, 12c/shift wage). FIRE removes the contract. Assigned workers show up first in the fixture inspect panel.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Heat</td><td>Crime, illegal goods, and gang activity raise district Heat. Above 60, corp enforcers crackdown on your highest-rep criminals. Heat decays naturally over time.</td></tr>"+
-  "<tr><td style='color:var(--cy)'>Camera</td><td>WASD / arrows / drag to pan. Scroll or pinch to zoom. Click a citizen to inspect. SQUAD selects everyone.</td></tr>"+
-  "<tr><td style='color:var(--cy)'>Build</td><td>BUILD menu → click to place. Blueprints need a citizen to construct them. Walls drag-paint. Some fixtures cost district income.</td></tr>"+
-  "<tr><td style='color:var(--cy)'>Speed</td><td>⏸ pauses. 1×/2×/3× sets speed. DISTRICT panel shows live status on all citizens, relationships, health, and gangs.</td></tr>"+
-  "<tr><td style='color:var(--cy)'>Diary</td><td>Top-left panel. Tab to filter: ALL / CRIME / ECO / SOCIAL / HEALTH / DISTRICT. Day-grouped, timestamped entries auto-categorize as events happen.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Camera</td><td>WASD / arrows / drag to pan. Scroll or pinch to zoom. Tap a citizen to select and inspect. Citizens prefer roads when travelling.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Build</td><td>BUILD menu → categorized cards. Affordable items glow; ones you can't afford dim red. Credits are charged when you place a blueprint, refunded if cancelled. Walls drag-paint. ZONE handles deconstruct/cancel/salvage. COMMAND issues orders to selected citizens.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Speed</td><td>⏸ pauses. 1×/2×/3× sets speed.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Windows</td><td>The 📖 DIARY, 👥 CREW, and 📊 DISTRICT icons open full-screen windows you can scroll and close (✕ or Esc). Hotkeys: J diary · K crew · L district. CREW lists everyone — tap a citizen for full profile and direct orders.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Diary</td><td>Day-grouped, timestamped event log. Filter tabs: ALL / CRIME / ECO / SOCIAL / HEALTH / DISTRICT.</td></tr>"+
   "</table><button class='tb big' id='m-close'>CLOSE</button>")}
 function showStart(){showModal(
   "<h1>NEON SPRAWL</h1><div class='mh-sub'>COLONY PROTOCOL</div>"+
