@@ -1001,6 +1001,27 @@ function pawnTick(p){
             float(s.x+.5,s.y+.5,"BUSTED","#ff2d95");addMod(p,"busted","Caught in the act",-14,TPD*.6)}
           p.job=null;syncHUD()}}
       break}
+    case "rob":{const v=ST.pawns.find(q=>q.id===j.vid);
+      if(!v||v===p||v.hp<=0){p.job=null;break}
+      const r=gotoCell(p,v.px|0,v.py|0,1);
+      if(r==="fail"){p.job=null;break}
+      if(r==="arr"){j.prog++;
+        if(j.prog>=18){
+          const take=Math.min((v.credits||0),RI(15,40));
+          if(take<=0){p.job=null;break}
+          v.credits=(v.credits||0)-take;p.credits=(p.credits||0)+take;
+          ST.heat=(ST.heat||0)+10;applyDrift(p,{intg:-2,cau:-1});
+          p.rep.city=clamp((p.rep.city||0)-8,-100,100);p.rep.gang=clamp((p.rep.gang||0)+6,-100,100);
+          remember(p,"robbed "+v.name+" for "+take+" creds in the sprawl");
+          float(p.px,p.py,"+"+take+"c ROBBED","#ff4757");
+          v.stress=Math.min(100,(v.stress||0)+25);addMod(v,"robbed","Just got robbed",-12,TPD*.5);
+          remember(v,"got robbed by "+p.name+" — lost "+take+" creds, still shaking");
+          relAdj(p.id,v.id,-50);
+          for(const w of ST.pawns){if(w===p||w===v)continue;
+            if(DIST(w.px,w.py,p.px,p.py)<8){relAdj(w.id,p.id,-12);remember(w,"watched "+p.name+" rob "+v.name)}}
+          log(p.name+" robbed "+v.name+" of "+take+" credits.","bad");
+          p.job=null;syncHUD()}}
+      break}
   }
 }
 
@@ -1806,11 +1827,34 @@ function renderRequests(){
     h+="</div></div>"}
   el.innerHTML=h}
 
+/* ---------- crime: organic robbery (Phase B.1) ---------- */
+function firstName(p){return (p.name||"").split(" ")[0]}
+function wantsToRob(p){
+  return p.pers.intg<40 && ((p.credits||0)<12||p.homeless||p.needs.food<28||p.stress>58)}
+function findRobTarget(p){let best=null,bv=-1e9;
+  for(const q of ST.pawns){if(q.id===p.id||q.hp<=0)continue;
+    if((q.credits||0)<(p.credits||0)+20)continue;        // not worth the risk
+    if(relGet(p.id,q.id)>15)continue;                    // won't rob someone they like
+    const score=(q.credits||0)-relGet(p.id,q.id);        // richer + more disliked = better mark
+    if(score>bv){bv=score;best=q}}
+  return best}
+function startRobbery(perp,victim){
+  if(!perp||!victim||perp===victim)return;
+  clearJob(perp);
+  perp.job={t:"rob",vid:victim.id,prog:0};
+  remember(perp,"made up my mind to take "+victim.name+"'s creds")}
+
 function applyRequest(rid,oi){
   const r=ST.requests.find(x=>x.id===rid);
   if(!r||r.status!=="pending")return;
   const agent=ST.pawns.find(p=>p.id===r.agentId);
   const opt=r.options[oi];
+  if(r.kind==="robbery"){
+    const victim=ST.pawns.find(q=>q.id===r.victimId);
+    if(opt.rob&&agent&&victim&&victim.hp>0)startRobbery(agent,victim);
+    else if(agent){agent.stress=Math.min(100,(agent.stress||0)+8);applyDrift(agent,{intg:1});
+      remember(agent,"was set to rob "+(victim?victim.name:"someone")+" but held off")}
+    r.status="answered";if(agent)log(agent.name+": "+opt.label,"info");renderRequests();return}
   if(agent&&opt&&opt.apply){
     for(const[k,v]of Object.entries(opt.apply)){
       if(k in agent.bias)agent.bias[k]=clamp(agent.bias[k]+v,0.6,1.5);
@@ -1830,6 +1874,10 @@ function expireRequests(){
     if(r.status!=="pending"||ST.tick<r.expires)continue;
     r.status="expired";
     const agent=ST.pawns.find(p=>p.id===r.agentId);
+    if(r.kind==="robbery"){const victim=ST.pawns.find(q=>q.id===r.victimId);
+      if(agent&&victim&&victim.hp>0){startRobbery(agent,victim);
+        log(agent.name+" didn't wait for the word — moving on "+victim.name+".","warn")}
+      continue}
     if(agent)agent.pers.soc=clamp(agent.pers.soc-1,0,100);
     log((agent?agent.name:"Agent")+" got tired of waiting — acted on instinct.","warn")}}
 
@@ -1857,6 +1905,11 @@ function tryBuildRequest(p){
   const id=uid();
   const exp=ST.tick+Math.floor(2400*0.4);
   const base={id,agentId:p.id,agentName:p.name,created:ST.tick,expires:exp,status:"pending"};
+  if(wantsToRob(p)&&Math.random()<0.55){
+    const tgt=findRobTarget(p);
+    if(tgt)return{...base,kind:"robbery",victimId:tgt.id,
+      text:p.name+" is desperate and circling "+tgt.name+" — ready to take their creds by force.",
+      options:[{label:"Let it happen",rob:true},{label:"Hold "+firstName(p)+" back",rob:false}]};}
   if(p.needs.food<55&&ST.res.meal===0&&ST.res.raw>0&&Math.random()<0.4)
     return{...base,kind:"food",text:p.name+" is hungry — eat raw or wait for cooked protein?",
       options:[{label:"Eat raw",apply:{eat:+0.2,cau:-2}},{label:"Wait",apply:{eat:-0.1,cau:+2}}]};
