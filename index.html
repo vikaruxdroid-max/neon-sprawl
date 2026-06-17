@@ -1016,9 +1016,9 @@ function genCity(){
   // nature/resource ring reserved on the outskirts (filled in a later pass).
   // Helper: place a home and register it
   function home(x0,y0){
-    placeRoom(x0,y0,5,4,{x:x0+2,y:y0+3},
-      [{t:"pod",x:1,y:1},{t:"fridge",x:2,y:1},{t:"shower",x:3,y:1},{t:"tv",x:1,y:2},{t:"toilet",x:3,y:2}]);
-    ST.cityHomes.push({x0,y0,w:5,h:4,bed:{x:x0+1,y:y0+1},door:{x:x0+2,y:y0+3}});}
+    placeRoom(x0,y0,6,5,{x:x0+2,y:y0+4},
+      [{t:"pod",x:1,y:1},{t:"fridge",x:2,y:1},{t:"shower",x:3,y:1},{t:"tv",x:1,y:2},{t:"toilet",x:4,y:1},{t:"couch",x:3,y:2},{t:"rug",x:2,y:2}]);
+    ST.cityHomes.push({x0,y0,w:6,h:5,bed:{x:x0+1,y:y0+1},door:{x:x0+2,y:y0+4}});}
   function decor(t,x,y){if(INB(x,y)&&!structAt(x,y))addBuilt(t,x,y);}
 
   // ── RESIDENTIAL QUARTER (upper-center) — two rows of homes with a lane between ──
@@ -1205,7 +1205,7 @@ function furnitureDecayTick(){
   for(const s of ST.structs.values()){
     if(!isFurniture(s)||s.bp)continue;
     if(s.qual===undefined)s.qual=1;
-    const wear=R(0.6,1.4)*qualOf(s).decayMul;   // ~1 hp/day baseline → tens of days to break
+    const wear=R(1.6,3.0)*qualOf(s).decayMul;   // ~2.3 hp/day baseline → standard breaks in ~25-30 days (cheap faster, premium slower)
     if(s.hp>0){
       s.hp=Math.max(0,s.hp-wear);
       if(s.hp<=0){
@@ -1749,7 +1749,7 @@ function scoreJobs(p){
   const bpStr=nearestStruct(p,s=>(s.bp||s.decon)&&!s.res);
   const hyg=p.needs.hyg??80,fun=p.needs.fun??70,socN=p.needs.socN??70,soc=p.pers.soc;
   const showStr=(!p.homeless&&(homeFixture(p,"shower")||homeFixture(p,"toilet")))||nearestStruct(p,s=>(s.type==="shower"||s.type==="toilet")&&!s.bp&&!isBroken(s));
-  const funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar"||s.type==="park"||s.type==="arcade")&&!s.bp&&!isBroken(s));
+  const funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar"||s.type==="park"||s.type==="arcade"||s.type==="couch")&&!s.bp&&!isBroken(s));
   let mate=null,_md=1e9;for(const q of ST.pawns){if(q.id===p.id)continue;
     if(relGet(p.id,q.id)<-40)continue;  // don't socialize toward rivals/enemies
     let dd=DIST(p.px,p.py,q.px,q.py);
@@ -1765,7 +1765,7 @@ function scoreJobs(p){
   // hospital preferred over medbed (better care); fall back to either
   const medStr=nearestStruct(p,s=>(s.type==="hospital"||s.type==="medbed")&&!s.bp);
   // school: citizens with spare time and ambition train skills
-  const schoolStr=nearestStruct(p,s=>s.type==="school"&&!s.bp);
+  const schoolStr=nearestStruct(p,s=>(s.type==="school"||(s.type==="bookshelf"&&!isBroken(s)))&&!s.bp);
   const dlrStr=nearestStruct(p,s=>s.type==="dealer"&&!s.bp);
   const robTgt=nearestStruct(p,s=>s.type==="counter"&&!s.bp);
   const gearStr=!p.hasGear&&(p.credits||0)>=15&&(ST.goods.gear||0)>0?
@@ -2236,6 +2236,16 @@ function pawnTick(p){
   const j=p.job;if(!j)return;
   switch(j.t){
     case "idle":{if(ST.tick>j.until){p.job=null;break}
+      // admiring art: an idling wisp near a working art piece pauses to appreciate it —
+      // a brief mood lift, more for the affluent (status). Light, no trekking across town.
+      if(!p.homeless&&p.home&&ST.tick%30===0&&!p.mods.some(md=>md.id==="admireart")){
+        for(const s of ST.structs.values()){
+          if(s.type!=="art"||s.bp||isBroken(s))continue;
+          if(DIST(p.px,p.py,s.x+.5,s.y+.5)<2.5){
+            const lift=2+Math.round(wealthTier(p).t*0.6*qualOf(s).effMul);
+            addMod(p,"admireart","Admired the artwork",lift,TPD*.5);
+            if(typeof emote==="function"&&Math.random()<0.3)emote(p,"love");
+            break;}}}
       gotoCell(p,j.x,j.y,0);break}
     case "eat":{const r=gotoCell(p,j.x,j.y,j.adj);
       if(r==="fail"){markUnre(p,j.x,j.y);p.job=null;break}
@@ -2310,6 +2320,18 @@ function pawnTick(p){
           if((p.credits||0)>=4){p.credits-=4;ST.income=(ST.income||0)+3;}
           p.stress=Math.max(0,(p.stress||0)-18);
           addMod(p,"arcade","Lost in the arcade",6,TPD*.5)}
+        else if(s.type==="couch"){
+          // relaxing at home: good stress relief, scaled by the couch's quality;
+          // a SOCIAL spot — if someone else is on/near the couch, they bond.
+          const qm=isFurniture(s)?qualOf(s).effMul:1;
+          p.stress=Math.max(0,(p.stress||0)-Math.round(14*qm));
+          let shared=false;
+          for(const q of ST.pawns){if(q===p)continue;
+            if(DIST(p.px,p.py,q.px,q.py)<2.5){shared=true;
+              relAdj(p.id,q.id,4);p.needs.socN=Math.min(100,(p.needs.socN||0)+25);
+              addMod(q,"couchchat","Hung out on the couch",3,TPD*.4);}}
+          addMod(p,shared?"couchsocial":"couchrelax",shared?"Relaxed with company":"Put their feet up",shared?6:4,TPD*.4);
+          if(shared)remember(p,"hung out on the couch with someone — felt good");}
         else addMod(p,"fun","Unwound",3,TPD*.4);
         p.job=null;syncHUD()}}
       break}

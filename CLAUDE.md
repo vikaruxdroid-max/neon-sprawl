@@ -215,6 +215,24 @@ Measured over managed 14-day runs (player keeps everyone ≥45 credits):
   across save/load as the district's history.
 - **Visual legibility (checkup)** — children render at 0.62 scale + flagged in inspect;
   watch-post coverage rings; blackout screen-darkening.
+- **Coverage/wiring audit (Living Homes Phase 1.5)** — DONE. Audited which NPC interactions
+  actually FIRE in real play (instrumented mod/job tracking over long runs). Found + fixed two
+  real gaps: (1) furniture decay was ~82 days (never seen) → wear rate R(1.6,3.0) so standard
+  breaks in ~25-30 days, visible; (2) starter homes were packed with no free tile, so wisps
+  couldn't buy aspirational items (art never appeared → admireart never fired) → homes enlarged
+  to 6×5 with a free interior row + seeded with couch+rug. Confirmed working-as-designed (NOT
+  bugs, left alone): theft/vengeance (suppressed by good management — correct), politics
+  backop/opposeop mood (need player petition-answers — correct), mentor (rare), upgradefurn/
+  expanded (wealth/space-gated aspirational states). Verified post-fix: brokefurn, newfurn,
+  couchsocial, art-bought, admireart ALL fire in a 50-day run.
+- **Furniture interactivity (Living Homes Phase 1)** — DONE. Decorative items became real
+  use-spots where it makes sense: COUCH is a recreation source (added to `funStr`); its recreate
+  case gives stress relief (×quality) + a SOCIAL bonus when shared (two wisps near a couch bond,
+  `couchsocial`/`couchrelax` mods). ART: idling wisps near owned working art "admire" it for a
+  brief mood lift scaled by wealth (`admireart` in the idle case, rate-limited). BOOKSHELF is now
+  an active STUDY spot (added to `schoolStr` so the learn task targets it; was passive-XP only).
+  RUG/LAMP stay ambient (no forced interaction). NEXT (planned): Phase 2 layout (arrange furniture
+  like a lived-in room), Phase 3 graphics (detailed per-item vector art reflecting state).
 - **Room quality (RimWorld-direction, showcase on homes)** — DONE. `computeRoomQuality(rm)` →
   0..100 from SPACE (tiles/occupant), BEAUTY (`ROOM_BEAUTY` furniture sums × quality tier), minus
   UPKEEP (broken items). Cached `rm.qual`/`rm.qualDay` (daily). `roomQuality()`, `roomQTier()`
