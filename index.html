@@ -486,7 +486,64 @@ const SFX=(()=>{let ac=null,mut=false;
     alert(){[0,1,2].forEach(i=>setTimeout(()=>tone(220,.14,"sawtooth",.04,180),i*160))},
     good(){[523,659,784].forEach((f,i)=>setTimeout(()=>tone(f,.18,"sine",.028),i*18))},
     die(){tone(320,.5,"sawtooth",.05,55,4,30)},
-    toggleMute(){mut=!mut;return mut}
+    /* ── AMBIENCE ENGINE: a low city drone + a dynamic music bed that
+       gains layers as the district gets busier / more dangerous (0..1 intensity) ── */
+    _amb:null,
+    ambientStart(){
+      const a=ctx();if(!a)return;
+      if(this._amb)return;
+      const master=a.createGain();master.gain.value=mut?0:0.0;master.connect(a.destination);
+      // base drone: two detuned low oscillators through a gentle lowpass
+      const droneG=a.createGain();droneG.gain.value=0.5;
+      const lp=a.createBiquadFilter();lp.type="lowpass";lp.frequency.value=320;
+      const o1=a.createOscillator();o1.type="sawtooth";o1.frequency.value=55;
+      const o2=a.createOscillator();o2.type="sawtooth";o2.frequency.value=55*1.005;
+      o1.connect(droneG);o2.connect(droneG);droneG.connect(lp);lp.connect(master);
+      o1.start();o2.start();
+      // a slow filtered-noise "wind/hiss" pad
+      const nbuf=a.createBuffer(1,a.sampleRate*2,a.sampleRate);
+      const nd=nbuf.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
+      const nsrc=a.createBufferSource();nsrc.buffer=nbuf;nsrc.loop=true;
+      const nfilt=a.createBiquadFilter();nfilt.type="bandpass";nfilt.frequency.value=600;nfilt.Q.value=0.7;
+      const nG=a.createGain();nG.gain.value=0.06;
+      nsrc.connect(nfilt);nfilt.connect(nG);nG.connect(master);nsrc.start();
+      // MUSIC LAYERS — each is a gated gain that fades in as intensity rises
+      const mkLayer=(freqs,type,base,filtHz)=>{
+        const lg=a.createGain();lg.gain.value=0;
+        const f=a.createBiquadFilter();f.type="lowpass";f.frequency.value=filtHz||1200;
+        f.connect(master);lg.connect(f);
+        const oscs=freqs.map(fr=>{const o=a.createOscillator();o.type=type;o.frequency.value=fr;o.connect(lg);o.start();return o;});
+        return{lg,base,oscs};};
+      // layer 1: warm pad chord (always comes in first)
+      const L1=mkLayer([110,164.81,220],"triangle",0.05,900);
+      // layer 2: a higher shimmer (mid intensity)
+      const L2=mkLayer([329.63,440,523.25],"sine",0.035,2200);
+      // layer 3: a tense pulse (high intensity / danger)
+      const L3=mkLayer([82.41,123.47],"sawtooth",0.05,500);
+      // slow LFO wobble on the drone filter for movement
+      const lfo=a.createOscillator();lfo.frequency.value=0.05;
+      const lfoG=a.createGain();lfoG.gain.value=80;lfo.connect(lfoG);lfoG.connect(lp.frequency);lfo.start();
+      this._amb={master,lp,L1,L2,L3,o1,o2,intensity:0,night:0};
+    },
+    ambientSet(intensity,nightAmt){
+      // intensity 0..1 (district activity+heat); nightAmt 0..1 (darkness)
+      const A=this._amb;if(!A)return;const a=ac;if(!a)return;
+      const t=a.currentTime,glide=1.5;
+      A.intensity=intensity;A.night=nightAmt||0;
+      const overall=mut?0:0.16;
+      A.master.gain.linearRampToValueAtTime(overall,t+glide);
+      // drone darkens at night
+      A.lp.frequency.linearRampToValueAtTime(260+ (1-(nightAmt||0))*220,t+glide);
+      // fade music layers in by threshold
+      const set=(L,on,target)=>L.lg.gain.linearRampToValueAtTime(mut?0:(on?target:0),t+glide);
+      set(A.L1,intensity>0.12,A.L1.base);
+      set(A.L2,intensity>0.42,A.L2.base);
+      set(A.L3,intensity>0.70,A.L3.base);
+    },
+    ambientStop(){const A=this._amb;if(A&&A.master)try{A.master.gain.value=0}catch(e){}},
+    toggleMute(){mut=!mut;
+      if(this._amb){try{this._amb.master.gain.value=mut?0:0.16}catch(e){}}
+      return mut}
   }})();
 
 /* ---------- data definitions ---------- */
@@ -575,7 +632,7 @@ const ST={
   ter:new Uint8Array(MW*MH),
   structs:new Map(),
   pawns:[], foes:[], beams:[], floats:[], emotes:[], tombs:[],
-  grp:{}, rel:{}, relMeta:{}, cliques:[], nextEv:1e9, lastCrackdown:0,
+  grp:{}, rel:{}, relMeta:{}, cliques:[], contrabandPolicy:"crackdown", nextEv:1e9, lastCrackdown:0,
   sel:[],
   stats:{built:0,deaths:0},
   flags:{},
@@ -1548,6 +1605,63 @@ function crimeTick(){
       }
     }
   }
+  // CONTRABAND: gangs cook illicit goods. If you tolerate it (policy), the district
+  // takes a cut but heat climbs. If you don't, it's pure gang profit + snitch risk.
+  if(ST.tick%300===0){
+    for(const g of ST.gangs){
+      if(g.crewIds.length<2)continue;
+      const cook=g.crewIds.map(id=>ST.pawns.find(p=>p.id===id)).find(p=>p&&p.hp>0&&!p.sleeping);
+      if(!cook)continue;
+      const batch=RI(20,45);
+      g.contraband=(g.contraband||0)+batch;
+      if(ST.contrabandPolicy==="allow"){
+        const cut=Math.round(batch*0.4);
+        ST.income=(ST.income||0)+cut;             // district profits from looking away
+        ST.heat=Math.min(100,(ST.heat||0)+5);     // ...at a cost
+        g.gangHeat=Math.min(100,(g.gangHeat||0)+3);
+        float(cook.px,cook.py,"+"+cut+"c (cut)","#c98bff");
+        if(ST.tick%900===0)log("The district quietly profits from "+g.name+"'s trade (+heat).","info");
+      }else{
+        g.bank=(g.bank||0)+batch;
+        ST.heat=Math.min(100,(ST.heat||0)+2);
+        witnessCrime(cook,cook.px,cook.py);        // someone might report it
+      }
+      if(typeof emote==="function"&&Math.random()<0.5)tryEmote(cook,"dizzy",200);
+    }
+  }
+  // HEIST: a flush, motivated gang plans a big coordinated score. High payout, high heat,
+  // real risk (a member can get hurt/caught). Surfaces in TASKS + diary.
+  if(ST.tick%420===0){
+    for(const g of ST.gangs){
+      if((g.bank||0)<60||g.crewIds.length<3)continue;
+      if(g.heistCd&&ST.tick<g.heistCd)continue;
+      const crew=g.crewIds.map(id=>ST.pawns.find(p=>p.id===id)).filter(p=>p&&p.hp>0);
+      if(crew.length<3)continue;
+      if(Math.random()<0.45){
+        const score=RI(120,260);
+        g.bank=(g.bank||0)+score;
+        g.gangHeat=Math.min(100,(g.gangHeat||0)+22);
+        ST.heat=Math.min(100,(ST.heat||0)+18);
+        g.heistCd=ST.tick+TPD*2;
+        // the score gets distributed to the crew
+        const cut=Math.round(score/crew.length);
+        for(const p of crew){p.credits=(p.credits||0)+cut;tryEmote&&tryEmote(p,"party",120);}
+        // risk: one crew member may be hurt or caught (heat spike + injury)
+        if(Math.random()<0.35){
+          const unlucky=crew[RI(0,crew.length-1)];
+          unlucky.hp=Math.max(8,unlucky.hp-RI(20,40));
+          float(unlucky.px,unlucky.py,"JOB WENT BAD","#ff4757");
+          remember(unlucky,"the score went sideways — barely got out");
+          log(g.name+" pulled a heist — "+score+"c, but "+unlucky.name+" got hurt. Heat is way up.","bad");
+        }else{
+          log(g.name+" pulled off a clean heist — "+score+"c richer. Heat is climbing.","warn");
+        }
+        banner("HEIST · "+g.name.toUpperCase(),"bad");
+        // record for the player to see
+        g.lastHeist=ST.tick;
+      }
+    }
+  }
 }
 // SNITCHING: a witness to a crime may report the perp, spiking heat on them
 function witnessCrime(perp,x,y){
@@ -2058,9 +2172,42 @@ function showTutorialHints(){
   const hints=[
     "Welcome to the sprawl. Your district starts with 200c income and 7 citizens. Build a Workstation to start generating Data — that's your first income source.",
     "Citizens need food, rest, and hygiene to stay functional. They find it themselves — your job is to build the infrastructure. A Fridge in every home helps.",
-    "Check the REQUESTS panel on the left. Citizens surface problems — feuds, sickness, theft — that need your decision. Ignore them and things escalate."
+    "Check the REQUESTS panel on the left. Citizens surface problems — feuds, sickness, theft — that need your decision. Ignore them and things escalate.",
+    "Tap any citizen to inspect them. Open their full profile to see their vocation, relationships, wealth, and mood — and to manage their career or follow them around the block."
   ];
   hints.forEach((h,i)=>setTimeout(()=>log(h,"info"),i*800));
+}
+// CONTEXTUAL HINTS — fire once, the first time the player encounters each system.
+// Teaches the deep systems organically instead of front-loading a manual.
+function hintOnce(id,msg){
+  if(!ST.hintsSeen)ST.hintsSeen={};
+  if(ST.hintsSeen[id])return;
+  ST.hintsSeen[id]=true;
+  log("◈ "+msg,"info");
+}
+function checkContextualHints(){
+  if(!ST.pawns.length)return;
+  // first time a citizen forms a clique
+  if(ST.cliques&&ST.cliques.length)
+    hintOnce("clique","A CLIQUE has formed — a tight friend-group. They look out for each other, prefer to work together, and a loyal clique may petition you for support. Losing a member hits the whole group hard.");
+  // first time a mentorship forms
+  if(ST.relMeta&&Object.values(ST.relMeta).some(m=>m&&m.mentor))
+    hintOnce("mentor","A MENTORSHIP formed — a skilled veteran is training a novice of the same trade. Apprentices level up much faster. Keep them near each other.");
+  // first gang
+  if(ST.gangs&&ST.gangs.length)
+    hintOnce("gang","A GANG has taken root. They claim turf, run rackets, and recruit your broke, unhappy citizens. Keep people housed and paid to starve gangs of recruits — or manage the fallout.");
+  // first partnership
+  if(ST.relMeta&&Object.values(ST.relMeta).some(m=>m&&m.partner))
+    hintOnce("partner","Two citizens became PARTNERS. They'll share a home and look out for each other — and grieve hard if one is lost. Relationships drive a lot of behavior here.");
+  // first time someone reaches a higher wealth tier
+  if(ST.pawns.some(p=>wealthTier(p).t>=3))
+    hintOnce("wealth","A citizen has grown AFFLUENT. Wealth comes from wages and property; the rich and poor associate differently, and crime targets those with something to take.");
+  // first time heat climbs
+  if((ST.heat||0)>=40)
+    hintOnce("heat","DISTRICT HEAT is rising — a measure of crime and disorder. High heat invites crackdowns and unrest. Address the causes: poverty, idle gangs, unmet needs.");
+  // tier up past the first
+  if((ST.tierReached||1)>=2)
+    hintOnce("tier","Your district is RANKING UP. Tiers (Squat → Settlement → District → Neon Sprawl) unlock as population, income, and prosperity grow. The HUD badge tracks your standing.");
 }
 
 /* ---------- events ---------- */
@@ -2233,6 +2380,8 @@ function tick(){ST.tick++;
   if(ST.tick%TPD===0&&ST.tick>0&&typeof autosave==="function")autosave(); // daily autosave
   if(ST.tick%120===0)checkTier(); // district tier progression
   if(ST.tick%100===0)tickAmbient(); // background AI musings (rate-limited internally)
+  if(ST.tick%100===0)driveAmbience();
+  if(ST.tick%50===0)checkContextualHints();
   if(ST.tick%200===0&&ST.gangs.length)gangTick();
   if(ST.gangs.length)crimeTick();
   if(ST.tick%TPD===0&&ST.tick>0){
@@ -2389,6 +2538,18 @@ function lightLevel(h){
   if(h>=18.5&&h<21)return (h-18.5)/2.5*.78;
   if(h>=21||h<4.5)return .78;
   return (1-(h-4.5)/2)*.78}
+// dynamic ambience: intensity blends district heat, gang tension, crime, and population bustle
+function driveAmbience(){
+  if(!SFX._amb)return;
+  const heat=(ST.heat||0)/100;
+  const gangTension=ST.gangs&&ST.gangs.length?Math.min(1,ST.gangs.reduce((s,g)=>s+(g.gangHeat||0),0)/100):0;
+  const pop=ST.pawns.length;
+  const bustle=clamp(pop/12,0,1)*0.5;                       // more people = busier bed
+  const danger=Math.max(heat,gangTension*0.8)*0.7;
+  const crisis=ST.crisis?0.3:0;
+  const intensity=clamp(bustle*0.5+danger+crisis,0,1);
+  SFX.ambientSet(intensity,lightLevel(hourN())/0.78);
+}
 
 function drawTerrain(){const g=tctx;
   g.fillStyle="#010408";g.fillRect(0,0,MW*T,MH*T);
@@ -3789,6 +3950,18 @@ function collectAlerts(){
       const nearGang=ST.gangs.some(g=>g.crewIds.some(id=>{const m=ST.pawns.find(x=>x.id===id);return m&&DIST(m.px,m.py,p.px,p.py)<10;}));
       if(nearGang){alerts.push({sev:"warn",ic:"\u2620",t:p.name+" is drifting toward a crew",s:"Broke and disaffected near gang turf — a raise or better work could pull them back.",pid:p.id});}
     }
+    // recent heist fallout
+    for(const g of ST.gangs){
+      if(g.lastHeist&&ST.tick-g.lastHeist<TPD){
+        alerts.push({sev:"warn",ic:"\u2620",t:g.name+" pulled a heist",s:"A big score just went down — district heat is up. Watch for retaliation or a crackdown opportunity."});break;}
+    }
+    // a flush gang is overdue for a score
+    const flush=ST.gangs.find(g=>(g.bank||0)>=120&&g.crewIds.length>=3&&!(g.heistCd&&ST.tick<g.heistCd));
+    if(flush)alerts.push({sev:"info",ic:"\u25C8",t:flush.name+" is flush and restless",s:"They have the crew and the funds for a heist. Heavy policing or splitting them up could pre-empt it."});
+    // contraband trade visibility
+    const contra=ST.gangs.reduce((s,g)=>s+(g.contraband||0),0);
+    if(contra>=80&&ST.contrabandPolicy!=="allow")
+      alerts.push({sev:"info",ic:"\u25C8",t:"Contraband trade is growing",s:"Gangs are moving illicit goods. You can crack down, or tolerate it for a cut (District panel)."});
   }
   // citizens in trouble
   for(const p of ST.pawns){
@@ -3897,6 +4070,12 @@ $("overlay").addEventListener("click",e=>{
           log(p.name+" reassigned to "+vocationOf(p).name+" work.","good");}
         else log("No "+vocationOf(p).name+" workplace available.","warn");}
       renderCrewDetail();}return;}
+  // contraband policy toggle
+  if(e.target.id==="d-contra"){SFX.ui();
+    ST.contrabandPolicy=ST.contrabandPolicy==="allow"?"crackdown":"allow";
+    if(ST.contrabandPolicy==="allow")log("You signal the gangs you'll look the other way — for a price.","warn");
+    else{log("You order a crackdown on the contraband trade.","info");ST.lastCrackdown=ST.tick;}
+    renderOverlay();return;}
   // locate
   if(e.target.id==="cd-locate"){const p=ST.pawns.find(q=>q.id===OV.crewFocus);
     if(p){ST.sel=[p];cam.x=p.px*T-VW/cam.z/2;cam.y=p.py*T-VH/cam.z/2;clampCam();closeOverlay();renderInspect();}return;}
@@ -4172,8 +4351,8 @@ function showModal(html){$("modal").innerHTML="<div class='mbox'>"+html+"</div>"
   $("modal").classList.add("open")}
 function hideModal(){$("modal").classList.remove("open")}
 $("modal").addEventListener("click",e=>{const id=e.target.id;
-  if(id==="m-start"||id==="m-restart"){SFX.wake();SFX.ui();newGame()}
-  else if(id==="m-continue"){SFX.wake();SFX.ui();hideModal();openLoadSlots()}
+  if(id==="m-start"||id==="m-restart"){SFX.wake();SFX.ambientStart();SFX.ui();newGame()}
+  else if(id==="m-continue"){SFX.wake();SFX.ambientStart();SFX.ui();hideModal();openLoadSlots()}
   else if(id==="m-close"){SFX.ui();hideModal()}});
 
 function syncHUD(){
@@ -4243,6 +4422,12 @@ function renderInspectCore(){const el=$("inspect");
     h+=barHtml("REST",e.needs.rest,"#7aa2ff");
     h+=barHtml("MOOD",e.mood,e.mood<25?"#ff4757":"#ffd84a");
     h+="<div class='sub'>TASK: "+jobLabel(e)+"</div>";
+    // glanceable identity: vocation · clique · gang (the deep systems at a glance)
+    {const bits=[];
+     if(e.career)bits.push("<span style='color:var(--cy)'>"+vocationOf(e).name+"</span>");
+     const c=cliqueOf(e);if(c)bits.push("<span style='color:#c98bff'>"+c.name+"</span>");
+     const g=pawnGang(e);if(g)bits.push("<span style='color:"+g.color+"'>"+g.name+"</span>");
+     if(bits.length)h+="<div class='sub'>"+bits.join(" · ")+"</div>";}
     h+="<div class='sub'>CREDITS "+(e.credits|0)+(e.homeless?" · <span style='color:var(--rd)'>EVICTED</span>":"")+"</div>";
     if(e.assigned){const as=ST.structs.get(e.assigned);h+="<div class='sub'>ASSIGNED: "+(as?DEF[as.type].name:"—")+"</div>";}
     if(e.sick)h+="<div class='sub' style='color:var(--rd)'>INFECTED — needs a clinic</div>";
@@ -4647,6 +4832,20 @@ function districtStatsHTML(){
       const rival=c.rival&&ST.cliques.find(x=>x.id===c.rival);
       h+="<div class='srow'><b style='color:#c98bff'>"+c.name+"</b><span>"+mem.map(m=>m.name).join(", ")+"</span></div>";
       h+="<div class='srow'><span>Loyalty"+(rival?" · rivals "+rival.name:"")+"</span><b>"+(c.loyalty|0)+"</b></div>";}}
+  // CONTRABAND POLICY — the player's risk/reward lever over the gang economy
+  if(ST.gangs&&ST.gangs.length){
+    const totalContra=ST.gangs.reduce((s,g)=>s+(g.contraband||0),0);
+    const totalBank=ST.gangs.reduce((s,g)=>s+(g.bank||0),0);
+    const allow=ST.contrabandPolicy==="allow";
+    h+="<h4>Underworld</h4>";
+    h+="<div class='srow'><span>Gang banks (combined)</span><b>"+(totalBank|0)+"c</b></div>";
+    h+="<div class='srow'><span>Contraband in circulation</span><b>"+(totalContra|0)+"</b></div>";
+    h+="<div class='srow'><span>Policy</span><b style='color:"+(allow?"#c98bff":"#39ff88")+"'>"+(allow?"TOLERATED":"CRACKDOWN")+"</b></div>";
+    h+="<div style='font-size:9.5px;color:var(--dim);margin:2px 0 6px'>"+(allow
+      ?"You take a cut of the contraband trade (+income) but it raises district heat."
+      :"You suppress the trade — no income from it, and dealers risk being reported.")+"</div>";
+    h+="<button class='tb' id='d-contra' style='width:100%'>"+(allow?"◉ Switch to CRACKDOWN":"◎ TOLERATE the trade (take a cut)")+"</button>";
+  }
   // milestones
   if(ST.milestones&&ST.milestones.length){h+="<h4>Milestones ("+ST.milestones.length+"/"+MILESTONES.length+")</h4>";
     for(const id of ST.milestones){const m=MILESTONES.find(x=>x.id===id);if(m)
@@ -4694,6 +4893,8 @@ function showHelp(){if(ST.phase==="run"){ST.paused=true;refreshSpd()}showModal(
   "<tr><td style='color:var(--cy)'>Cliques</td><td>Tight friend-clusters form into named CLIQUES (3+ mutual friends). Members get a belonging mood boost, prefer to work and socialize together, and grieve as a group when one is lost. A large, loyal clique may petition the district for investment; cliques can also fall into rivalries with each other. See them in the DISTRICT window and crew profiles.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Mentorship</td><td>A skilled veteran will take on a nearby novice of the same vocation as an apprentice. Apprentices gain skill noticeably faster, both grow closer, and the mentor gets satisfaction from teaching — a fast way to level up new arrivals. Shown in the crew profile.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Crime</td><td>Gangs recruit broke, disaffected citizens (watch TASKS for at-risk warnings — a raise can pull them back), run protection rackets that skim vendor income, and war over turf. Witnesses may snitch, raising heat on the culprit, and victims hold grudges that fuel revenge. Keep people housed, paid, and content to keep crime down.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Heists & Contraband</td><td>A flush, motivated gang (full bank, 3+ crew) will plan a HEIST — a big coordinated score that pays out but spikes district heat, and someone may get hurt. Gangs also cook CONTRABAND. In the District panel you set policy: CRACKDOWN (suppress it, dealers risk being reported) or TOLERATE it (the district takes a cut of the trade for extra income, but heat climbs). A real risk/reward lever.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Atmosphere</td><td>The district has a living soundscape — an ambient hum that shifts day to night, with a music bed that adds layers as things get busier or more dangerous. Toggle audio with the mute button.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Progression</td><td>The district ranks up through Tiers (Squat → Settlement → District → Neon Sprawl) as population, income, and prosperity rise. The HUD shows your tier badge and a live PROSPERITY bar (red→green) blending economy, wellbeing, safety, and growth — push it as high as you can.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Saves</td><td>💾 SAVE / 📂 LOAD use three slots plus a daily autosave. Each slot shows day, population, tier, and income so you can manage multiple runs.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Diary</td><td>Day-grouped, timestamped event log. Filter tabs: ALL / CRIME / ECO / SOCIAL / HEALTH / DISTRICT.</td></tr>"+
@@ -4734,7 +4935,7 @@ function serializeState(){
     goods:ST.goods,income:ST.income,debtDays:ST.debtDays||0,crisis:ST.crisis||false,
     savedAt:Date.now(),
     gangs:(ST.gangs||[]).map(g=>({...g,turf:[...g.turf]})),
-    stats:ST.stats,flags:ST.flags,milestones:ST.milestones||[],tierReached:ST.tierReached||1,
+    stats:ST.stats,flags:ST.flags,milestones:ST.milestones||[],tierReached:ST.tierReached||1,contrabandPolicy:ST.contrabandPolicy||"crackdown",hintsSeen:ST.hintsSeen||{},
     ter:Array.from(ST.ter),
     structs:[...ST.structs.values()].map(snapStruct),
     pawns:ST.pawns.map(snapPawn),
@@ -4745,7 +4946,7 @@ function applyState(d){
   ST.goods=d.goods||{data:0,chem:0,parts:0,stims:0,gear:0,food:0,wood:0,materials:0};ST.income=d.income||0;
   ST.debtDays=d.debtDays||0;ST.crisis=d.crisis||false;
   ST.gangs=(d.gangs||[]).map(g=>({...g,turf:new Set(g.turf||[])}));
-  ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];ST.tierReached=d.tierReached||1;
+  ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];ST.tierReached=d.tierReached||1;ST.contrabandPolicy=d.contrabandPolicy||"crackdown";ST.hintsSeen=d.hintsSeen||{};
   ST.ter=new Uint8Array(d.ter||[]);
   ST.structs=new Map((d.structs||[]).map(s=>[K(s.x,s.y),s]));
   ST.pawns=(d.pawns||[]).map(p=>Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,unre:new Map()}));
@@ -4862,7 +5063,7 @@ function newGame(){
   {let hi=0;for(const p of ST.pawns){const home=ST.cityHomes[hi%ST.cityHomes.length];hi++;claimHome(p,home);p.attach=RI(3,12);}}
   cam.z=1.4;  // start zoomed into the core on the bigger map
   cam.x=64*T-VW/cam.z/2;cam.y=50*T-VH/cam.z/2;clampCam();
-  ST.lastCrackdown=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.rel={};ST.relMeta={};ST.cliques=[];relAdj(vex.id,sta.id,25);ST.heat=0;ST.heatWarn=false;
+  ST.lastCrackdown=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.rel={};ST.relMeta={};ST.cliques=[];ST.contrabandPolicy="crackdown";ST.hintsSeen={};relAdj(vex.id,sta.id,25);ST.heat=0;ST.heatWarn=false;
   $("log").innerHTML="";DIARY_ENTRIES.length=0;renderDiary();renderRoster();
   log("The sprawl wakes — citizens drifting to homes, jobs, and the night's vices.","info");
   log("You watch over the district. Build it out, steer who you can, and keep the block from tearing itself apart.","info");
