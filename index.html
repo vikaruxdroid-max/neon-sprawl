@@ -676,7 +676,7 @@ function tryFormPartnership(a,b){
   const meta=relMetaFor(a.id,b.id);
   if(meta.partner)return false;
   // both must already be close, single, and socially inclined
-  if(relGet(a.id,b.id)<62)return false;
+  if(relGet(a.id,b.id)<48)return false;
   if(partnerOf(a)||partnerOf(b))return false;
   if((a.pers.soc||50)<35&&(b.pers.soc||50)<35)return false;
   meta.partner=true;
@@ -1646,9 +1646,9 @@ function pawnTick(p){
       if(!o||o===p){p.job=null;break}
       const r=gotoCell(p,o.px|0,o.py|0,1);
       if(r==="fail"){p.job=null;break}
-      if(r==="arr"){j.prog++;if(j.prog>=40){p.needs.socN=100;relAdj(p.id,o.id,2);
+      if(r==="arr"){j.prog++;if(j.prog>=40){p.needs.socN=100;relAdj(p.id,o.id,3.5);
         // close, compatible pairs may pair up
-        if(relGet(p.id,o.id)>=62&&Math.random()<0.04)tryFormPartnership(p,o);
+        if(relGet(p.id,o.id)>=48&&Math.random()<0.06)tryFormPartnership(p,o);
         p.job=null}}
       break}
     case "work":{const s=j.s;
@@ -2108,6 +2108,12 @@ function tick(){ST.tick++;
       const wt=wealthTier(p);
       if(wt.t>=3)addMod(p,"affluent","Doing well for myself",4,TPD);
       else if(wt.t===0)addMod(p,"destitute","Got nothing to my name",-2.5,TPD);
+    }
+    // daily partnership check: close, compatible, single pairs may pair up
+    for(let i=0;i<ST.pawns.length;i++)for(let j=i+1;j<ST.pawns.length;j++){
+      const a=ST.pawns[i],b=ST.pawns[j];
+      if(partnerOf(a)||partnerOf(b))continue;
+      if(relGet(a.id,b.id)>=48&&Math.random()<0.25)tryFormPartnership(a,b);
     }
     genWorkPetitions();
     // rent + eviction

@@ -1,50 +1,184 @@
-# NEON SPRAWL — City Protocol
+# NEON SPRAWL — Colony Protocol · Developer Handoff
 
-Single-file cyberpunk city sandbox (living city sim, not a colony survival roguelike). Redesigned from colony→city 2026-06-16.
+A single-file, vanilla-JS, canvas-rendered cyberpunk colony sim (RimWorld-flavored). No
+frameworks, no build step. The entire game is `index.html` (~4,700 lines: one `<style>`
+block, the DOM scaffold, and one `<script>`).
 
-## Hard constraints
-- **Everything lives in `index.html`.** Vanilla JS + canvas. No frameworks, no build step, no external dependencies. Same architecture as the owner's Neon Dungeon project.
-- Function declarations rely on hoisting; script executes top-to-bottom, game starts only after full parse. Keep new code in the matching section (map below).
-- Must remain playable by opening `index.html` directly (file://) and via GitHub Pages.
-- localStorage **is allowed and now used.** Save/load is **implemented**: `saveGame`/`loadGame` → `serializeState`/`applyState`, key `neonSprawlSave_v1` (SAVE/LOAD buttons, CONTINUE on title, LOAD LAST SAVE on death). (localStorage was forbidden only in the old claude.ai artifact environment.)
+> This doc is the orientation layer for a fresh dev session. Read it first; it will save you
+> from re-discovering the architecture, the deploy flow, and the hard-won gotchas.
 
-## Workflow — non-negotiable
-1. Make edits with targeted diffs. Never regenerate the whole file.
-2. After ANY change to game logic: `node test/run.js`. All tests must pass before commit.
-3. Commit style: short imperative summary + version bump in the header comment block when behavior changes (v0.1 → v0.2 etc.).
-4. One feature per commit. Balance changes get their own commits with before/after numbers in the message.
+---
 
-## Architecture map (section order inside the single <script>)
-1. Helpers + SFX (WebAudio) + data defs: `DEF` buildings, `WEAP`, `FOED`, `TRAITS`, names. Constants: `T=16` px/tile, `MW=56`, `MH=40`, `TPD=2400` ticks/day, `TPS=10`.
-2. Structures/passability (`structAt`, `colCost`, `foeCost`), binary-heap A* (`astar`, 8-dir, no corner cuts), `los`, placement/construction, `genMap` / `genCity`. **Dormant dead code** (intact, do not delete): `powerRecalc` (now a no-op stub).
-3. Pawns: `mkPawn`, traits (`tr`) + personality (`pers`: ind/cau/soc/cur/amb/emp/imp/intg), per-pawn daily schedule (`mkSched`, stored on `p.sched`), mood (`moodCalc`, mental break → dazed wander), movement (`gotoCell`). **Home assignment:** each pawn gets `p.home` pointing to a home structure; they sleep, wash, and eat there (free fridge food). Job AI: **`chooseJob`** (hard gates: eat if food≤22, sleep if rest≤18) → **`scoreJobs`** — utility scoring (`base·weight·bias·sched`) over job types weighted by personality, schedule windows, needs and foe-proximity; also consumes one-shot direct orders (`p.cmd`). Job execution in `pawnTick`. Reservations via `s.res` / `it.resv`; unreachable cache `p.unre`. **Dormant dead code:** `findJob` (never called), salvage/cook/haul job branches.
-4. Foes & events: **combat is dormant** — `spawnRaid` and the `spawnFoeAt` call inside it are dead code; live game spawns no foes. Combat code intact and test-covered: `foeTick` — foes path through walls/doors at soft cost (door 15, wall 28), breach blockers; groups retreat at ≤34% alive or after 1.2 days. **Note:** `turretTick` was removed in the city redesign; turret/gen types are not in DEF. Live pressure: `fireEvent` (**pod / wander / storm / blackout / mugging / medbill / gigdrought**), the heat-based **non-lethal enforcer crackdown** (~every 100t), and **daily eviction** for citizens who run out of credits. **No win condition** — the extraction-beacon win condition was removed. Lose = all pawns dead (`gameOver`). Master `tick()`. **Note:** re-enabling raids = wiring `spawnRaid` back into `tick`.
-5. Rendering: offscreen terrain canvas, per-frame structs/pawns/foes/beams/floats, night lighting overlay (destination-out), storm/vignette screen effects. Wisp task-glyph icons + accent identity rings replace old text job-labels.
-6. Input: mouse (marquee select, wall paint-drag, rect designations, RMB commands, wheel zoom, WASD pan), touch (tap/pan/pinch), keyboard (space pause, 1/2/3 speed, R draft, Esc).
-7. UI/DOM: HUD shows **POP / CR / EVICTED** (replaced old resource/power readout). Toolbar shows **14 city fixture blueprints** buildable with labor only (no material cost) — colony pieces (synth/vat/gen/turret/beacon) are off the menu. Inspector, log, modals, AI chat (TALK button). `newGame`, main loop (fixed-step, 100ms/speed, ≤10 ticks/frame). `updateFlags` is now a no-op (survival checklist removed). **Dormant dead code:** `renderChecklist`, SALVAGE order, STOCKPILE/ZONES tool, `ST.res` resource HUD, power readout, win-condition beacon.
+## 1. Repo / deploy
 
-## City economy
-- **Food:** free at a home fridge (`pawn.home`); costs 5 credits at a shop/bar vendor. No salvage, scrap, synth food, or material stockpiles.
-- **Credits:** citizens earn credits through work jobs; spent on vendor food, lost to eviction rent, or transferred by crime events.
-- **Eviction:** citizens who exhaust credits are evicted (removed from play). HUD tracks the running evicted count.
-- **Build cost:** all 14 city fixtures require labor only — no `ST.res` material cost.
+- **Repo:** github.com/vikaruxdroid-max/neon-sprawl (public, `main`)
+- **Live (GitHub Pages):** https://vikaruxdroid-max.github.io/neon-sprawl/
+- **VPS:** Azure `vikarux@20.118.225.255`, nginx serving `/var/www/game/neon-sprawl/`
+- **Local dev dir (user's Windows git-bash):** `C:\dev\neon-sprawl`, tests at `test/smoke.js`
 
-## Dormant dead code (do NOT delete)
-The roguelike plumbing from the colony era is intentionally preserved for a future cleanup pass or potential re-use: raid spawner (`spawnRaid`), salvage/cook/haul job branches, `powerRecalc` (now a no-op stub), extraction-beacon win condition, survival checklist (`renderChecklist`/`updateFlags`), SALVAGE order.
-**Fully removed in city redesign:** `ST.res` material resources, `ST.zone` stockpile zones, `ST.items`, `turretTick`, generator/turret DEF entries — these are gone from the codebase, not merely dormant.
+### Deploy workflow (user runs these — Claude builds the file, user moves/commits)
+```bash
+cp "$(ls -t ~/Downloads/index*.html | head -1)" /c/dev/neon-sprawl/index.html
+node test/run.js                       # expect ALL TESTS PASS (19 assertions)
+git add index.html && git commit -m "..." && git push
+# VPS pull is MANUAL — SSH from the user's shell is blocked (see Gotchas):
+ssh vikarux@20.118.225.255 "cd /var/www/game/neon-sprawl && git pull"
+```
 
-## Testing
-`node test/run.js` — extracts the script from index.html, prepends DOM/canvas stubs (test/stubs.js, including an in-memory localStorage shim), runs test/smoke.js. Current tests:
-A drafted-pawn kill · B turret kill (dormant stub — turretTick removed) · C city economy (food+credits, 2-day run) · D wall-breach combat primitive · E A* corner-to-corner · F1/F2/F3 job-AI decisions (industrious→build, curious→recreate, hunger hard-gate→eat) · G1–G15 save/load round-trip (Map/Set/Uint8Array rebuild, transient-ref stripping, reservation clearing, post-load AI re-derive, relationship graph, goods persistence).
-A/D drive combat by calling `spawnFoeAt` directly (live game spawns no foes). C replaced the old salvage→haul chain test with a city-economy health check. G4 tests `ST.goods` persistence (replaced old zone Set test).
+### How Claude ships a build
+1. Edit `/home/claude/work/index.html` (the working copy).
+2. Validate (see §5).
+3. `cp /home/claude/work/index.html /mnt/user-data/outputs/index.html`
+4. `present_files` it. User downloads from there.
 
-## Balance state — OPEN
-Human playtest data does not exist yet. Live difficulty levers: `fireEvent` social-shock frequency/severity, the enforcer **heat** system, eviction credit drain rate, and `scoreJobs` need/economy balance. Do not tune blind; require the owner's playtest verdict first.
+---
 
-## Roadmap (owner-approved candidates, in rough priority)
-1. ~~Save/load via localStorage~~ — **DONE** (`saveGame`/`loadGame`, single-slot, regression-tested as smoke test G). JSON export/import backup path still open.
-2. Difficulty pass driven by playtest data.
-3. Netrunning/hacking mechanic (differentiator vs RimWorld).
-4. Medical/downed states instead of instant death.
-5. Per-pawn work priorities UI.
-Cut from v0.1 by design: research, trading, temperature.
+## 2. Core constants & loop
+
+```
+T=16        tile size in px
+MW=140, MH=100   map width/height in tiles (2.5x the original small map)
+TPD=2400    ticks per in-game day
+TPS=10      ticks per second at 1x speed
+POP=7       starting population
+```
+- `ST` is the single global game-state object. `tick()` advances one game tick;
+  `render()` draws one frame; `loop(ts)` is the rAF driver (decouples sim ticks from frames).
+- Day starts 06:00. `hourN()` returns the float hour. `dayN()` the day number.
+
+---
+
+## 3. Architecture map (where things live)
+
+| System | Key functions / anchors |
+|---|---|
+| **Tile keys** | `K(x,y)=x*MH+y` (NUMERIC, not string), `KX(k)`, `KY(k)`. Used for `ST.structs` Map, gang turf Sets, `unre`/paint Sets. |
+| **Pathfinding** | `astar()`, `gotoCell()`, `terCost()` (roads = type-3 terrain, cost 0.55 → pawns prefer streets). `buildRoadTiles()` writes roads into `ST.ter`. |
+| **Pawn AI** | `pawnTick(p)`, `chooseJob(p)` / `scoreJobs(p)` (utility scoring), job execution in a big `switch` inside `pawnTick`. Jobs: eat/sleep/build/hygiene/recreate/socialize/work/treat/substance/crime/steal/learn/idle. |
+| **Needs/mood** | `p.needs{food,rest,hyg,fun,socN}`, `moodCalc(p)`, `addMod(p,id,label,val,dur)` (timed mood modifiers), `p.stress`, `faceExpr(p)` → 8-bit face. |
+| **Economy** | Buildings cost CREDITS only (`cost.income`), charged at placement in `placeBp` (refunded by `cancelBp`). `ST.goods{food,wood,materials,data,chem,parts,stims,gear}` are commodities. Vendors sell commodities → district income. |
+| **Work & Ambition** | `initCareer()`, `VOCATIONS{}`, `vocationOf(p)`, `fitsVocation()`, `ethicMul()`, `careerAfterShift()`, `careerTick()` (daily), `genWorkPetitions()`. Career data on `p.career{voc,ethic,asp,sat,specialist,gripe,lastRaiseDay}`. |
+| **Ownership & Wealth** | `netWorth(p)` (credit debt floored at 0 + owned property), `wealthTier(p)` (WEALTH_TIERS), `claimHome()`, `loseProperty()`, `inherit(dead)` (estate → closest bond or district). `p.attach` = property attachment, grows daily with tenure. |
+| **Relationships** | `ST.rel` = scalar -100..100 per pair (`relKey/relGet/relAdj`). `ST.relMeta` = per-pair flags (`{partner, mentor}`). `relType(a,b)` derives typed label. `tryFormPartnership()`, `partnerOf()`, `gossip()` (proximity reputation spread), `defendInFight()`. |
+| **Crime & gangs** | `ST.gangs[]` = `{id,name,color,crewIds[],turf:Set,gangHeat,tension,bank}`. `gangTick()` (turf/war, every 200t), `crimeTick()` (recruitment/rackets, runs each tick but gated by `tick%180`/`%240`), `witnessCrime()` (snitching→heat), `seekRevenge()` (grudges via `p.grudgeTarget`). `pawnGang(p)`, `tileInTurf` removed (dead). |
+| **Progression** | `TIERS[]` (Dead Block→Neon Sprawl), `currentTier()`, `prosperity()` (0-100 live blend), `prospRank()`, `checkTier()`. `ST.tierReached`. |
+| **Camera** | `cam{x,y,z,follow}`. `tickFollow()` eases toward `cam.follow` (pawn id). `setFollow()/stopFollow()`. Pan or Esc cancels. |
+| **Overlays (full-screen windows)** | `OV{view,crewFocus,slotMode}`, `openOverlay()/closeOverlay()/renderOverlay()`. Views: `diary`, `crew` (+ `crewFocus` detail), `tasks`, `district`, `slots`. Icon buttons in HUD: 📖📋👥📊. Hotkeys J/K/L/T. |
+| **Tasks/alerts** | `collectAlerts()` (sick/hurt/evicted/broke/miserable + crisis + gang-recruitment risk), `pendingRequests()`, `taskCount()`, `refreshTaskBadge()`, `applyRequest(id,optIdx)` (handles kinds: work/feud/epidemic/gang/theft). |
+| **Command bar** | Bottom 3-mode bar: ⛏ BUILD (categorized cards, live affordability), ▦ ZONE (decon/cancel/salvage), ⚇ COMMAND (select pawns → orders). `BUILD_CATS`, `BUILD_ICON`, `renderSub()`. |
+| **Saves** | Multi-slot: 3 manual (`neonSprawlSlot_1..3`) + autosave (`neonSprawlSlot_auto`, daily). `saveToSlot/loadFromSlot/slotMeta`. `serializeState()/applyState()`. `saveGame()`=slot 1, `loadGame()`=most recent (these two are what the smoke test calls — keep them functional). |
+| **Charm/visuals** | `EMOTES{}` + `emote(p,kind)` (floating reaction bubbles), `tombstones`, `drawPawn` (bouncy idle motion), GLOW_CACHE (cached pawn glow sprites), cached vignette gradient (`vignetteGradient`). |
+
+---
+
+## 4. State shape (`ST`) — serialized fields
+
+`serializeState()` persists: `tick, grp, rel, relMeta, nextEv, lastCrackdown, goods, income,
+debtDays, crisis, gangs (turf as array), stats, flags, milestones, tierReached, ter (array),
+structs (array), pawns (snapPawn-stripped), rooms`.
+
+Transient (rebuilt/reset on load, NOT persisted): `beams, floats, emotes, tombs, sel, path,
+job, carry, unre (fresh Map)`.
+
+`applyState()` backfills `p.career` for pre-career saves. **When adding a new pawn field that
+must persist, confirm it survives the snapPawn → applyState round-trip (the smoke G-suite
+checks this).**
+
+---
+
+## 5. Validation (ALWAYS before shipping)
+
+```bash
+cd /home/claude/work
+# 1. brace balance
+python3 -c "import re;h=open('index.html').read();s=re.search(r'<script>([\s\S]*?)</script>',h).group(1);print('braces:',s.count('{')==s.count('}'))"
+# 2. syntax
+node -e "const fs=require('fs');const h=fs.readFileSync('index.html','utf8');const m=h.match(/<script>([\s\S]*?)<\/script>/);fs.writeFileSync('/tmp/check.js',m[1])" && node --check /tmp/check.js
+# 3. headless test suite (19 assertions)
+node build_smoke.js          # expect ALL TESTS PASS
+# 4. stability probes (see the diag_*.js / probe_*.js scratch files)
+node probe_final.js          # 15-day full run, must end STABLE + COMPLETE
+```
+
+### Test harness
+- `smoke.js` = the 19 assertions (C economy, E pathing, F1-F3 job AI, G1-G14 save/load).
+- `build_smoke.js` = bundles `stubs.js` + the `<script>` + `smoke.js` into `smoke_bundle.js`, runs it.
+- `stubs.js` = DOM/canvas/localStorage stubs for headless node.
+- The combat tests (old A/B/D) were REMOVED — the foe/combat system is gone. Don't re-add
+  references to `spawnFoeAt`, `foeAt`, etc.
+- Scratch probes (`diag_*.js`, `probe_*.js`) are ad-hoc; they bundle the same way. Use the
+  `global.performance={now:()=>Date.now()}` stub when the code path hits `drawPawn`.
+
+---
+
+## 6. GOTCHAS (read these — they have bitten us)
+
+1. **SSH from the user's shell is BLOCKED** (ssh-agent not forwarded to their git-bash). The
+   VPS `git pull` is always done manually by the user. Don't assume `ssh ... git pull` will
+   work in their deploy script.
+2. **Tile keys are NUMERIC** (`x*MH+y`). Never write code that does `key.split(",")` — use
+   `KX(k)/KY(k)`. Old string-keyed saves are incompatible (already migrated past).
+3. **Em-dashes / full-width chars** in string literals cause "Invalid token" — when doing
+   multi-block edits via python heredocs, watch for them.
+4. **After `str_replace`, earlier `view` output is stale** — re-view before the next edit to
+   the same region.
+5. **Removing a function block** can orphan a brace (we lost the `pawnTick` header once this
+   way). Always brace-check after deletions.
+6. **`saveGame()`/`loadGame()` must stay functional round-trip helpers** — the smoke G-suite
+   calls them. The slot *picker* UI is separate (`openSaveSlots/openLoadSlots`).
+7. **Mood-mod tuning philosophy:** negative mods (grief, property loss, destitute, bad-work)
+   compound into death spirals in UNMANAGED colonies. Always measure with a 12-seed sample,
+   not 5 (variance is wide: 1-6 survivors). The bar: a MANAGED colony (player keeps citizens
+   solvent) should survive ~7/7; an unmanaged one is *supposed* to struggle. Don't flatten the
+   drama chasing unmanaged survival.
+
+---
+
+## 7. Current tuning state (data-backed, as of this handoff)
+
+Measured over managed 14-day runs (player keeps everyone ≥45 credits):
+- **Survival:** managed = 7/7 every seed. Unmanaged = ~3.8 avg (the NPC-loss systems cost
+  ~0.5 survivors vs a no-mood baseline of ~4.3 — intended).
+- **Partnerships:** ~0.3/run after the rate fix (threshold lowered 62→48, bond growth 2→3.5
+  per socialize, + a daily 25%-chance pairing check for eligible pairs). Romance is occasional
+  by design.
+- **Wealth classes:** a managed colony sits uniformly at "Comfortable" (~245 net worth).
+  Stratification (Destitute/Affluent/Kingpin) only emerges when the economy diverges — correct.
+- **Gang activity (recruit/racket):** only fires when citizens are broke/disaffected near
+  turf. A well-run colony sees ~none. A struggling one sees recruitment (with a TASKS alert
+  warning you).
+
+> If something feels too rare in a real playthrough, these are all single-number tweaks. The
+> emergent systems are intentionally gated behind the conditions that make them thematic.
+
+---
+
+## 8. Roadmap / opportunities (not yet built)
+
+**Highest-value, flagged but untouched:**
+- **Render perf:** the structure-draw loop scans every viewport tile and does a Map lookup per
+  tile. At full zoom-out that's ~2000 lookups/frame. Iterating `ST.structs` directly (and
+  culling by viewport) would be a real win. Puddle-shimmer gradients are still per-frame (minor).
+- **Onboarding / first-session hints** — new players infer a lot; contextual nudges would help.
+- **Audio atmosphere** — ambient city hum, light reactive music.
+
+**Feature systems the user has enjoyed building (pattern: deep, emergent, interlocking):**
+The four NPC pillars are done — Work & Ambition, Ownership & Wealth (w/ inheritance),
+Relationships (typed + gossip + partnerships), Crime & gangs (recruit/racket/snitch/revenge).
+Natural next layers: **factions/cliques** (relMeta already supports grouping), **mentor→
+apprentice** (the `relMeta.mentor` flag exists but isn't wired to behavior yet), **contraband
+economy**, **heists** (multi-pawn coordinated crime).
+
+**Goods save/load coverage gap:** `ST.goods` serializes but has no explicit smoke assertion
+(only indirect via economy test C). Cheap `G15 goods restored` check worth adding.
+
+---
+
+## 9. User working style (important)
+
+- **One command at a time** for deploys/debugging. Wait for output before the next step.
+- Blunt, data-driven, technical. Challenge unsupported ideas. No praise unless earned.
+- Validate EVERY build before shipping (the user runs the tests independently and will catch
+  a skipped validation).
+- The user builds features in big ranked batches and likes emergent, interlocking systems over
+  shallow ones. When tuning, show the data, not a guess.
