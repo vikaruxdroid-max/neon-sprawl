@@ -1289,6 +1289,56 @@ function freeHomeTile(p){
     return{x:xx,y:yy};}
   return null;
 }
+/* ============================================================
+   STORE ROBOTS — automate a vendor: reliable but earns less than
+   a content human, costs upkeep, and can break down (needs repair).
+   ============================================================ */
+const ROBO_INSTALL=160;   // one-time credits to automate a store
+const ROBO_UPKEEP=4;      // district income/day to run a robot
+const ROBO_MAXHP=100;     // robot integrity; decays slowly, breaks at 0
+function canAutomate(s){return s&&!s.bp&&DEF[s.type]&&DEF[s.type].vendor&&!s.roboStaffed;}
+function roboBroken(s){return s&&s.roboStaffed&&(s.roboHp||0)<=0;}
+function roboWorking(s){return s&&s.roboStaffed&&(s.roboHp||0)>0;}
+// install a robot on a store (player action; charges district income)
+function automateStore(s){
+  if(!canAutomate(s))return false;
+  if((ST.income||0)<ROBO_INSTALL){flashMsg&&flashMsg("Need "+ROBO_INSTALL+"c district income");return false;}
+  ST.income-=ROBO_INSTALL;
+  s.roboStaffed=true;s.roboHp=ROBO_MAXHP;
+  // free any human who was working here — they'll find other work
+  for(const p of ST.pawns)if(p.assigned===K(s.x,s.y)){p.assigned=null;if(p.contract&&p.contract.fixtureKey===K(s.x,s.y))p.contract=null;}
+  log(DEF[s.type].name+" is now robot-staffed — reliable, but it won't spend wages back into the block.","info");
+  if(typeof SFX!=="undefined"&&SFX.build)SFX.build();
+  return true;
+}
+function deautomateStore(s){
+  if(!s||!s.roboStaffed)return;
+  s.roboStaffed=false;s.roboHp=0;
+  log(DEF[s.type].name+" is back to human staffing.","info");
+}
+function repairRobo(s){
+  if(!s||!s.roboStaffed)return false;
+  const cost=Math.round(ROBO_INSTALL*0.3);
+  if((ST.income||0)<cost){flashMsg&&flashMsg("Need "+cost+"c to repair");return false;}
+  ST.income-=cost;s.roboHp=ROBO_MAXHP;
+  log(DEF[s.type].name+"'s robot was repaired.","good");return true;
+}
+// daily: robots decay slowly + drain upkeep; broken robots stop earning until repaired
+function roboTick(){
+  let upkeep=0;
+  for(const s of ST.structs.values()){
+    if(!s.roboStaffed)continue;
+    upkeep+=ROBO_UPKEEP;
+    if((s.roboHp||0)>0){
+      s.roboHp=Math.max(0,s.roboHp-R(0.8,1.8));   // ~slower than furniture; breaks in ~tens of days
+      if(s.roboHp<=0){
+        float(s.x+.5,s.y+.5,"ROBOT DOWN","#ff4757");
+        log(DEF[s.type].name+"'s robot broke down — it's offline until repaired.","warn");
+      }
+    }
+  }
+  if(upkeep>0)ST.income=(ST.income||0)-upkeep;
+}
 const ADULT_AGE=14;   // in-game days to mature (each "year" of age ~ scaled to days)
 // aging: children grow toward adulthood; daily tick advances age and matures them
 function ageTick(){
@@ -1702,7 +1752,7 @@ function scoreJobs(p){
     else if(relGet(p.id,q.id)>35)dd*=0.75; // and friends generally
     if(dd<_md){_md=dd;mate=q}}
   const cred=p.credits??40;
-  const isWorkable=s=>!s.bp&&(DEF[s.type].prod||DEF[s.type].refine||DEF[s.type].vendor);
+  const isWorkable=s=>!s.bp&&!s.roboStaffed&&(DEF[s.type].prod||DEF[s.type].refine||DEF[s.type].vendor);
   const assignedStr=p.assigned?ST.structs.get(p.assigned):null;
   // prefer a workplace matching this pawn's vocation; fall back to nearest workable
   const vocStr=ST.tick>(p.workCd||0)?nearestStruct(p,s=>isWorkable(s)&&fitsVocation(p,s.type)):null;
@@ -2605,6 +2655,9 @@ function checkContextualHints(){
   // EXPANSION — first expansion petition
   if(ST.requests&&ST.requests.some(r=>r.kind==="expand"))
     hintOnce("expand","A resident is PETITIONING TO EXPAND their home — they've outgrown a cramped space and have the means. Fund it (or split the cost) and their home physically grows, with a lasting boost to their mood and loyalty. Deny it and they'll resent it.");
+  // ROBOTS — first automated store
+  if([...ST.structs.values()].some(s=>s.roboStaffed))
+    hintOnce("robot","You AUTOMATED a store with a robot. Robots work around the clock and never quit, but they earn less than a happy human clerk and won't spend wages back into the block — and they wear out, needing repair. Best when you're short on people; humans are better when content.");
 }
 
 /* ---------- events ---------- */
@@ -2899,6 +2952,8 @@ function tick(){ST.tick++;
       return Math.max(1,Math.round(base*mult));
     };
     for(const s of ST.structs.values()){if(s.bp||!DEF[s.type].vendor)continue;
+      // a robot-staffed store works 24/7 (reliable) but a broken robot is offline.
+      if(s.roboStaffed&&roboBroken(s))continue;   // broken robot → store offline, no sales
       const sells=DEF[s.type].sells;
       let good=null;
       if(sells&&(ST.goods[sells]||0)>0)good=sells;
@@ -2911,7 +2966,16 @@ function tick(){ST.tick++;
       if(!good)continue;
       ST.goods[good]--;
       const price=marketPrice(good);
-      const cut=Math.round(price*0.4);
+      // staffing quality modifies the district's take:
+      //  · a CONTENT human worker present → +25% (engaged staff sell better)
+      //  · a working ROBOT → reliable but flat, slightly BELOW an unstaffed baseline's potential
+      //  · nobody → baseline
+      let staffMul=1.0;
+      if(roboWorking(s))staffMul=0.85;          // robots: reliable, but skim less than a good clerk
+      else{const clerk=ST.pawns.find(p=>p.assigned===K(s.x,s.y)&&p.hp>0&&DIST(p.px,p.py,s.x,s.y)<3);
+        if(clerk&&(clerk.mood||50)>=55)staffMul=1.25;   // a happy human on the counter sells best
+        else if(clerk)staffMul=1.05;}
+      const cut=Math.round(price*0.4*staffMul);
       ST.income+=cut;
       if(ILLEGAL[good])ST.heat=Math.min(100,(ST.heat||0)+2);
       // citizen effects: stims → nearest stressed citizen gets fun/stress boost
@@ -2954,6 +3018,7 @@ function tick(){ST.tick++;
     ageTick();          // children grow toward adulthood
     tryConception();    // stable partnered pairs may have a child
     furnitureDecayTick(); // furniture slowly wears down, occasionally breaks
+    roboTick();           // store robots decay, drain upkeep, break down
     for(const p of ST.pawns)tryFurnish(p); // residents maintain & improve their homes
     // property attachment grows with tenure; wealth class mood effects
     for(const p of ST.pawns){
@@ -3697,6 +3762,12 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
     ctx.fillRect(X+1,Y-4,(T-2)*hpF,3);}
   if(s.desig){ctx.strokeStyle="#ff8c42";ctx.globalAlpha=.65;
     ctx.strokeRect(X+.5,Y+.5,T-1,T-1);ctx.globalAlpha=1;}
+  // robot-staffed store indicator (you read the map): small cyan gear, red when broken
+  if(!s.bp&&s.roboStaffed){
+    ctx.font="7px monospace";ctx.textAlign="center";
+    ctx.fillStyle=roboBroken(s)?"#ff4757":"#7aa2ff";
+    ctx.fillText("\u2699",X+4,Y+T-2);ctx.textAlign="left";
+  }
   if(s.decon){ctx.strokeStyle="#ff3d5a";ctx.lineWidth=1.2;
     ctx.beginPath();ctx.moveTo(X+3,Y+3);ctx.lineTo(X+T-3,Y+T-3);
     ctx.moveTo(X+T-3,Y+3);ctx.lineTo(X+3,Y+T-3);ctx.stroke();ctx.lineWidth=1;}
@@ -5206,7 +5277,7 @@ function renderInspectCore(){const el=$("inspect");
     // economy fixture info
     if(!e.bp&&(d.prod||d.refine||d.vendor)){
       const assignees=ST.pawns.filter(p=>p.assigned===K(e.x,e.y));
-      h+="<div class='sub'>WORKER: "+(assignees.length?assignees.map(p=>p.name).join(", "):"unassigned")+"</div>";
+      h+="<div class='sub'>WORKER: "+(e.roboStaffed?("<span style='color:#7aa2ff'>ROBOT"+(roboBroken(e)?" — <span style=\"color:#ff4757\">BROKEN</span>":" ("+(e.roboHp|0)+"%)")+"</span>"):(assignees.length?assignees.map(p=>p.name).join(", "):"unassigned"))+"</div>";
       if(d.prod)h+="<div class='sub'>PRODUCES: "+d.prod.toUpperCase()+" (stock: "+(ST.goods[d.prod]||0)+")</div>";
       if(d.refine)h+="<div class='sub'>REFINES: "+d.refine.in.map(k=>k.toUpperCase()).join("+")+
         " → "+d.refine.out.toUpperCase()+" (stock: "+(ST.goods[d.refine.out]||0)+")</div>";
@@ -5220,6 +5291,12 @@ function renderInspectCore(){const el=$("inspect");
       if(anySelPawn)h+="<button class='tb' id='i-assign'>ASSIGN</button>";
       if(anySelPawn)h+="<button class='tb' id='i-hire'>HIRE (+12c/shift)</button>";
       if(assignees.length)h+="<button class='tb' id='i-unassign'>UNASSIGN ALL</button>";
+      // robot automation controls (vendor stores only)
+      if(canAutomate(e))h+="<button class='tb' id='i-automate'>AUTOMATE ("+ROBO_INSTALL+"c)</button>";
+      else if(e.roboStaffed){
+        if(roboBroken(e))h+="<button class='tb' id='i-roborepair'>REPAIR ROBOT ("+Math.round(ROBO_INSTALL*0.3)+"c)</button>";
+        h+="<button class='tb' id='i-deautomate'>REMOVE ROBOT</button>";
+      }
       const contracted=ST.pawns.filter(p=>p.contract&&p.contract.fixtureKey===K(e.x,e.y));
       if(contracted.length)h+="<div class='sub'>Contracted: "+contracted.map(p=>p.name).join(", ")+"</div>";
       if(contracted.length)h+="<button class='tb' id='i-fire'>FIRE CONTRACTED</button>";
@@ -5263,6 +5340,15 @@ $("inspect").addEventListener("click",e=>{
   else if(id==="i-unassign"){
     const tgt=ST.sel.find(e=>e.kind!=="pawn");
     if(tgt){ST.pawns.filter(p=>p.assigned===K(tgt.x,tgt.y)).forEach(p=>{p.assigned=null});renderInspect()}}
+  else if(id==="i-automate"){
+    const tgt=ST.sel.find(e=>e.kind!=="pawn");
+    if(tgt&&automateStore(tgt)){renderInspect();syncHUD()}}
+  else if(id==="i-deautomate"){
+    const tgt=ST.sel.find(e=>e.kind!=="pawn");
+    if(tgt){deautomateStore(tgt);renderInspect();syncHUD()}}
+  else if(id==="i-roborepair"){
+    const tgt=ST.sel.find(e=>e.kind!=="pawn");
+    if(tgt&&repairRobo(tgt)){renderInspect();syncHUD()}}
   else if(id==="i-cancel"&&sel&&sel.bp){cancelBp(sel);ST.sel=[];renderInspect()}
   else if(id==="i-salv"&&sel){sel.desig=!sel.desig;
     if(sel.desig)ST.flags.salv=true;renderInspect()}

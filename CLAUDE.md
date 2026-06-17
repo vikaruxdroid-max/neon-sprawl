@@ -215,6 +215,16 @@ Measured over managed 14-day runs (player keeps everyone ≥45 credits):
   across save/load as the district's history.
 - **Visual legibility (checkup)** — children render at 0.62 scale + flagged in inspect;
   watch-post coverage rings; blackout screen-darkening.
+- **Store robots (automation)** — DONE. A vendor store can be AUTOMATED (`automateStore` →
+  `s.roboStaffed`, `s.roboHp`): inspect-panel button, costs `ROBO_INSTALL`=160c +
+  `ROBO_UPKEEP`=4c/day. `roboTick()` (daily) decays roboHp (~slow, breaks in ~tens of days) +
+  drains upkeep; a broken robot (`roboBroken`) takes the store OFFLINE (no sales) until
+  `repairRobo` (48c). `deautomateStore` reverts to human. Economic tradeoff in the vendor sales
+  loop via `staffMul`: content human clerk (mood≥55, present) 1.25× · ok human 1.05× · working
+  robot 0.85× — humans win when content, robots win when you're short-staffed (a store that'd
+  sit unstaffed still earns reliably). Humans no longer pulled to work robo stores (`isWorkable`
+  excludes `roboStaffed`). Map cue: cyan ⚙ on robo stores (red if broken). Hint: "robot".
+  All state on the struct (serializes automatically).
 - **Optional sprite layer** — DONE (proven on ONE building: furnstore). `SPRITE_SRC{type:file}`
   registry + `getSprite()` (lazy-loads `sprites/<file>`, caches, guards `typeof Image`) +
   `drawSprite()`. In drawStruct's finished-building branch: `if(sprite ready) draw it; else`
