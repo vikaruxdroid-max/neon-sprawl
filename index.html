@@ -604,14 +604,13 @@ const DEF={
 const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","bar","medbed","dealer","farmplot","loggingcamp","mineshaft","park","arcade","hospital","school","nursery","market","hall","furnstore","housing"];
 // Build menu: curated minimal categories (start small, expand later). Each entry: type.
 const BUILD_CATS=[
-  {name:"Essentials", items:["wall","door","pod","lamp"]},
-  {name:"Living",     items:["fridge","shower","toilet","tv","gym"]},
-  {name:"Comfort",    items:["couch","bookshelf","art","rug"]},
-  {name:"Industry",   items:["workstation","chemlab","workshop"]},
-  {name:"Trade",      items:["counter","bar"]},
-  {name:"Civic",      items:["medbed","park","school","nursery","market","hall","furnstore"]},
-  {name:"Security",   items:["watchpost"]},
-  {name:"Growth",     items:["housing"]},
+  {name:"Home",     items:["wall","door","pod","lamp","fridge","shower","toilet"]},
+  {name:"Comfort",  items:["tv","gym","couch","bookshelf","art","rug"]},
+  {name:"Work",     items:["workstation","chemlab","workshop","stimlab","gearshop","farmplot","loggingcamp","mineshaft"]},
+  {name:"Commerce", items:["counter","bar","market","furnstore","dealer"]},
+  {name:"Civic",    items:["medbed","hospital","park","arcade","school","nursery","hall"]},
+  {name:"Order",    items:["watchpost"]},
+  {name:"Growth",   items:["housing"]},
 ];
 // glyph per fixture for the build cards
 const BUILD_ICON={wall:"▦",door:"⌷",pod:"☖",lamp:"✦",fridge:"❄",shower:"♒",toilet:"⊡",tv:"▭",gym:"⛏",
@@ -2585,6 +2584,27 @@ function checkContextualHints(){
   // tier up past the first
   if((ST.tierReached||1)>=2)
     hintOnce("tier","Your district is RANKING UP. Tiers (Squat → Settlement → District → Neon Sprawl) unlock as population, income, and prosperity grow. The HUD badge tracks your standing.");
+  // DYNASTIES — first colony-born child
+  if(ST.pawns.some(p=>p.child))
+    hintOnce("dynasty","A CHILD was born on the block. Children grow over ~14 days, inherit traits and a family name from their parents, then come of age and join the workforce. A Nursery speeds maturation; a Bookshelf at home helps them learn faster.");
+  // FURNITURE — first time something breaks
+  if([...ST.structs.values()].some(s=>isFurniture(s)&&isBroken(s)))
+    hintOnce("furndecay","FURNITURE WEARS OUT. Appliances slowly decay and eventually break (they stop working — a broken fridge feeds no one). Residents repair or replace their own things if there's a FURNISHINGS STORE nearby and they can afford it. Premium quality lasts far longer.");
+  // STORE — once one exists, explain the personal economy
+  if(typeof hasStore==="function"&&hasStore())
+    hintOnce("furnstore","A FURNISHINGS STORE lets residents furnish their own homes — buying couches, art, bookshelves and replacing broken appliances from their own credits. The district earns a cut of every sale. Wealthier citizens buy nicer things.");
+  // FACTION POLITICS — first time a clique's stance toward you shifts notably
+  if(ST.cliques&&ST.cliques.some(c=>Math.abs(c.stance||0)>=40))
+    hintOnce("politics","Cliques are becoming POLITICAL. How you answer their petitions shifts their STANCE toward you — a supportive bloc lifts morale and works harder, a hostile one foments unrest and may even side with a gang. Watch the District panel for who backs you.");
+  // SUPPRESSION — first watch post built
+  if(typeof countBuilt==="function"&&countBuilt("watchpost")>0)
+    hintOnce("watchpost","A WATCH POST projects security around it — it bleeds off district heat and suppresses crime in range (gang recruitment fails, heists are far less likely). Place them over trouble spots and production you want protected.");
+  // DISASTERS — first telegraphed disaster
+  if(ST.pendingDisaster)
+    hintOnce("disaster","A DISASTER is looming — you get a WARNING before it strikes. Fires, blackouts, and gang raids hit hard and ripple through the district. A watchful operator can prepare: security helps pre-empt raids, and the warning buys you time to react.");
+  // EXPANSION — first expansion petition
+  if(ST.requests&&ST.requests.some(r=>r.kind==="expand"))
+    hintOnce("expand","A resident is PETITIONING TO EXPAND their home — they've outgrown a cramped space and have the means. Fund it (or split the cost) and their home physically grows, with a lasting boost to their mood and loyalty. Deny it and they'll resent it.");
 }
 
 /* ---------- events ---------- */
@@ -2950,6 +2970,15 @@ function tick(){ST.tick++;
     }
     genWorkPetitions();
     genExpansionPetition();
+    // district upkeep: running a bigger district costs more — a gentle money sink so income
+    // can't climb forever. Only "major" operator buildings cost upkeep (not every home fixture).
+    {let upkeepBuildings=0;for(const s of ST.structs.values()){
+      if(s.bp||!DEF[s.type])continue;const def=DEF[s.type];
+      if(def.nat||def.furn||s.type==="wall"||s.type==="door"||s.type==="pod")continue;
+      // only things that represent district infrastructure (work/civic/commerce/security)
+      if(def.work>=140||def.civic||def.security||def.vendor)upkeepBuildings++;}
+     const upkeep=Math.round(upkeepBuildings*1.5);   // ~1.5c per major building/day
+     if(upkeep>0){ST.income=(ST.income||0)-upkeep;ST.lastUpkeep=upkeep;}}
     // rent + eviction (children are dependents — they don't pay rent or get evicted alone)
     for(const q of ST.pawns){if(isChild(q))continue;q.credits=(q.credits||0)-(ST.crisis?42:28);
       if(q.credits<0&&!q.homeless){q.homeless=true;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad");loseProperty(q,"couldn't make rent — got evicted, sleeping rough now and it stings to lose my place");q.home=null;}
@@ -3886,10 +3915,14 @@ function drawPawn(p){
   drawFace(X,Y-0.5,expr,faceCol,ps);
   // sleeping zzz
   if(slp){ctx.fillStyle="#aef3ff";ctx.font="7px monospace";ctx.fillText("z",X+7,Y-8)}
-  // status badges (above pawn, more compact)
+  // status badges (above pawn) — surface the deep systems on the map, where the eye lives.
+  // kept to the few highest-signal states so it never clutters.
   const _bdg=[];
-  if(p.homeless)_bdg.push(["H","#ff8c42"]);
-  if(p.addiction>50)_bdg.push(["~","#c98bff"]);
+  if(p.sick)_bdg.push(["+","#ff4757"]);                 // infected — needs a clinic
+  if(p.homeless)_bdg.push(["H","#ff8c42"]);             // evicted
+  if(p.grudgeTarget)_bdg.push(["!","#ff4757"]);         // holds a grudge — may lash out
+  {const g=pawnGang(p);if(g)_bdg.push(["\u25C6",g.color]);}  // gang member (turf color)
+  if(p.addiction>50)_bdg.push(["~","#c98bff"]);         // hooked
   if(_bdg.length){ctx.font="6px monospace";ctx.textAlign="center";
     const _x0=X-(_bdg.length-1)*4;
     for(let _i=0;_i<_bdg.length;_i++){ctx.fillStyle=_bdg[_i][1];ctx.fillText(_bdg[_i][0],_x0+_i*8,Y-14)}
@@ -4558,15 +4591,18 @@ function collectAlerts(){
       alerts.push({sev:"info",ic:"\u25C8",t:"Caravan buying "+cv.good.toUpperCase(),s:"Pays "+cv.rate+"c/unit on departure. You have "+have+" in stock — produce more to cash in."});}
     else alerts.push({sev:"info",ic:"\u25C8",t:"Caravan selling "+cv.good.toUpperCase(),s:"Cheap "+cv.good.toUpperCase()+" available while they're here."});}
   if(ST.debtDays)alerts.push({sev:"crit",ic:"\u26a0",t:"Debt: day "+ST.debtDays+"/6",s:"The district is condemned at day 6 of debt."});
-  // gang recruitment risk — unaffiliated, desperate, disaffected citizens near a gang
+  // gang recruitment risk — unaffiliated, desperate, disaffected citizens near a gang (AGGREGATED)
   if(ST.gangs&&ST.gangs.length){
+    const atRiskPawns=[];
     for(const p of ST.pawns){
       if(pawnGang(p))continue;
       const atrisk=(p.pers.intg||50)<42&&((p.credits||0)<15||p.homeless||(p.career&&p.career.sat<25));
       if(!atrisk)continue;
       const nearGang=ST.gangs.some(g=>g.crewIds.some(id=>{const m=ST.pawns.find(x=>x.id===id);return m&&DIST(m.px,m.py,p.px,p.py)<10;}));
-      if(nearGang){alerts.push({sev:"warn",ic:"\u2620",t:p.name+" is drifting toward a crew",s:"Broke and disaffected near gang turf — a raise or better work could pull them back.",pid:p.id});}
+      if(nearGang)atRiskPawns.push(p);
     }
+    if(atRiskPawns.length===1)alerts.push({sev:"warn",ic:"\u2620",t:atRiskPawns[0].name+" is drifting toward a crew",s:"Broke and disaffected near gang turf — a raise or better work could pull them back.",pid:atRiskPawns[0].id});
+    else if(atRiskPawns.length>1)alerts.push({sev:"warn",ic:"\u2620",t:atRiskPawns.length+" citizens drifting toward gangs",s:"Several broke, disaffected people are near gang turf — improve pay and housing to starve recruitment."});
     // recent heist fallout
     for(const g of ST.gangs){
       if(g.lastHeist&&ST.tick-g.lastHeist<TPD){
@@ -4580,19 +4616,33 @@ function collectAlerts(){
     if(contra>=80&&ST.contrabandPolicy!=="allow")
       alerts.push({sev:"info",ic:"\u25C8",t:"Contraband trade is growing",s:"Gangs are moving illicit goods. You can crack down, or tolerate it for a cut (District panel)."});
   }
-  // citizens in trouble
-  for(const p of ST.pawns){
-    if(p.sick)alerts.push({sev:"crit",ic:"\u2716",t:p.name+" is infected",s:"Needs a clinic — build a Med Bay or Hospital nearby.",pid:p.id});
-    else if(p.hp<35)alerts.push({sev:"crit",ic:"\u2665",t:p.name+" badly hurt",s:"HP critical — they may not recover on their own.",pid:p.id});
+  // citizens in trouble — AGGREGATED to avoid one-alert-per-pawn noise
+  {const sick=ST.pawns.filter(p=>p.sick);
+   const hurt=ST.pawns.filter(p=>!p.sick&&p.hp<35);
+   if(sick.length===1)alerts.push({sev:"crit",ic:"\u2716",t:sick[0].name+" is infected",s:"Needs a clinic — build a Med Bay or Hospital nearby.",pid:sick[0].id});
+   else if(sick.length>1)alerts.push({sev:"crit",ic:"\u2716",t:sick.length+" citizens infected",s:"An outbreak is spreading — get clinics running and improve hygiene."});
+   if(hurt.length===1)alerts.push({sev:"crit",ic:"\u2665",t:hurt[0].name+" badly hurt",s:"HP critical — they may not recover on their own.",pid:hurt[0].id});
+   else if(hurt.length>1)alerts.push({sev:"crit",ic:"\u2665",t:hurt.length+" citizens badly hurt",s:"Multiple people are in critical condition."});
   }
-  for(const p of ST.pawns){
-    if(p.homeless)alerts.push({sev:"warn",ic:"\u2302",t:p.name+" is evicted",s:"Sleeping rough and stressing out — build housing.",pid:p.id});
-    else if((p.credits||0)<0)alerts.push({sev:"warn",ic:"\u25c8",t:p.name+" is broke",s:"In debt — can't afford food or rent.",pid:p.id});
-    else if((p.mood||50)<22)alerts.push({sev:"warn",ic:"\u2767",t:p.name+" is miserable",s:"Very low mood — at risk of snapping.",pid:p.id});
+  {const evicted=ST.pawns.filter(p=>p.homeless);
+   const broke=ST.pawns.filter(p=>!p.homeless&&(p.credits||0)<0);
+   const low=ST.pawns.filter(p=>!p.homeless&&(p.credits||0)>=0&&(p.mood||50)<22);
+   if(evicted.length===1)alerts.push({sev:"warn",ic:"\u2302",t:evicted[0].name+" is evicted",s:"Sleeping rough and stressing out — build housing.",pid:evicted[0].id});
+   else if(evicted.length>1)alerts.push({sev:"warn",ic:"\u2302",t:evicted.length+" citizens evicted",s:"A housing shortage — build more homes or restore their income."});
+   if(broke.length===1)alerts.push({sev:"warn",ic:"\u25c8",t:broke[0].name+" is broke",s:"In debt — can't afford food or rent.",pid:broke[0].id});
+   else if(broke.length>1)alerts.push({sev:"warn",ic:"\u25c8",t:broke.length+" citizens in debt",s:"Wages aren't covering costs for several people."});
+   if(low.length===1)alerts.push({sev:"warn",ic:"\u2767",t:low[0].name+" is miserable",s:"Very low mood — at risk of snapping.",pid:low[0].id});
+   else if(low.length>1)alerts.push({sev:"warn",ic:"\u2767",t:low.length+" citizens miserable",s:"Morale is low across the block — address needs and comfort."});
   }
   // heat
   if((ST.heat||0)>60)alerts.push({sev:"warn",ic:"\u25b2",t:"District heat is high",s:"Crime is drawing attention. A crackdown may come."});
-  return alerts;
+  // prioritize: crit first, then warn, then info — and cap so the panel never overwhelms.
+  const rank={crit:0,warn:1,info:2};
+  alerts.sort((a,b)=>(rank[a.sev]??3)-(rank[b.sev]??3));
+  const crit=alerts.filter(a=>a.sev==="crit");
+  // always show all criticals; fill the rest up to a sensible cap with warn/info
+  const CAP=Math.max(6,crit.length+2);
+  return alerts.slice(0,CAP);
 }
 function pendingRequests(){return ST.requests?ST.requests.filter(r=>r.status==="pending"):[];}
 function taskCount(){return collectAlerts().length+pendingRequests().length;}
@@ -5062,6 +5112,12 @@ function renderInspectCore(){const el=$("inspect");
     h+=barHtml("FOOD",e.needs.food,"#b8ff5e");
     h+=barHtml("REST",e.needs.rest,"#7aa2ff");
     h+=barHtml("MOOD",e.mood,e.mood<25?"#ff4757":"#ffd84a");
+    // mood drivers — surface the biggest current contributors (the hidden math, made visible)
+    if(e.mods&&e.mods.length){
+      const active=e.mods.filter(md=>md.until>ST.tick&&md.l).slice().sort((a,b)=>Math.abs(b.v)-Math.abs(a.v)).slice(0,3);
+      if(active.length){h+="<div class='sub' style='font-size:10px;opacity:.85'>"+
+        active.map(md=>"<span style='color:"+(md.v>=0?"#39ff88":"#ff6b6b")+"'>"+(md.v>=0?"+":"")+md.v+" "+md.l+"</span>").join(" · ")+"</div>";}
+    }
     h+="<div class='sub'>TASK: "+jobLabel(e)+"</div>";
     // child status — clear flag when inspecting a young wisp
     if(e.child){const pn=(e.parents||[]).map(id=>{const pp=ST.pawns.find(x=>x.id===id);return pp?pp.name:null}).filter(Boolean);

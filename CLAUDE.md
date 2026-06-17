@@ -215,6 +215,18 @@ Measured over managed 14-day runs (player keeps everyone ≥45 credits):
   across save/load as the district's history.
 - **Visual legibility (checkup)** — children render at 0.62 scale + flagged in inspect;
   watch-post coverage rings; blackout screen-darkening.
+- **Refinement pass (UX/legibility/pacing)** — DONE.
+  · IA: build menu regrouped by life-area (Home/Comfort/Work/Commerce/Civic/Order/Growth — no
+    bloated category; previously-orphaned stimlab/gearshop/hospital/arcade/dealer/farmplot/
+    loggingcamp/mineshaft now categorized). `collectAlerts()` aggregates per-pawn alerts into
+    summaries ("3 citizens infected"), sorts crit→warn→info, caps total (no overwhelm).
+  · Visibility (map-first): pawn map badges expanded — sick(+), evicted(H), grudge(!),
+    gang(◆ in turf color), hooked(~). Inspect shows top 3 mood drivers (the hidden mod math).
+  · Pacing: daily district UPKEEP (`ST.lastUpkeep`) — ~1.5c/day per major building (work≥140/
+    civic/security/vendor; excludes fixtures/walls/pods). Gentle brake so income can't run away
+    (was 363→2675 over 20d unbounded; now a softer slope). TUNE the 1.5 rate from real play.
+  · Onboarding: 9 new `hintOnce` triggers in checkContextualHints (dynasty, furndecay,
+    furnstore, politics, watchpost, disaster, expand) — the deep systems now teach themselves.
 - **Furniture / personal economy** — DONE. `DEF[...].furn:true` marks ownable, decaying
   furniture (pod/lamp/fridge/toilet/shower/tv/gym + new couch/bookshelf/art/rug). `QUALITY[]`
   tiers (cheap/standard/premium → `s.qual`) affect decay/effect/price. `furnitureDecayTick()`
