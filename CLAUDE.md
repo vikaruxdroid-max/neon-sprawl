@@ -204,6 +204,30 @@ Measured over managed 14-day runs (player keeps everyone ≥45 credits):
   struggling colony can recover instead of spiraling. Managed colonies ~8.8 survivors (grows
   via dynasties); unmanaged ~1.9 (dies mainly to untreated infection — correct, player's job).
 - **Test suite** — now 20 assertions (added G15 goods save/load).
+- **New civic buildings** — DONE. `nursery` (speeds child maturation, `ageTick` reads
+  `countBuilt("nursery")`), `market` (boosts caravan freq+rates in `maybeCaravan`), `hall`
+  (lifts clique loyalty+stance in `cliqueTick`). `countBuilt(type)` helper. drawStruct now has
+  a `default` case so any new building renders a generic tinted box + glyph (don't rely on it
+  for hero buildings — add a real case for those).
+- **District Chronicle** — DONE. `CHRONICLE[]` + `chronicle(text,icon)` records major beats
+  (births, deaths, comings-of-age, partnerships, fire/blackout/raid, tier-ups). Surfaced as the
+  "SAGA" tab in the diary overlay (`renderChronicle()`, default tab). Serialized — persists
+  across save/load as the district's history.
+- **Visual legibility (checkup)** — children render at 0.62 scale + flagged in inspect;
+  watch-post coverage rings; blackout screen-darkening.
+- **Furniture / personal economy** — DONE. `DEF[...].furn:true` marks ownable, decaying
+  furniture (pod/lamp/fridge/toilet/shower/tv/gym + new couch/bookshelf/art/rug). `QUALITY[]`
+  tiers (cheap/standard/premium → `s.qual`) affect decay/effect/price. `furnitureDecayTick()`
+  (daily, slow) wears items down; at hp<=0 they break (`isBroken`), stop working
+  (`furnEffective` gates fridge/shower/lamp/etc. + `homeFixture`/`nearestStruct` skip broken),
+  and render a red spark + dark tile. `tryFurnish(p)` (daily/pawn): residents repair broken,
+  buy missing FURN_WANTS, or upgrade — from their own credits, gated by `wealthTier`.
+  `furnstore` building (`hasStore()`) enables buying; district takes a 40% cut via
+  `spendAtStore`. New items' effects: couch/rug/art → home comfort mood in `moodCalc`;
+  bookshelf → bonus XP in `gainXp` (2x for children). House expansion: `genExpansionPetition()`
+  (cramped + tier≥2 + adjacent space) → `applyRequest` kind `"expand"` → `doExpand()` grows the
+  home rect. `FURN_PRICE`, `furnPrice()`, `homeStructs()`, `freeHomeTile()`, `expansionRoom()`
+  helpers. All save/load via struct/pawn props (qual backfilled in applyState).
 - **Cliques, mentorship** — DONE earlier (see Architecture map §3).
 - The four NPC pillars — Work & Ambition, Ownership & Wealth (w/ inheritance), Relationships
   (typed + gossip + partnerships), Crime & gangs — all DONE.

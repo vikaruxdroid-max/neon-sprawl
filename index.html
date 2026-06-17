@@ -242,6 +242,11 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 .ov-tab:hover{color:var(--tx);border-color:var(--cy)}
 .ov-tab.on{color:var(--cy);border-color:var(--cy);background:rgba(0,212,255,.1)}
 .ov-body{flex:1;overflow-y:auto;padding:14px 18px;min-height:120px}
+.chronicle{display:flex;flex-direction:column;gap:2px}
+.chron-row{display:flex;align-items:baseline;gap:10px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.04)}
+.chron-day{font-family:var(--disp);font-size:9px;letter-spacing:.08em;color:var(--cy);min-width:46px;opacity:.8}
+.chron-ic{font-size:13px;min-width:18px;text-align:center}
+.chron-txt{font-size:12.5px;color:var(--tx);line-height:1.35;flex:1}
 .ov-body::-webkit-scrollbar{width:5px}
 .ov-body::-webkit-scrollbar-thumb{background:var(--bd);border-radius:3px}
 /* crew grid */
@@ -553,13 +558,17 @@ const DEF={
   cache: {name:"Supply Cache",  nat:1, blocks:1, hp:1, work:60},
   wall:  {name:"Plasteel Wall", cost:{},          hp:220, blocks:1, work:60,  cat:"b", desc:"Cheap, sturdy barrier."},
   door:  {name:"Blast Door",    cost:{},          hp:170, blocks:2, work:90,  cat:"b", desc:"Citizens pass; controls flow."},
-  pod:   {name:"Sleep Pod",     cost:{},          hp:80,  blocks:0, work:120, cat:"b", desc:"A bed — assign a resident."},
-  lamp:  {name:"Neon Lamp",     cost:{},   hp:40,  blocks:0, work:30,  cat:"b", desc:"Light + small mood aura at night."},
-  fridge:     {name:"Cooler Unit",  cost:{}, hp:60, blocks:1, work:90,  cat:"b", desc:"Home/vendor food source."},
-  toilet:     {name:"San Unit",     cost:{}, hp:40, blocks:1, work:80,  cat:"b", desc:"Hygiene fixture."},
-  shower:     {name:"Mist Shower",  cost:{}, hp:40, blocks:1, work:80,  cat:"b", desc:"Hygiene fixture."},
-  tv:         {name:"Holoscreen",   cost:{}, hp:30, blocks:0, work:80,  cat:"b", desc:"Entertainment, leisure."},
-  gym:        {name:"Flex Rig",     cost:{}, hp:60, blocks:1, work:120, cat:"b", desc:"Exercise, stress relief."},
+  pod:   {name:"Sleep Pod",     cost:{},          hp:80,  blocks:0, work:120, cat:"b", desc:"A bed — assign a resident.", furn:true},
+  lamp:  {name:"Neon Lamp",     cost:{},   hp:40,  blocks:0, work:30,  cat:"b", desc:"Light + small mood aura at night.", furn:true},
+  fridge:     {name:"Cooler Unit",  cost:{}, hp:60, blocks:1, work:90,  cat:"b", desc:"Home/vendor food source.", furn:true},
+  toilet:     {name:"San Unit",     cost:{}, hp:40, blocks:1, work:80,  cat:"b", desc:"Hygiene fixture.", furn:true},
+  shower:     {name:"Mist Shower",  cost:{}, hp:40, blocks:1, work:80,  cat:"b", desc:"Hygiene fixture.", furn:true},
+  tv:         {name:"Holoscreen",   cost:{}, hp:30, blocks:0, work:80,  cat:"b", desc:"Entertainment, leisure.", furn:true},
+  gym:        {name:"Flex Rig",     cost:{}, hp:60, blocks:1, work:120, cat:"b", desc:"Exercise, stress relief.", furn:true},
+  couch:      {name:"Couch",        cost:{income:35}, hp:50, blocks:0, work:90, cat:"b", desc:"Comfort — rest and leisure at home.", furn:true, furnEffect:"comfort"},
+  bookshelf:  {name:"Bookshelf",    cost:{income:50}, hp:50, blocks:1, work:100,cat:"b", desc:"Knowledge — speeds skill growth and helps children learn at home.", furn:true, furnEffect:"learn"},
+  art:        {name:"Wall Art",     cost:{income:60}, hp:40, blocks:0, work:90, cat:"b", desc:"Status & beauty — a mood lift, more so for the affluent.", furn:true, furnEffect:"art"},
+  rug:        {name:"Woven Rug",    cost:{income:25}, hp:40, blocks:0, work:70, cat:"b", desc:"Ambiance — a small steady comfort underfoot.", furn:true, furnEffect:"ambient"},
   workstation:{name:"Workstation",  cost:{}, hp:60, blocks:1, work:140, cat:"b", desc:"Corp terminal — produces Data.", prod:"data", prodRate:180, wage:9},
   counter:    {name:"Shop Counter", cost:{}, hp:80, blocks:1, work:120, cat:"b", desc:"Vendor — sells goods, earns district income.", vendor:true},
   bar:        {name:"Bar Counter",  cost:{}, hp:80, blocks:1, work:120, cat:"b", desc:"Drinks, food, socializing, sells Stims.", vendor:true, sells:"stims"},
@@ -578,6 +587,10 @@ const DEF={
   arcade:     {name:"Arcade",       cost:{income:80}, hp:60, blocks:1, work:150, cat:"b", desc:"Premium entertainment — strong fun, small fee earns income.", civic:"arcade", vendor:true},
   hospital:   {name:"Hospital",     cost:{income:120},hp:100,blocks:1, work:180, cat:"b", desc:"Advanced care — faster, cheaper treatment than a Med Bay.", civic:"hospital"},
   school:     {name:"Learning Hub", cost:{income:90}, hp:70, blocks:1, work:160, cat:"b", desc:"Citizens train skills here, raising work output over time.", civic:"school"},
+  nursery:    {name:"Nursery",      cost:{income:100},hp:70, blocks:1, work:160, cat:"b", desc:"Cares for the young — children mature faster and weigh less on the block.", civic:"nursery"},
+  market:     {name:"Market Hub",   cost:{income:130},hp:80, blocks:1, work:170, cat:"b", desc:"Draws traders — caravans arrive more often and pay better.", civic:"market"},
+  hall:       {name:"Community Hall",cost:{income:120},hp:80, blocks:1, work:170, cat:"b", desc:"A gathering place — lifts clique loyalty and warms factions toward you.", civic:"hall"},
+  furnstore:  {name:"Furnishings Store",cost:{income:140},hp:80,blocks:1,work:170,cat:"b",desc:"Sells furniture to residents — they furnish their own homes, and the district earns a cut.", civic:"furnstore", vendor:true},
   housing:    {name:"Housing Unit", cost:{income:150},hp:60, blocks:0, work:180, cat:"b", desc:"Adds one home slot — allows the district to support one more citizen."},
   watchpost:  {name:"Watch Post",   cost:{income:110},hp:90, blocks:1, work:0,   cat:"b", desc:"Security outpost — suppresses crime and bleeds off district heat in range.", security:true, secRadius:18},
   // ── DECOR (nat:1 = not buildable, placed by genCity) ──
@@ -588,21 +601,22 @@ const DEF={
   vendmachine:{name:"Vending Machine",nat:1,hp:50,blocks:1},
   planter:    {name:"Planter",     nat:1, hp:30, blocks:0}
 };
-const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","workstation","chemlab","workshop","stimlab","gearshop","counter","bar","medbed","dealer","farmplot","loggingcamp","mineshaft","park","arcade","hospital","school","housing"];
+const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","bar","medbed","dealer","farmplot","loggingcamp","mineshaft","park","arcade","hospital","school","nursery","market","hall","furnstore","housing"];
 // Build menu: curated minimal categories (start small, expand later). Each entry: type.
 const BUILD_CATS=[
   {name:"Essentials", items:["wall","door","pod","lamp"]},
-  {name:"Living",     items:["fridge","shower","toilet","tv"]},
+  {name:"Living",     items:["fridge","shower","toilet","tv","gym"]},
+  {name:"Comfort",    items:["couch","bookshelf","art","rug"]},
   {name:"Industry",   items:["workstation","chemlab","workshop"]},
   {name:"Trade",      items:["counter","bar"]},
-  {name:"Civic",      items:["medbed","park","school"]},
+  {name:"Civic",      items:["medbed","park","school","nursery","market","hall","furnstore"]},
   {name:"Security",   items:["watchpost"]},
   {name:"Growth",     items:["housing"]},
 ];
 // glyph per fixture for the build cards
 const BUILD_ICON={wall:"▦",door:"⌷",pod:"☖",lamp:"✦",fridge:"❄",shower:"♒",toilet:"⊡",tv:"▭",gym:"⛏",
   workstation:"⌨",chemlab:"⚗",workshop:"⚙",stimlab:"⚕",gearshop:"⛭",counter:"▤",bar:"♨",medbed:"✚",
-  dealer:"☠",farmplot:"❀",loggingcamp:"🪓",mineshaft:"⛏",park:"❦",arcade:"►",hospital:"✚",school:"✎",housing:"⌂",watchpost:"◈"};
+  dealer:"☠",farmplot:"❀",loggingcamp:"🪓",mineshaft:"⛏",park:"❦",arcade:"►",hospital:"✚",school:"✎",nursery:"⊙",market:"⇄",hall:"⌂",furnstore:"🛋",housing:"⌂",watchpost:"◈",couch:"⌗",bookshelf:"▤",art:"◳",rug:"▢"};
 
 
 // weapons removed — city sim mode
@@ -743,6 +757,7 @@ function tryFormPartnership(a,b){
   addMod(a,"newlove","Found someone",14,TPD*3);addMod(b,"newlove","Found someone",14,TPD*3);
   if(typeof emote==="function"){emote(a,"love");emote(b,"love");}
   log(a.name+" and "+b.name+" became partners.","good");
+  chronicle(a.name+" and "+b.name+" became partners.","♥");
   // partners drift to share a home
   if(a.home&&!b.home)claimHome(b,a.home);else if(b.home&&!a.home)claimHome(a,b.home);
   return true;
@@ -808,6 +823,7 @@ function sameClique(a,b){const ca=cliqueOf(a);return ca&&ca.members.includes(b.i
 function cliqueTick(){
   rebuildCliques();
   if(!ST.cliques.length)return;
+  const halls=countBuilt("hall");
   for(const c of ST.cliques){
     const mem=c.members.map(id=>ST.pawns.find(p=>p.id===id)).filter(Boolean);
     if(mem.length<3)continue;
@@ -818,6 +834,9 @@ function cliqueTick(){
     for(let i=0;i<mem.length;i++)for(let j=i+1;j<mem.length;j++){warmth+=relGet(mem[i].id,mem[j].id);pairs++;}
     const avg=pairs?warmth/pairs:0;
     c.loyalty=clamp(c.loyalty+(avg>45?2:avg<25?-3:0),0,100);
+    // a community hall warms factions toward the operator + steadies loyalty
+    if(halls>0){c.loyalty=clamp(c.loyalty+halls,0,100);
+      if(c.stance!==undefined)c.stance=clamp((c.stance||0)+halls*1.5,-100,100);}
   }
   // clique rivalries: two cliques with a hostile cross-bond can feud
   if(ST.cliques.length>=2&&ST.tick%TPD===0){
@@ -942,6 +961,7 @@ function placeBp(type,x,y){const d=DEF[type];
   syncHUD();return true}
 function cancelBp(s){if(s.paid)ST.income+=s.paid;removeStruct(s);syncHUD()}
 function finishBuild(s){s.bp=false;s.hp=s.maxHp;s.prog=0;ST.stats.built++;
+  if(DEF[s.type].furn&&s.qual===undefined)s.qual=1;
   SFX.build();powerRecalc();
   if(s.type==="housing"){
     // register a new home slot near the housing unit — uses struct location as virtual bed
@@ -965,7 +985,7 @@ function powerRecalc(){}  // city is always powered — no generator system
 /* ---------- map generation ---------- */
 function addBuilt(type,x,y,owner){if(!INB(x,y))return;
   addStruct({id:uid(),kind:"s",type,x,y,hp:DEF[type].hp,maxHp:DEF[type].hp,bp:false,prog:0,need:0,
-    res:0,desig:false,decon:false,owner:owner||0})}
+    res:0,desig:false,decon:false,owner:owner||0,qual:DEF[type].furn?1:undefined})}
 function roomTheme(furn){if(!furn)return"den";
   const t=furn.map(f=>f.t);
   if(t.includes("stimlab"))return"toxic";
@@ -1161,16 +1181,127 @@ function mkChild(pa,pb,x,y){
     mem:[{d:dayN(),h:hourN()|0,t:"born on this block — it's all I've ever known"}],
     homeless:false}}
 function isChild(p){return !!p.child;}
+// count active (built, non-blueprint) structures of a given type
+function countBuilt(type){let n=0;for(const s of ST.structs.values())if(!s.bp&&s.type===type)n++;return n;}
+/* ============================================================
+   FURNITURE — quality tiers, slow decay, ownership, breakdown
+   ============================================================ */
+const QUALITY=[
+  {t:0,name:"cheap",    col:"#9aa7bd", decayMul:1.6, effMul:0.8, priceMul:0.6},
+  {t:1,name:"standard", col:"#7aa2ff", decayMul:1.0, effMul:1.0, priceMul:1.0},
+  {t:2,name:"premium",  col:"#ffd84a", decayMul:0.5, effMul:1.3, priceMul:2.2},
+];
+// base price (credits) for buying/replacing each furniture type at standard quality
+const FURN_PRICE={pod:45,lamp:15,fridge:40,toilet:25,shower:25,tv:30,gym:40,
+  couch:35,bookshelf:50,art:60,rug:25};
+function isFurniture(s){return s&&DEF[s.type]&&DEF[s.type].furn;}
+function qualOf(s){return QUALITY[s.qual||0]||QUALITY[1];}
+function furnPrice(type,qual){return Math.round((FURN_PRICE[type]||30)*QUALITY[qual||1].priceMul);}
+function isBroken(s){return isFurniture(s)&&s.hp<=0;}
+// a furniture item's effect is suppressed when broken, scaled by quality otherwise
+function furnEffective(s){return isFurniture(s)&&!s.bp&&s.hp>0;}
+// slow decay: furniture loses a sliver of hp per day, faster for cheap, slower for premium.
+// breakdowns are occasional, not constant. Called daily.
+function furnitureDecayTick(){
+  for(const s of ST.structs.values()){
+    if(!isFurniture(s)||s.bp)continue;
+    if(s.qual===undefined)s.qual=1;
+    const wear=R(0.6,1.4)*qualOf(s).decayMul;   // ~1 hp/day baseline → tens of days to break
+    if(s.hp>0){
+      s.hp=Math.max(0,s.hp-wear);
+      if(s.hp<=0){
+        // it just broke
+        s.brokeDay=dayN();
+        const owner=s.owner?ST.pawns.find(p=>p.id===s.owner):null;
+        float(s.x+.5,s.y+.5,"BROKE","#ff4757");
+        if(owner){addMod(owner,"brokefurn","Something broke at home",-5,TPD);
+          remember(owner,"my "+DEF[s.type].name+" broke down — need to deal with it");}
+        log(DEF[s.type].name+(owner?" ("+owner.name+"'s)":"")+" broke down.","warn");
+      }
+    }
+  }
+}
+// NPC home-furnishing: residents with money and store access maintain & improve their homes.
+// Runs daily per pawn. Priorities: (1) fix/replace broken items, (2) fill a missing want,
+// (3) occasionally upgrade quality if wealthy. District earns a cut of every purchase.
+const FURN_WANTS=["couch","rug","tv","bookshelf","art"];  // things a home aspires to have
+function hasStore(){return countBuilt("furnstore")>0;}
+function homeStructs(p){const out=[];if(!p.home)return out;const h=p.home;
+  for(const s of ST.structs.values()){if(s.bp)continue;
+    if(s.x>=h.x0&&s.x<h.x0+h.w&&s.y>=h.y0&&s.y<h.y0+h.h)out.push(s);}
+  return out;}
+function spendAtStore(p,amount){
+  p.credits=(p.credits||0)-amount;
+  ST.income=(ST.income||0)+Math.round(amount*0.4);   // district takes a 40% cut of furniture sales
+}
+function tryFurnish(p){
+  if(isChild(p)||p.homeless||!p.home||!hasStore())return;
+  const cred=p.credits||0;
+  if(cred<30)return;                                  // need a cushion before buying comfort
+  const mine=homeStructs(p);
+  // 1) a broken item I own → repair (cheap) or replace (pricier, maybe nicer)
+  const broken=mine.find(s=>isBroken(s)&&(!s.owner||s.owner===p.id));
+  if(broken){
+    const repairCost=Math.round(furnPrice(broken.type,broken.qual||1)*0.35);
+    if(cred>=repairCost){
+      spendAtStore(p,repairCost);broken.hp=broken.maxHp;broken.owner=p.id;
+      float(broken.x+.5,broken.y+.5,"REPAIRED","#39ff88");
+      remember(p,"got my "+DEF[broken.type].name+" working again");
+      return;}
+  }
+  // 2) buy a furniture WANT I don't have yet (placed on a free tile in my home)
+  const have=new Set(mine.map(s=>s.type));
+  const want=FURN_WANTS.find(t=>!have.has(t));
+  if(want){
+    // wealthier pawns buy nicer; tier by net worth
+    const wt=wealthTier(p).t;
+    const qual=wt>=3?2:wt>=2?1:0;
+    const price=furnPrice(want,qual);
+    if(cred>=price+20){
+      const spot=freeHomeTile(p);
+      if(spot){
+        spendAtStore(p,price);
+        addStruct({id:uid(),kind:"s",type:want,x:spot.x,y:spot.y,hp:DEF[want].hp,maxHp:DEF[want].hp,
+          bp:false,prog:0,need:0,res:0,desig:false,decon:false,owner:p.id,qual});
+        float(spot.x+.5,spot.y+.5,"+"+DEF[want].name,QUALITY[qual].col);
+        addMod(p,"newfurn","Bought something nice",6,TPD*1.5);
+        remember(p,"picked up a "+QUALITY[qual].name+" "+DEF[want].name+" for the place");
+        return;}
+    }
+  }
+  // 3) wealthy pawns occasionally upgrade a cheap item to premium
+  if(wealthTier(p).t>=3&&cred>120&&Math.random()<0.2){
+    const upgr=mine.find(s=>isFurniture(s)&&(s.qual||1)<2&&(!s.owner||s.owner===p.id));
+    if(upgr){const price=furnPrice(upgr.type,2);
+      if(cred>=price){spendAtStore(p,price);upgr.qual=2;upgr.hp=upgr.maxHp;upgr.owner=p.id;
+        float(upgr.x+.5,upgr.y+.5,"UPGRADED","#ffd84a");
+        addMod(p,"upgradefurn","Treated myself",8,TPD*2);
+        remember(p,"upgraded my "+DEF[upgr.type].name+" to the good stuff");}
+    }
+  }
+}
+// find a free, walkable tile inside a pawn's home for placing new furniture
+function freeHomeTile(p){
+  if(!p.home)return null;const h=p.home;
+  for(let yy=h.y0+1;yy<h.y0+h.h-1;yy++)for(let xx=h.x0+1;xx<h.x0+h.w-1;xx++){
+    if(!INB(xx,yy))continue;
+    if(structAt(xx,yy))continue;
+    if(colCost(xx,yy)<0)continue;
+    return{x:xx,y:yy};}
+  return null;
+}
 const ADULT_AGE=14;   // in-game days to mature (each "year" of age ~ scaled to days)
 // aging: children grow toward adulthood; daily tick advances age and matures them
 function ageTick(){
+  // a nursery accelerates maturation (each nursery shaves the effective threshold)
+  const nurseries=countBuilt("nursery");
+  const matureAt=Math.max(8,ADULT_AGE-nurseries*3);   // each nursery: -3 days, floor 8
   for(const p of ST.pawns){
     if(p.birthDay==null)continue;          // arrived as adult, no in-colony aging
     const daysAlive=dayN()-p.birthDay;
     if(p.child){
-      // a "child year" maps to ADULT_AGE/14 days; mature at ADULT_AGE days
       p.age=Math.floor(daysAlive/ (ADULT_AGE/14));
-      if(daysAlive>=ADULT_AGE)matureChild(p);
+      if(daysAlive>=matureAt)matureChild(p);
     }
   }
 }
@@ -1182,6 +1313,7 @@ function matureChild(p){
   p.career=initCareer(p.sk,p.pers);
   addMod(p,"cameofage","Came of age",10,TPD*2);
   log(p.name+" "+(p.surname||"")+" came of age on the block.","good");
+  chronicle(p.name+" "+(p.surname||"")+" came of age.","✦");
   if(typeof emote==="function")emote(p,"idea");
 }
 // conception: stable partnered pairs with a home may have a child (rate-limited, pop-capped)
@@ -1210,6 +1342,7 @@ function tryConception(){
       addMod(a,"newchild","New child",18,TPD*4);addMod(b,"newchild","New child",18,TPD*4);
       if(typeof emote==="function"){emote(a,"love");emote(b,"love");}
       log(a.name+" and "+b.name+" had a child — "+child.name+" "+child.surname+".","good");
+      chronicle(child.name+" "+child.surname+" was born to "+a.name+" and "+b.name+".","☻");
       banner("NEW CHILD","good");
       return; // one per check
     }
@@ -1401,6 +1534,50 @@ function genWorkPetitions(){
   ST.requests.push({id,kind:"work",agentId:p.id,agentName:p.name,created:ST.tick,expires:exp,status:"pending",text,options});
   renderRequests();banner("WORK DISPUTE","warn");if(typeof SFX!=="undefined"&&SFX.alert)SFX.alert();
 }
+// a wealthy resident whose home is packed (no free tiles) petitions for more space.
+// the player approves (district funds an expansion) or denies. NPC then furnishes the new room.
+function genExpansionPetition(){
+  if(ST.requests&&ST.requests.some(r=>r.status==="pending"&&r.kind==="expand"))return;
+  for(const p of ST.pawns){
+    if(isChild(p)||p.homeless||!p.home)continue;
+    if(wealthTier(p).t<2)continue;                  // only the comfortable+ aspire to more space
+    if((p.credits||0)<60)continue;
+    if(p.home.expanded)continue;                    // one expansion per home
+    if(freeHomeTile(p))continue;                    // only if their home is actually full
+    if(ST.tick-(p.lastExpandAsk||0)<TPD*3)continue;
+    // must have room to grow into (adjacent free tiles outside the home rect)
+    if(!expansionRoom(p.home))continue;
+    p.lastExpandAsk=ST.tick;
+    const id="expand_"+p.id+"_"+ST.tick;
+    ST.requests.push({id,kind:"expand",agentId:p.id,agentName:p.name,created:ST.tick,expires:ST.tick+TPD*2,status:"pending",
+      text:p.name+" "+(p.surname||"")+" has outgrown their cramped home and wants to expand. Fund the build-out?",
+      options:[
+        {label:"Fund the expansion (120c)",act:"fund"},
+        {label:"They can pay half (60c each)",act:"split"},
+        {label:"Deny — space is tight",act:"deny"}]});
+    renderRequests();banner("EXPANSION REQUEST","info");if(typeof SFX!=="undefined"&&SFX.alert)SFX.alert();
+    return;
+  }
+}
+// is there free, in-bounds space adjacent to a home rect to expand into?
+function expansionRoom(h){
+  // try extending width by 2 to the right, else height by 2 down
+  for(const [dx,dy] of [[2,0],[0,2]]){
+    let ok=true;
+    if(dx){for(let yy=h.y0;yy<h.y0+h.h;yy++)for(let xx=h.x0+h.w;xx<h.x0+h.w+dx;xx++){
+      if(!INB(xx,yy)||structAt(xx,yy)){ok=false;break}}}
+    else{for(let xx=h.x0;xx<h.x0+h.w;xx++)for(let yy=h.y0+h.h;yy<h.y0+h.h+dy;yy++){
+      if(!INB(xx,yy)||structAt(xx,yy)){ok=false;break}}}
+    if(ok)return [dx,dy];
+  }
+  return null;
+}
+function doExpand(h){
+  const grow=expansionRoom(h);if(!grow)return false;
+  const [dx,dy]=grow;
+  h.w+=dx;h.h+=dy;h.expanded=true;
+  return true;
+}
 function trMul(p,k){let m=1;for(const t of p.tr)if(t[k]!==undefined)m*=t[k];return m}
 function trAdd(p,k){let v=0;for(const t of p.tr)if(t[k]!==undefined)v+=t[k];return v}
 function hasTr(tr,id){return tr.some(t=>t&&t.id===id)}
@@ -1417,7 +1594,11 @@ function mkSched(P,tr){
     bf:r2(wake+0.4),lunch:r2(clamp(12.5+(P.imp-50)/55,11.5,14.5)),dinner:r2(clamp(18.5+(P.soc-50)/45,17,21))}}
 function workSpd(p,sk){return (0.6+sk*0.09)*trMul(p,"work")}
 function moveSpd(p){let s=0.32*trMul(p,"move");if(p.dazed>ST.tick)s*=.55;return s}
-function gainXp(p,k){p.xp[k]=(p.xp[k]||0)+1;const need=60*(p.sk[k]+1);
+function gainXp(p,k){p.xp[k]=(p.xp[k]||0)+1;
+  // a working bookshelf at home accelerates learning (children especially)
+  if(p.home&&!p.homeless){for(const s of homeStructs(p)){
+    if(s.type==="bookshelf"&&furnEffective(s)){p.xp[k]+=(isChild(p)?2:1)*Math.round(qualOf(s).effMul);break;}}}
+  const need=60*(p.sk[k]+1);
   if(p.xp[k]>=need&&p.sk[k]<10){p.xp[k]=0;p.sk[k]++;
     log(p.name+" advanced: "+({sal:"Salvage",bld:"Construction",cook:"Synthcraft",sht:"Shooting"})[k]+" "+p.sk[k],"good")}}
 
@@ -1433,7 +1614,7 @@ function moodCalc(p){
   if(p.needs.rest<25)m-=8;
   if(lightLevel(hourN())>.3){                       // neon lamp aura at night
     for(const s of ST.structs.values())
-      if(s.type==="lamp"&&DIST(p.px,p.py,s.x+.5,s.y+.5)<4.5){m+=3;break}}
+      if(s.type==="lamp"&&!isBroken(s)&&DIST(p.px,p.py,s.x+.5,s.y+.5)<4.5){m+=3*qualOf(s).effMul;break}}
   {let aff=0,nn=0;for(const o of ST.pawns){if(o===p)continue;
       if(DIST(p.px,p.py,o.px,o.py)<6){aff+=relGet(p.id,o.id);nn++}}
     if(nn){aff/=nn;if(aff>20)m+=5;else if(aff<-20)m-=5}}
@@ -1441,6 +1622,17 @@ function moodCalc(p){
   if(p.needs.fun<20)m-=4;
   if(p.needs.socN<20)m-=5;
   m-=(p.stress||0)*0.18;
+  // home furniture comfort: couch/art/rug owned & working lift mood (art more so for the affluent)
+  if(p.home&&!p.homeless){
+    let comfort=0;const wt=wealthTier(p).t;
+    for(const s of homeStructs(p)){
+      if(!furnEffective(s))continue;const eff=DEF[s.type].furnEffect,q=qualOf(s).effMul;
+      if(eff==="comfort")comfort+=2.5*q;
+      else if(eff==="ambient")comfort+=1.5*q;
+      else if(eff==="art")comfort+=(2+wt)*q;       // status: nicer payoff when you're doing well
+    }
+    m+=Math.min(comfort,12);                        // cap home-comfort contribution
+  }
   // soft floor: deep misery bottoms out around 6 rather than a dead 0, leaving a
   // sliver of function to recover from (prevents unrecoverable death spirals).
   // doesn't help already-content pawns — only cushions the very bottom.
@@ -1475,7 +1667,7 @@ function randNear(p,r){for(let i=0;i<10;i++){
 /* job search */
 function homeFixture(p,type){if(!p.home)return null;const h=p.home;
   for(const s of ST.structs.values()){
-    if(s.bp||s.type!==type)continue;
+    if(s.bp||s.type!==type||isBroken(s))continue;
     if(s.x>=h.x0&&s.x<h.x0+h.w&&s.y>=h.y0&&s.y<h.y0+h.h&&!unre(p,s.x,s.y))return s}
   return null}
 function nearestStruct(p,fn){let best=null,bd=1e9;
@@ -1485,7 +1677,7 @@ function nearestStruct(p,fn){let best=null,bd=1e9;
   return best}
 function mkEat(p){
   const home=(!p.homeless)&&homeFixture(p,"fridge");
-  const src=home||nearestStruct(p,s=>(s.type==="fridge"||s.type==="counter"||s.type==="bar")&&!s.bp);
+  const src=home||nearestStruct(p,s=>(s.type==="fridge"||s.type==="counter"||s.type==="bar")&&!s.bp&&!isBroken(s));
   if(!src)return null;
   return{t:"eat",x:src.x,y:src.y,adj:1,prog:0,home:!!home};}
 function mkSleep(p){let pod=null;
@@ -1502,8 +1694,8 @@ function scoreJobs(p){
   const night=lightLevel(hourN())>0.3; // after dark
   const bpStr=nearestStruct(p,s=>(s.bp||s.decon)&&!s.res);
   const hyg=p.needs.hyg??80,fun=p.needs.fun??70,socN=p.needs.socN??70,soc=p.pers.soc;
-  const showStr=(!p.homeless&&(homeFixture(p,"shower")||homeFixture(p,"toilet")))||nearestStruct(p,s=>(s.type==="shower"||s.type==="toilet")&&!s.bp);
-  const funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar"||s.type==="park"||s.type==="arcade")&&!s.bp);
+  const showStr=(!p.homeless&&(homeFixture(p,"shower")||homeFixture(p,"toilet")))||nearestStruct(p,s=>(s.type==="shower"||s.type==="toilet")&&!s.bp&&!isBroken(s));
+  const funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar"||s.type==="park"||s.type==="arcade")&&!s.bp&&!isBroken(s));
   let mate=null,_md=1e9;for(const q of ST.pawns){if(q.id===p.id)continue;
     if(relGet(p.id,q.id)<-40)continue;  // don't socialize toward rivals/enemies
     let dd=DIST(p.px,p.py,q.px,q.py);
@@ -1630,6 +1822,7 @@ function killPawn(p,why){const i=ST.pawns.indexOf(p);if(i<0)return;
   clearJob(p);ST.pawns.splice(i,1);ST.stats.deaths++;SFX.die();
   inherit(p);   // estate + property pass to closest tie, or revert to district
   log(p.name+" "+why+".","bad");banner("RUNNER DOWN","bad");
+  chronicle(p.name+" "+(p.surname||"")+" "+why+".","✝");
   for(const o of ST.pawns){addMod(o,"loss","Lost a crewmate",-16,TPD*2.5);applyDrift(o,{cau:6,soc:-3});
     if(DIST(o.px,o.py,p.px,p.py)<10)tryEmote(o,"cry",120);
     // partners and close friends grieve far harder
@@ -2340,6 +2533,7 @@ function checkTier(){
     ST.tierReached=cur.t;
     log("DISTRICT RANKED UP — now a "+cur.name+" (Tier "+cur.t+")!","good");
     banner("TIER "+cur.t+" · "+cur.name.toUpperCase(),"good");SFX.good();
+    chronicle("The district rose to "+cur.name+" (Tier "+cur.t+").","★");
     // little celebration: every citizen gets a mood lift
     for(const p of ST.pawns){addMod(p,"tierup","The block's coming up!",10,TPD*1.2);
       emote(p,"party");}
@@ -2405,17 +2599,19 @@ const CARAVAN_GOODS=["materials","gear","stims","wood","data","parts"];
 function maybeCaravan(){
   if(ST.caravan)return;
   if(ST.pawns.length<3||ST.tick<TPD*2)return;
-  if(Math.random()>0.06)return;                  // ~6% daily check
+  const markets=countBuilt("market");
+  if(Math.random()>0.06+markets*0.04)return;     // markets raise arrival odds (~+4%/market daily)
   const good=CH(CARAVAN_GOODS);
   const buying=Math.random()<0.6;                // mostly buyers (gives you a money sink for surplus)
   const base=(typeof PRICES!=="undefined"&&PRICES[good])||8;
+  const mkBonus=1+markets*0.12;                  // markets pay better / sell cheaper
   if(buying){
     // pays a premium per unit of `good` you have in stock when they leave
-    ST.caravan={mode:"buy",good,rate:Math.round(base*R(1.6,2.4)),leaveAt:ST.tick+Math.floor(TPD*R(0.5,0.9)),done:false};
+    ST.caravan={mode:"buy",good,rate:Math.round(base*R(1.6,2.4)*mkBonus),leaveAt:ST.tick+Math.floor(TPD*R(0.5,0.9)),done:false};
     log("◈ A trade caravan is buying "+good.toUpperCase()+" at a premium — sell your surplus before they move on.","good");
   }else{
     const qty=RI(6,14);
-    ST.caravan={mode:"sell",good,qty,price:Math.round(base*R(0.4,0.7)),leaveAt:ST.tick+Math.floor(TPD*R(0.5,0.9)),done:false};
+    ST.caravan={mode:"sell",good,qty,price:Math.max(2,Math.round(base*R(0.4,0.7)/mkBonus)),leaveAt:ST.tick+Math.floor(TPD*R(0.5,0.9)),done:false};
     log("◈ A trade caravan is selling cheap "+good.toUpperCase()+" — stock up while it's here.","good");
   }
   banner("CARAVAN ARRIVES","good");if(SFX&&SFX.good)SFX.good();
@@ -2520,6 +2716,7 @@ function strikeFire(dz){
   ST.heat=Math.min(100,(ST.heat||0)+10);
   log("🔥 FIRE tore through the production district — "+destroyed+" structures lost.","bad");
   banner("FIRE","bad");if(SFX&&SFX.die)SFX.die();
+  chronicle("A fire tore through the district.","🔥");
 }
 function strikeBlackout(dz){
   // halts production for a while; raises stress; crime opportunity (heat)
@@ -2529,6 +2726,7 @@ function strikeBlackout(dz){
   ST.heat=Math.min(100,(ST.heat||0)+12);   // darkness breeds crime
   log("⚡ BLACKOUT — the grid went down. Production is halted until power returns.","bad");
   banner("BLACKOUT","bad");if(SFX&&SFX.alert)SFX.alert();
+  chronicle("A blackout struck the grid.","⚡");
 }
 function strikeRaid(dz){
   // a rival crew invades: injures pawns, steals goods/income, may hurt a defender
@@ -2542,6 +2740,7 @@ function strikeRaid(dz){
   ST.heat=Math.min(100,(ST.heat||0)+20);
   log("⚔ GANG RAID — a rival crew hit the block, made off with "+stolen+"c. "+hurt+" hurt.","bad");
   banner("GANG RAID","bad");if(SFX&&SFX.die)SFX.die();
+  chronicle("A gang raid hit the block.","⚔");
 }
 function fireEvent(){
   const r=Math.random();
@@ -2734,6 +2933,8 @@ function tick(){ST.tick++;
     cliqueTick();
     ageTick();          // children grow toward adulthood
     tryConception();    // stable partnered pairs may have a child
+    furnitureDecayTick(); // furniture slowly wears down, occasionally breaks
+    for(const p of ST.pawns)tryFurnish(p); // residents maintain & improve their homes
     // property attachment grows with tenure; wealth class mood effects
     for(const p of ST.pawns){
       if(p.home&&!p.homeless)p.attach=clamp((p.attach||0)+1,0,100);
@@ -2748,6 +2949,7 @@ function tick(){ST.tick++;
       if(relGet(a.id,b.id)>=48&&Math.random()<0.25)tryFormPartnership(a,b);
     }
     genWorkPetitions();
+    genExpansionPetition();
     // rent + eviction (children are dependents — they don't pay rent or get evicted alone)
     for(const q of ST.pawns){if(isChild(q))continue;q.credits=(q.credits||0)-(ST.crisis?42:28);
       if(q.credits<0&&!q.homeless){q.homeless=true;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad");loseProperty(q,"couldn't make rent — got evicted, sleeping rough now and it stings to lose my place");q.home=null;}
@@ -3411,6 +3613,15 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
       // bioluminescent tip glow
       ctx.globalAlpha=.3;ctx.fillStyle="#a259ff";
       ctx.beginPath();ctx.arc(X+T/2,Y+4,2,0,7);ctx.fill();ctx.globalAlpha=1;break;}
+    default:{
+      // generic civic/utility building — tinted box + centered glyph (nursery, market, hall, etc.)
+      rr(X+2,Y+2,T-4,T-4,"#0c1422");
+      rr(X+2,Y+2,T-4,2,"#22304a");
+      const gi=(typeof BUILD_ICON!=="undefined"&&BUILD_ICON[s.type])||"▪";
+      const gg=0.55+0.45*Math.sin(t*1.3+s.x);
+      ctx.globalAlpha=gg;ctx.fillStyle="#7aa2ff";ctx.font="9px monospace";ctx.textAlign="center";
+      ctx.fillText(gi,X+T/2,Y+T/2+3);ctx.textAlign="left";ctx.globalAlpha=1;
+      stampGlow("#7aa2ff",X+T/2,Y+T/2,T*.4,gg*.10);break;}
     }}
   if(!s.bp&&s.hp<s.maxHp&&DEF[s.type].hp>1){
     ctx.fillStyle="#08101e";ctx.fillRect(X+1,Y-4,T-2,3);
@@ -3421,7 +3632,18 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
     ctx.strokeRect(X+.5,Y+.5,T-1,T-1);ctx.globalAlpha=1;}
   if(s.decon){ctx.strokeStyle="#ff3d5a";ctx.lineWidth=1.2;
     ctx.beginPath();ctx.moveTo(X+3,Y+3);ctx.lineTo(X+T-3,Y+T-3);
-    ctx.moveTo(X+T-3,Y+3);ctx.lineTo(X+3,Y+T-3);ctx.stroke();ctx.lineWidth=1;}}
+    ctx.moveTo(X+T-3,Y+3);ctx.lineTo(X+3,Y+T-3);ctx.stroke();ctx.lineWidth=1;}
+  // furniture status: broken = red spark glyph; premium = small gold corner glint
+  if(!s.bp&&isFurniture(s)){
+    if(isBroken(s)){
+      ctx.fillStyle="#ff3d5a";ctx.font="8px monospace";ctx.textAlign="center";
+      ctx.fillText("⚡",X+T-4,Y+6);ctx.textAlign="left";
+      ctx.globalAlpha=0.35;ctx.fillStyle="#000";ctx.fillRect(X+2,Y+2,T-4,T-4);ctx.globalAlpha=1;
+    }else if((s.qual||1)===2){
+      ctx.fillStyle="#ffd84a";ctx.globalAlpha=.8;
+      ctx.fillRect(X+T-4,Y+2,2,2);ctx.globalAlpha=1;
+    }
+  }}
 
 function tempCols(P){
   const T=[[(P.amb+P.ind)/2,"#ff2d95"],[(P.imp+100-P.cau)/2,"#ff4757"],
@@ -3624,7 +3846,8 @@ function drawPawn(p){
   const X=p.px*T,Y=p.py*T+bobY;
   const sel=ST.sel.includes(p),ac=animaColor(p),slp=p.sleeping;
   const pls=0.5+0.5*Math.sin(performance.now()*0.0028+(p.px+p.py)*0.5);
-  const rad=(slp?8:12)+(slp?0:pls*2.5);
+  const young=p.child?0.62:1;                          // children are visibly smaller wisps
+  const rad=((slp?8:12)+(slp?0:pls*2.5))*young;
   const ga=(slp?ac.glowA*0.5:ac.glowA)*(0.72+0.28*pls);
   // ground shadow — soft ellipse anchored to the foot (uses unbobbed Y)
   ctx.globalAlpha=0.28;ctx.fillStyle="#000";
@@ -3651,10 +3874,10 @@ function drawPawn(p){
     ctx.beginPath();ctx.arc(0,0,11,0,7);ctx.stroke();
     ctx.setLineDash([]);ctx.restore();}
   // solid orb body
-  ctx.fillStyle=ac.col;ctx.beginPath();ctx.arc(X,Y,slp?4:5.5,0,7);ctx.fill();
+  ctx.fillStyle=ac.col;ctx.beginPath();ctx.arc(X,Y,(slp?4:5.5)*young,0,7);ctx.fill();
   // accent ring
   ctx.strokeStyle=p.accent;ctx.globalAlpha=slp?0.45:0.78;ctx.lineWidth=1.4;
-  ctx.beginPath();ctx.arc(X,Y,slp?5.5:7.5,0,7);ctx.stroke();ctx.lineWidth=1;ctx.globalAlpha=1;
+  ctx.beginPath();ctx.arc(X,Y,(slp?5.5:7.5)*young,0,7);ctx.stroke();ctx.lineWidth=1;ctx.globalAlpha=1;
   // ── 8-bit face ──
   const ps=sel?1.2:1;  // slightly bigger pixel when selected
   const expr=faceExpr(p);
@@ -3874,6 +4097,19 @@ function render(){
   // bio-pod canopies (drawn under the room glints below)
   for(const rm of (ST.rooms||[])){if(rm.x0+rm.w<x0||rm.x0>x1||rm.y0+rm.h<y0||rm.y0>y1)continue;drawPod(rm)}
   drawStreetLayer(x0,y0,x1,y1);
+  // watch-post security coverage — subtle ring so the player can see protected ground
+  if(ST._secZones&&ST._secZones.length){
+    for(const z of ST._secZones){
+      if(z.x+z.r<x0||z.x-z.r>=x1||z.y+z.r<y0||z.y-z.r>=y1)continue;
+      const cx=(z.x+.5)*T,cy=(z.y+.5)*T,rr=z.r*T;
+      ctx.save();
+      ctx.globalAlpha=0.05;ctx.fillStyle="#39ff88";
+      ctx.beginPath();ctx.arc(cx,cy,rr,0,7);ctx.fill();
+      ctx.globalAlpha=0.18;ctx.strokeStyle="#39ff88";ctx.lineWidth=1;ctx.setLineDash([5,6]);
+      ctx.beginPath();ctx.arc(cx,cy,rr,0,7);ctx.stroke();ctx.setLineDash([]);
+      ctx.restore();
+    }
+  }
   // structures — iterate the structure set directly and viewport-cull each,
   // instead of scanning every tile in the viewport (huge win at zoom-out).
   for(const s of ST.structs.values()){
@@ -3905,7 +4141,12 @@ function render(){
   else if(hr<19){tintR=8;tintG=10;tintB=16;}          // day neutral
   else{const k=(hr-19)/2;tintR=8+50*k;tintG=10+10*k;tintB=16+6*k;}  // dusk warm-orange
   const vg=vignetteGradient(tintR|0,tintG|0,tintB|0);
-  ctx.fillStyle=vg;ctx.fillRect(0,0,VW,VH);}
+  ctx.fillStyle=vg;ctx.fillRect(0,0,VW,VH);
+  // blackout: drop the district into darkness with a faint flicker
+  if(ST.blackoutUntil&&ST.tick<ST.blackoutUntil){
+    const flick=0.62+0.06*Math.sin(performance.now()*0.02)+(Math.random()<0.03?0.1:0);
+    ctx.fillStyle="rgba(2,4,10,"+flick.toFixed(2)+")";ctx.fillRect(0,0,VW,VH);
+  }}
 
 // cached day/night vignette — rebuilds only when the (quantized) tint or canvas size changes,
 // instead of allocating a full-screen radial gradient every frame.
@@ -4096,7 +4337,14 @@ cv.addEventListener("touchcancel",e=>{
    ============================================================ */
 // ── DIARY SYSTEM ──
 const DIARY_ENTRIES=[];
-let DIARY_FILTER="all";
+// ── DISTRICT CHRONICLE: a curated saga of only the major, lasting story beats ──
+// (births, deaths, comings-of-age, unions, factions, wars, disasters, milestones)
+const CHRONICLE=[];
+function chronicle(text,icon){
+  CHRONICLE.unshift({day:dayN(),h:hourN()|0,text,icon:icon||"◆"});
+  if(CHRONICLE.length>80)CHRONICLE.pop();
+}
+let DIARY_FILTER="saga";
 const DIARY_CATS={
   crime:["robbed","stolen","caught","busted","fight","brawl","broke into","assault"],
   eco:["income","credits","sold","debt","crisis","district finance","stim lab","gear shop","supply","market","gig","laid off","workstation","production"],
@@ -4161,11 +4409,22 @@ function renderOverlay(){
 }
 function renderDiaryOverlay(){
   $("ov-title").textContent="DIARY";
-  const cats=[["all","ALL"],["crime","CRIME"],["eco","ECO"],["social","SOCIAL"],["health","HEALTH"],["district","DISTRICT"]];
+  const cats=[["saga","SAGA"],["all","ALL"],["crime","CRIME"],["eco","ECO"],["social","SOCIAL"],["health","HEALTH"],["district","DISTRICT"]];
   $("ov-tabs").innerHTML=cats.map(([c,l])=>
     "<span class='ov-tab"+(DIARY_FILTER===c?" on":"")+"' data-dcat='"+c+"'>"+l+"</span>").join("");
   $("ov-tabs").style.display="flex";
-  renderDiary();
+  if(DIARY_FILTER==="saga")renderChronicle();else renderDiary();
+}
+// the curated saga view — major story beats only, as a district history
+function renderChronicle(){
+  const body=$("ov-body");if(!body)return;
+  if(!CHRONICLE.length){body.innerHTML="<div class='sub' style='opacity:.6;padding:12px'>No major events yet. As citizens are born, pair up, come of age, and the district faces crises, your saga will be written here.</div>";return;}
+  let h="<div class='chronicle'>";
+  for(const e of CHRONICLE){
+    h+="<div class='chron-row'><span class='chron-day'>Day "+e.day+"</span><span class='chron-ic'>"+e.icon+"</span><span class='chron-txt'>"+e.text+"</span></div>";
+  }
+  h+="</div>";
+  body.innerHTML=h;
 }
 function crewFlagHTML(p){
   const flags=[];
@@ -4515,6 +4774,29 @@ function applyRequest(rid,oi){
       log((c?c.name:"A clique")+" was refused — the group is sore about it.","warn");
     }
     r.status="answered";renderRequests();refreshTaskBadge&&refreshTaskBadge();return}
+  if(r.kind==="expand"){
+    const p=agent;
+    if(p&&p.home){
+      if(opt.act==="deny"){
+        if(p.career)p.career.sat=clamp((p.career.sat||60)-10,0,100);
+        addMod(p,"expanddeny","Denied more space",-6,TPD*1.5);
+        remember(p,"asked for a bigger place and got turned down");
+        log(p.name+"'s expansion was denied.","warn");
+      }else{
+        const cost=opt.act==="split"?60:120;
+        const playerShare=opt.act==="split"?60:120;
+        if(opt.act==="split")p.credits=Math.max(0,(p.credits||0)-60);
+        ST.income=Math.max(0,(ST.income||0)-playerShare);
+        if(doExpand(p.home)){
+          addMod(p,"expanded","More room to live",16,TPD*3);
+          p.attach=clamp((p.attach||0)+10,0,100);
+          remember(p,"got the place expanded — finally room to breathe");
+          chronicle(p.name+" "+(p.surname||"")+" expanded their home.","⌂");
+          log(p.name+"'s home was expanded.","good");banner("HOME EXPANDED","good");
+        }else log("No room to expand "+p.name+"'s home.","warn");
+      }
+    }
+    r.status="answered";renderRequests();if(typeof refreshTaskBadge==="function")refreshTaskBadge();return}
   if(r.kind==="work"){
     const c=agent&&agent.career;
     if(agent&&c){
@@ -4781,9 +5063,12 @@ function renderInspectCore(){const el=$("inspect");
     h+=barHtml("REST",e.needs.rest,"#7aa2ff");
     h+=barHtml("MOOD",e.mood,e.mood<25?"#ff4757":"#ffd84a");
     h+="<div class='sub'>TASK: "+jobLabel(e)+"</div>";
+    // child status — clear flag when inspecting a young wisp
+    if(e.child){const pn=(e.parents||[]).map(id=>{const pp=ST.pawns.find(x=>x.id===id);return pp?pp.name:null}).filter(Boolean);
+      h+="<div class='sub' style='color:#ffd84a'>CHILD"+(e.surname?" · "+e.surname:"")+(e.age!=null?" · age "+e.age:"")+(pn.length?" · child of "+pn.join(" & "):"")+"</div>";}
     // glanceable identity: vocation · clique · gang (the deep systems at a glance)
     {const bits=[];
-     if(e.career)bits.push("<span style='color:var(--cy)'>"+vocationOf(e).name+"</span>");
+     if(e.career&&!e.child)bits.push("<span style='color:var(--cy)'>"+vocationOf(e).name+"</span>");
      const c=cliqueOf(e);if(c)bits.push("<span style='color:#c98bff'>"+c.name+"</span>");
      const g=pawnGang(e);if(g)bits.push("<span style='color:"+g.color+"'>"+g.name+"</span>");
      if(bits.length)h+="<div class='sub'>"+bits.join(" · ")+"</div>";}
@@ -5303,7 +5588,7 @@ function serializeState(){
     goods:ST.goods,income:ST.income,debtDays:ST.debtDays||0,crisis:ST.crisis||false,
     savedAt:Date.now(),
     gangs:(ST.gangs||[]).map(g=>({...g,turf:[...g.turf]})),
-    stats:ST.stats,flags:ST.flags,milestones:ST.milestones||[],tierReached:ST.tierReached||1,contrabandPolicy:ST.contrabandPolicy||"crackdown",hintsSeen:ST.hintsSeen||{},pendingDisaster:ST.pendingDisaster||null,blackoutUntil:ST.blackoutUntil||0,caravan:ST.caravan||null,
+    stats:ST.stats,flags:ST.flags,milestones:ST.milestones||[],tierReached:ST.tierReached||1,contrabandPolicy:ST.contrabandPolicy||"crackdown",hintsSeen:ST.hintsSeen||{},pendingDisaster:ST.pendingDisaster||null,blackoutUntil:ST.blackoutUntil||0,caravan:ST.caravan||null,chronicle:CHRONICLE.slice(0,80),
     ter:Array.from(ST.ter),
     structs:[...ST.structs.values()].map(snapStruct),
     pawns:ST.pawns.map(snapPawn),
@@ -5314,9 +5599,10 @@ function applyState(d){
   ST.goods=d.goods||{data:0,chem:0,parts:0,stims:0,gear:0,food:0,wood:0,materials:0};ST.income=d.income||0;
   ST.debtDays=d.debtDays||0;ST.crisis=d.crisis||false;
   ST.gangs=(d.gangs||[]).map(g=>({...g,turf:new Set(g.turf||[])}));
-  ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];ST.tierReached=d.tierReached||1;ST.contrabandPolicy=d.contrabandPolicy||"crackdown";ST.hintsSeen=d.hintsSeen||{};ST.pendingDisaster=d.pendingDisaster||null;ST.blackoutUntil=d.blackoutUntil||0;ST.caravan=d.caravan||null;
+  ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];ST.tierReached=d.tierReached||1;ST.contrabandPolicy=d.contrabandPolicy||"crackdown";ST.hintsSeen=d.hintsSeen||{};ST.pendingDisaster=d.pendingDisaster||null;ST.blackoutUntil=d.blackoutUntil||0;ST.caravan=d.caravan||null;CHRONICLE.length=0;if(Array.isArray(d.chronicle))for(const e of d.chronicle)CHRONICLE.push(e);
   ST.ter=new Uint8Array(d.ter||[]);
   ST.structs=new Map((d.structs||[]).map(s=>[K(s.x,s.y),s]));
+  for(const s of ST.structs.values())if(DEF[s.type]&&DEF[s.type].furn&&s.qual===undefined)s.qual=1; // backfill furniture quality
   ST.pawns=(d.pawns||[]).map(p=>Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,unre:new Map()}));
   for(const p of ST.pawns)if(!p.career)p.career=initCareer(p.sk||{},p.pers||{}); // backfill for pre-career saves
   for(const p of ST.pawns){ // backfill dynasty fields for pre-dynasty saves
@@ -5438,7 +5724,7 @@ function newGame(){
   cam.z=1.4;  // start zoomed into the core on the bigger map
   cam.x=64*T-VW/cam.z/2;cam.y=50*T-VH/cam.z/2;clampCam();
   ST.lastCrackdown=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.rel={};ST.relMeta={};ST.cliques=[];ST.contrabandPolicy="crackdown";ST.hintsSeen={};ST.pendingDisaster=null;ST.blackoutUntil=0;ST.caravan=null;relAdj(vex.id,sta.id,25);ST.heat=0;ST.heatWarn=false;
-  $("log").innerHTML="";DIARY_ENTRIES.length=0;renderDiary();renderRoster();
+  $("log").innerHTML="";DIARY_ENTRIES.length=0;CHRONICLE.length=0;renderDiary();renderRoster();
   log("The sprawl wakes — citizens drifting to homes, jobs, and the night's vices.","info");
   log("You watch over the district. Build it out, steer who you can, and keep the block from tearing itself apart.","info");
   powerRecalc();updateFlags();syncHUD();renderInspect();refreshSpd();hideModal();
