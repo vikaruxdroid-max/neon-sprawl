@@ -3297,6 +3297,39 @@ function drawRoomStruct(s){
   s.inRoom=false;
   drawStruct(s);
   s.inRoom=true;}
+// ── OPTIONAL SPRITE LAYER ──────────────────────────────────────────────
+// Buildings can OPTIONALLY use a pixel-art image sprite instead of live vector art.
+// This is purely additive: if a sprite for a type isn't registered or hasn't loaded,
+// drawStruct falls back to the existing vector switch. Sprites are small transparent
+// PNGs in ./sprites/, lazily loaded once and cached. Nothing breaks if the folder is absent.
+const SPRITE_SRC={
+  // map building type -> sprite filename in ./sprites/. Add entries as art is produced.
+  // (proving the system on ONE building first: the furnishings store.)
+  furnstore:"furnstore.png",
+};
+const _spriteCache={};   // type -> {img, ready:bool, failed:bool}
+function getSprite(type){
+  if(!SPRITE_SRC[type]||typeof Image==="undefined")return null;
+  let e=_spriteCache[type];
+  if(e)return e.ready?e:null;            // loaded (or still loading/failed)
+  // begin lazy load
+  e={img:new Image(),ready:false,failed:false};
+  _spriteCache[type]=e;
+  e.img.onload=()=>{e.ready=true;};
+  e.img.onerror=()=>{e.failed=true;};   // missing file → silently keep using vector art
+  e.img.src="sprites/"+SPRITE_SRC[type];
+  return null;                           // not ready this frame; vector art draws
+}
+// draw a building's sprite scaled to its tile footprint (1 tile unless DEF.spriteTiles set)
+function drawSprite(s,e){
+  const def=DEF[s.type]||{};
+  const tw=(def.spriteTiles&&def.spriteTiles[0])||1;
+  const th=(def.spriteTiles&&def.spriteTiles[1])||1;
+  const X=s.x*T,Y=s.y*T;
+  ctx.imageSmoothingEnabled=false;       // crisp pixel art
+  ctx.drawImage(e.img,X,Y,T*tw,T*th);
+  ctx.imageSmoothingEnabled=true;
+}
 function drawStruct(s){const X=s.x*T,Y=s.y*T;
   if(s.surgeT&&ST.tick<s.surgeT){
     ctx.fillStyle="rgba(255,201,71,.08)";ctx.fillRect(X,Y,T,T);
@@ -3318,6 +3351,11 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
       ctx.fillStyle="#00d4ff";ctx.fillRect(X+2,Y+T-4,(T-4)*clamp(s.prog/s.need,0,1),2)}}
   else{
     const t=performance.now()*0.001;
+    // optional sprite: if a pixel-art sprite is registered AND loaded, draw it and skip
+    // the vector switch. Overlays (HP bar, broken/quality marks) still draw below.
+    const spr=getSprite(s.type);
+    if(spr){drawSprite(s,spr);}
+    else
     switch(s.type){
     case "ruin":
       rr(X,Y,T,T,"#14101a");rr(X+1,Y+1,T-2,3,"#24202a");
@@ -5609,13 +5647,21 @@ function showHelp(){if(ST.phase==="run"){ST.paused=true;refreshSpd()}showModal(
   "<tr><td style='color:var(--cy)'>Diary</td><td>Day-grouped, timestamped event log. Filter tabs: ALL / CRIME / ECO / SOCIAL / HEALTH / DISTRICT.</td></tr>"+
   "</table><button class='tb big' id='m-close'>CLOSE</button>")}
 function showStart(){showModal(
+  "<div id='hero-art' style='display:none;width:100%;max-width:420px;margin:0 auto 10px;border-radius:8px;overflow:hidden;border:1px solid rgba(168,89,255,.3)'></div>"+
   "<h1>NEON SPRAWL</h1><div class='mh-sub'>COLONY PROTOCOL</div>"+
   "<p>2087. Two citizens — Vex and Static — just squatted a dead block on the edge of the megacity. The concrete is cracked, mushrooms glow through the fissures, and the corp enforcers haven't noticed you yet.</p>"+
   "<p>Build a district. Grow a community. Keep the lights on and the rent paid. Watch your citizens live, fight, steal, fall sick, and form bonds — or not.</p>"+
   "<p>The sprawl doesn't care about you. Make it care.</p>"+
   (hasSave()?"<button class='tb big' id='m-continue'>CONTINUE</button>":"")+
   "<button class='tb big' id='m-start'>NEW DISTRICT</button>"+
-  "<p style='color:var(--dim);font-size:10px;margin-top:14px'>Press ? for the operator manual · v0.2</p>")}
+  "<p style='color:var(--dim);font-size:10px;margin-top:14px'>Press ? for the operator manual · v0.2</p>");
+  // optional painted hero image — shows only if sprites/title.png exists (no broken-img if absent)
+  const heroSlot=$("hero-art");
+  if(heroSlot&&typeof Image!=="undefined"){const hi=new Image();
+    hi.onload=()=>{heroSlot.innerHTML="";heroSlot.appendChild(hi);hi.style.width="100%";hi.style.display="block";heroSlot.style.display="block";};
+    hi.onerror=()=>{};   // absent → title stays text-only, no broken image
+    hi.src="sprites/title.png";}
+}
 
 /* ---------- save / load ---------- */
 const SAVE_KEY="neonSprawlSave_v1";       // legacy single-slot (auto-migrated)

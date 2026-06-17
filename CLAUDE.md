@@ -215,6 +215,15 @@ Measured over managed 14-day runs (player keeps everyone ≥45 credits):
   across save/load as the district's history.
 - **Visual legibility (checkup)** — children render at 0.62 scale + flagged in inspect;
   watch-post coverage rings; blackout screen-darkening.
+- **Optional sprite layer** — DONE (proven on ONE building: furnstore). `SPRITE_SRC{type:file}`
+  registry + `getSprite()` (lazy-loads `sprites/<file>`, caches, guards `typeof Image`) +
+  `drawSprite()`. In drawStruct's finished-building branch: `if(sprite ready) draw it; else`
+  the vector switch. Purely ADDITIVE — missing/failed sprite → silent vector fallback, nothing
+  breaks. Overlays (HP/broken/quality) still draw over sprites. Multi-tile via
+  `DEF[type].spriteTiles=[w,h]`. Title screen has an optional `sprites/title.png` painted-hero
+  slot (absent → text-only). **DEPLOY CHANGE:** if `sprites/` has art, it must sync to the VPS
+  too (still single-file engine; sprites are an optional sibling folder). Spec: `sprites/README.md`.
+  Rights: AI-gen art governed by tool terms — verify before committing to a public repo.
 - **Refinement pass (UX/legibility/pacing)** — DONE.
   · IA: build menu regrouped by life-area (Home/Comfort/Work/Commerce/Civic/Order/Growth — no
     bloated category; previously-orphaned stimlab/gearshop/hospital/arcade/dealer/farmplot/
