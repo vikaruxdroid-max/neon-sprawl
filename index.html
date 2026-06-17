@@ -1015,10 +1015,26 @@ function genCity(){
   // Organic spread on a 140x100 map: built-up core in the center,
   // nature/resource ring reserved on the outskirts (filled in a later pass).
   // Helper: place a home and register it
-  function home(x0,y0){
-    placeRoom(x0,y0,6,5,{x:x0+2,y:y0+4},
-      [{t:"pod",x:1,y:1},{t:"fridge",x:2,y:1},{t:"shower",x:3,y:1},{t:"tv",x:1,y:2},{t:"toilet",x:4,y:1},{t:"couch",x:3,y:2},{t:"rug",x:2,y:2}]);
-    ST.cityHomes.push({x0,y0,w:6,h:5,bed:{x:x0+1,y:y0+1},door:{x:x0+2,y:y0+4}});}
+  function home(x0,y0,variant){
+    // a lived-in layout, not scattered fixtures. A few variants so the block isn't all identical.
+    const v=variant==null?RI(0,2):variant;
+    let furn;
+    if(v===0){ // "living-focused" — couch + tv den
+      furn=[{t:"pod",x:1,y:1},{t:"lamp",x:2,y:1},
+            {t:"shower",x:4,y:1},{t:"toilet",x:4,y:2},{t:"fridge",x:3,y:1},
+            {t:"tv",x:1,y:3},{t:"rug",x:2,y:3},{t:"couch",x:2,y:2}];
+    }else if(v===1){ // "studious" — bookshelf instead of a second comfort, bed on right
+      furn=[{t:"pod",x:4,y:1},{t:"lamp",x:4,y:2},
+            {t:"shower",x:1,y:1},{t:"toilet",x:1,y:2},{t:"fridge",x:2,y:1},
+            {t:"couch",x:2,y:3},{t:"rug",x:3,y:3},{t:"bookshelf",x:3,y:1}];
+    }else{ // "cozy" — rug-centered living, lamp-lit
+      furn=[{t:"pod",x:1,y:1},{t:"fridge",x:2,y:1},
+            {t:"shower",x:4,y:1},{t:"toilet",x:4,y:2},
+            {t:"couch",x:1,y:3},{t:"rug",x:2,y:2},{t:"tv",x:3,y:3},{t:"lamp",x:3,y:1}];
+    }
+    placeRoom(x0,y0,6,5,{x:x0+2,y:y0+4},furn);
+    const pod=furn.find(f=>f.t==="pod");
+    ST.cityHomes.push({x0,y0,w:6,h:5,bed:{x:x0+(pod?pod.x:1),y:y0+(pod?pod.y:1)},door:{x:x0+2,y:y0+4}});}
   function decor(t,x,y){if(INB(x,y)&&!structAt(x,y))addBuilt(t,x,y);}
 
   // ── RESIDENTIAL QUARTER (upper-center) — two rows of homes with a lane between ──

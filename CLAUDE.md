@@ -215,6 +215,14 @@ Measured over managed 14-day runs (player keeps everyone ≥45 credits):
   across save/load as the district's history.
 - **Visual legibility (checkup)** — children render at 0.62 scale + flagged in inspect;
   watch-post coverage rings; blackout screen-darkening.
+- **Home layout (Living Homes Phase 2)** — DONE. `home(x0,y0,variant)` now arranges furniture
+  into functional ZONES (sleep nook + lamp, clustered utility/hygiene wall, living area with
+  couch over rug facing tv) instead of scattering fixtures along the top wall. 3 layout VARIANTS
+  (living-focused / studious-w-bookshelf / cozy) so the block isn't identical stamped homes —
+  picked per-home via RI(0,2). Bed ref follows the actual pod position per variant (was
+  hardcoded). Verified: 3 distinct layouts across 7 homes, 0 fixtures on wall/edge tiles (all
+  accessible), wisps use homes normally. NEXT: Phase 3 graphics (per-item vector art reflecting
+  state), Phase 4 verification.
 - **Coverage/wiring audit (Living Homes Phase 1.5)** — DONE. Audited which NPC interactions
   actually FIRE in real play (instrumented mod/job tracking over long runs). Found + fixed two
   real gaps: (1) furniture decay was ~82 days (never seen) → wear rate R(1.6,3.0) so standard
