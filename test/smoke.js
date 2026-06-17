@@ -75,6 +75,7 @@ function T_saveload(){
   const p=ST.pawns[0];
   p.stress=33;p.needs.food=18;p.credits=88;
   p.job=null;
+  ST.goods=ST.goods||{};ST.goods.data=7;ST.goods.parts=3;ST.goods.stims=2;
   p.unre.set("9:9",999);
   const s0=[...ST.structs.values()][0];if(s0)s0.res=p.id;
   const want={tick:TPD*2+150,structs:ST.structs.size,pawns:ST.pawns.length,
@@ -99,7 +100,8 @@ function T_saveload(){
     ["G11 structAt works post-load",!s0||structAt(s0.x,s0.y)!==null],
     ["G12 home survives load",!!ST.pawns[0].home],
     ["G13 AI re-derives job",(function(){ST.pawns[0].job=null;const j=chooseJob(ST.pawns[0]);return !!j})()],
-    ["G14 relationships restored",ST.pawns[1]?relGet(ST.pawns[0].id,ST.pawns[1].id)===want.rel:true]
+    ["G14 relationships restored",ST.pawns[1]?relGet(ST.pawns[0].id,ST.pawns[1].id)===want.rel:true],
+    ["G15 goods restored",ST.goods&&ST.goods.data===7&&ST.goods.parts===3&&ST.goods.stims===2]
   ];
   for(const[n,ok] of checks){if(!ok)fails++;console.log(n+":",ok?"PASS":"FAIL")}
 }

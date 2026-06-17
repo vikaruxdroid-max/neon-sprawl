@@ -579,6 +579,7 @@ const DEF={
   hospital:   {name:"Hospital",     cost:{income:120},hp:100,blocks:1, work:180, cat:"b", desc:"Advanced care — faster, cheaper treatment than a Med Bay.", civic:"hospital"},
   school:     {name:"Learning Hub", cost:{income:90}, hp:70, blocks:1, work:160, cat:"b", desc:"Citizens train skills here, raising work output over time.", civic:"school"},
   housing:    {name:"Housing Unit", cost:{income:150},hp:60, blocks:0, work:180, cat:"b", desc:"Adds one home slot — allows the district to support one more citizen."},
+  watchpost:  {name:"Watch Post",   cost:{income:110},hp:90, blocks:1, work:0,   cat:"b", desc:"Security outpost — suppresses crime and bleeds off district heat in range.", security:true, secRadius:18},
   // ── DECOR (nat:1 = not buildable, placed by genCity) ──
   bench:      {name:"Bench",       nat:1, hp:40, blocks:0},
   streetlamp: {name:"Street Lamp", nat:1, hp:30, blocks:0},
@@ -595,12 +596,13 @@ const BUILD_CATS=[
   {name:"Industry",   items:["workstation","chemlab","workshop"]},
   {name:"Trade",      items:["counter","bar"]},
   {name:"Civic",      items:["medbed","park","school"]},
+  {name:"Security",   items:["watchpost"]},
   {name:"Growth",     items:["housing"]},
 ];
 // glyph per fixture for the build cards
 const BUILD_ICON={wall:"▦",door:"⌷",pod:"☖",lamp:"✦",fridge:"❄",shower:"♒",toilet:"⊡",tv:"▭",gym:"⛏",
   workstation:"⌨",chemlab:"⚗",workshop:"⚙",stimlab:"⚕",gearshop:"⛭",counter:"▤",bar:"♨",medbed:"✚",
-  dealer:"☠",farmplot:"❀",loggingcamp:"🪓",mineshaft:"⛏",park:"❦",arcade:"►",hospital:"✚",school:"✎",housing:"⌂"};
+  dealer:"☠",farmplot:"❀",loggingcamp:"🪓",mineshaft:"⛏",park:"❦",arcade:"►",hospital:"✚",school:"✎",housing:"⌂",watchpost:"◈"};
 
 
 // weapons removed — city sim mode
@@ -624,6 +626,7 @@ const TRAITS=[
 ];
 const NF=["Vex","Nyx","Rezz","Mara","Kade","Echo","Juno","Sable","Riko","Dash","Onna","Pike","Zee","Iris","Cole","Yuri","Tash","Bram","Lena","Cass","Dex","Mira","Frost","Sora","Tam","Blix","Nadia","Cruz","Wren","Pax","Lyra","Orin","Faye","Zel","Kira","Rue","Axel","Nova","Cleo","Fen"];
 const NH=["Static","Socket","Drift","Ghost","Patch","Vandal","Cinder","Hex","Mute","Bit","Razor","Loop","Null","Flux","Wirez","Crash","Splice","Burn","Codec","Glitch","Sparks","Void","Cache","Proxy","Jolt","Neon","Slag","Rift","Byte","Haze","Smear","Venom","Kink","Clank","Arc","Dusk","Shard","Weld","Punk","Fuse"];
+const NL=["Voss","Kane","Reyes","Okafor","Sato","Mercer","Ash","Cole","Vance","Bryce","Doan","Mori","Salk","Renn","Taru","Iyer","Krause","Lund","Petrov","Sorel","Adeyemi","Bauer","Chen","Dlamini","Esposito","Fang","Grim","Holt","Nawaz","Quill"];
 const ACC=["#00e5ff","#39ff88","#ffd84a","#ff9ff3","#7aa2ff","#ff9f2d"];
 
 /* ---------- game state ---------- */
@@ -830,6 +833,34 @@ function cliqueTick(){
   }
   // group petition: a large, loyal clique may collectively press the district
   if(ST.tick%TPD===0)maybeCliquePetition();
+  // ── FACTION POLITICS: stance toward the operator produces real effects ──
+  if(ST.tick%TPD===0){
+    for(const c of ST.cliques){
+      if(c.stance===undefined)c.stance=0;
+      c.stance=Math.round(c.stance*0.92);        // stance slowly decays toward neutral
+      const mem=c.members.map(id=>ST.pawns.find(p=>p.id===id)).filter(Boolean);
+      if(mem.length<3)continue;
+      const influence=mem.length*(c.loyalty/100);  // bigger, tighter cliques carry more weight
+      if(c.stance>=55){
+        // a supportive bloc: lifts district morale, members work harder
+        for(const p of mem){addMod(p,"backop","Backs the operator",6,TPD);if(p.career)p.career.sat=clamp(p.career.sat+3,0,100);}
+        if(influence>=3&&ST.tick%(TPD*2)===0)log(c.name+" publicly backs your leadership — the block feels it.","good");
+      }else if(c.stance<=-55){
+        // a hostile bloc: foments unrest (heat) and may align with a gang
+        ST.heat=Math.min(100,(ST.heat||0)+Math.round(influence));
+        for(const p of mem)addMod(p,"opposeop","Resents the operator",-5,TPD);
+        if(influence>=3){
+          // hostile, influential clique can throw in with a gang
+          if(ST.gangs.length&&!c.alignedGang&&Math.random()<0.25){
+            const g=ST.gangs[RI(0,ST.gangs.length-1)];c.alignedGang=g.id;
+            for(const p of mem)if(!pawnGang(p)&&Math.random()<0.4)g.crewIds.push(p.id);
+            log(c.name+" has thrown in with "+g.name+" — a faction turned criminal.","bad");
+            banner("FACTION DEFECTS","bad");
+          }else if(ST.tick%(TPD*2)===0)log(c.name+" is agitating against your rule — unrest is rising.","warn");
+        }
+      }
+    }
+  }
 }
 function maybeCliquePetition(){
   if(ST.requests&&ST.requests.some(r=>r.status==="pending"&&r.kind==="clique"))return;
@@ -1090,8 +1121,100 @@ function mkPawn(x,y,spec){const t1=CH(TRAITS);let t2=CH(TRAITS);while(t2===t1)t2
     drift:{day:0,used:0},credits:R(28,50),
     career:initCareer(sk,pers),   // vocation, aspiration, work ethic, satisfaction
     attach:0,                     // attachment to owned property (builds with tenure)
+    age:RI(19,46),                // adult age in years
+    birthDay:null,                // null = arrived as adult; set for the colony-born
+    surname:CH(NL),               // family line
+    parents:null,child:false,
     mem:[{d:0,h:6,t:"ended up on this dead block after the last squat got torched"}],
     homeless:false}}
+/* ============================================================
+   DYNASTIES — children, aging, generational inheritance
+   ============================================================ */
+const CHILD_NEEDS=()=>({food:R(80,95),rest:R(70,90),hyg:R(70,90),fun:R(70,90),socN:R(70,90)});
+// a child born to two parents — blends traits, takes a parent's surname, can't work until grown
+function mkChild(pa,pb,x,y){
+  const blend=(a,b)=>clamp(Math.round((a+b)/2+RI(-12,12)),0,100);
+  const pers={};
+  for(const k of ["amb","ind","imp","cau","soc","emp","cur","intg"])
+    pers[k]=blend(pa.pers[k]||50,pb.pers[k]||50);
+  // children start with low skills (they'll learn as they grow / from mentors)
+  const sk={sal:RI(0,1),bld:RI(0,1),cook:RI(0,1),sht:RI(0,1)};
+  // inherit one trait from a parent, plus one fresh trait
+  const parentTraits=[...(pa.tr||[]),...(pb.tr||[])];
+  const t1=parentTraits.length?CH(parentTraits):CH(TRAITS);
+  let t2=CH(TRAITS);while(t2===t1)t2=CH(TRAITS);
+  const surname=Math.random()<0.5?pa.surname:pb.surname;
+  return{id:uid(),kind:"pawn",name:CH(NF)+' "'+CH(NH)+'"',
+    accent:tempCols(pers)[0],tr:[t1,t2],sk,xp:{sal:0,bld:0,cook:0,sht:0},
+    px:x+.5,py:y+.5,hp:100,drafted:false,needs:CHILD_NEEDS(),
+    mood:70,mods:[],cd:0,
+    job:null,path:null,pi:0,pTx:-1,pTy:-1,claim:0,dazed:0,dz:null,sleeping:false,
+    carry:null,order:null,unre:new Map(),flee:0,hurtT:-999,assigned:null,
+    pers,sched:mkSched(pers,[t1,t2]),stress:0,addiction:0,rep:{corp:0,gang:0,neighbors:0,city:0},
+    bias:{eat:1,sleep:1,cook:1,build:1,salvage:1,haul:1,explore:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1},
+    drift:{day:0,used:0},credits:0,
+    career:initCareer(sk,pers),
+    attach:0,
+    age:0,birthDay:dayN(),
+    surname,
+    parents:[pa.id,pb.id],child:true,
+    mem:[{d:dayN(),h:hourN()|0,t:"born on this block — it's all I've ever known"}],
+    homeless:false}}
+function isChild(p){return !!p.child;}
+const ADULT_AGE=14;   // in-game days to mature (each "year" of age ~ scaled to days)
+// aging: children grow toward adulthood; daily tick advances age and matures them
+function ageTick(){
+  for(const p of ST.pawns){
+    if(p.birthDay==null)continue;          // arrived as adult, no in-colony aging
+    const daysAlive=dayN()-p.birthDay;
+    if(p.child){
+      // a "child year" maps to ADULT_AGE/14 days; mature at ADULT_AGE days
+      p.age=Math.floor(daysAlive/ (ADULT_AGE/14));
+      if(daysAlive>=ADULT_AGE)matureChild(p);
+    }
+  }
+}
+function matureChild(p){
+  p.child=false;
+  p.age=Math.max(14,p.age);
+  // coming of age: a small starting skill bump + can now work
+  for(const k of ["sal","bld","cook","sht"])p.sk[k]=clamp(p.sk[k]+RI(1,3),0,10);
+  p.career=initCareer(p.sk,p.pers);
+  addMod(p,"cameofage","Came of age",10,TPD*2);
+  log(p.name+" "+(p.surname||"")+" came of age on the block.","good");
+  if(typeof emote==="function")emote(p,"idea");
+}
+// conception: stable partnered pairs with a home may have a child (rate-limited, pop-capped)
+function tryConception(){
+  if(ST.pawns.length>=14)return;                  // soft population cap
+  if(!ST.relMeta)return;
+  const seen=new Set();
+  for(const a of ST.pawns){
+    const b=partnerOf(a);
+    if(!b||seen.has(b.id))continue;seen.add(a.id);
+    if(isChild(a)||isChild(b))continue;
+    if(!a.home||a.homeless||b.homeless)continue;   // need a stable home
+    // both reasonably content and not destitute
+    if(a.mood<45||b.mood<45)continue;
+    if((a.credits||0)+(b.credits||0)<30)continue;
+    // already have a young child? space them out
+    const kids=ST.pawns.filter(p=>p.parents&&(p.parents.includes(a.id))&&isChild(p));
+    if(kids.length>=1)continue;
+    if(Math.random()<0.5){
+      const spot=a.home.bed||{x:a.px|0,y:a.py|0};
+      const child=mkChild(a,b,spot.x,spot.y);
+      // family bonds: strong child↔parent ties
+      relAdj(child.id,a.id,55);relAdj(child.id,b.id,55);
+      claimHome(child,a.home);
+      ST.pawns.push(child);
+      addMod(a,"newchild","New child",18,TPD*4);addMod(b,"newchild","New child",18,TPD*4);
+      if(typeof emote==="function"){emote(a,"love");emote(b,"love");}
+      log(a.name+" and "+b.name+" had a child — "+child.name+" "+child.surname+".","good");
+      banner("NEW CHILD","good");
+      return; // one per check
+    }
+  }
+}
 /* ============================================================
    WORK & AMBITION — vocation, aspiration, ethic, satisfaction
    ============================================================ */
@@ -1318,6 +1441,10 @@ function moodCalc(p){
   if(p.needs.fun<20)m-=4;
   if(p.needs.socN<20)m-=5;
   m-=(p.stress||0)*0.18;
+  // soft floor: deep misery bottoms out around 6 rather than a dead 0, leaving a
+  // sliver of function to recover from (prevents unrecoverable death spirals).
+  // doesn't help already-content pawns — only cushions the very bottom.
+  if(m<10)m=6+(m>0?m*0.4:0);
   p.mood=clamp(m,0,100)}
 
 /* movement */
@@ -1409,7 +1536,7 @@ function scoreJobs(p){
     build:bpStr?50:0,
     idle:10,
     hygiene:showStr?clamp(70-hyg,0,100):0,recreate:funStr?clamp(60-fun,0,100):0,socialize:mate?clamp(60-socN,0,100):0,
-    work:(workStr&&ST.tick>(p.workCd||0))?clamp(
+    work:(!isChild(p)&&workStr&&ST.tick>(p.workCd||0))?clamp(
       ((isContracted?95:p.assigned?80:60)-cred*0.6)
       *(fitsVocation(p,workStr.type)?1.15:0.9)   // do what they're good at
       *ethicMul(p)                                 // hard workers push, slackers ease off
@@ -1563,6 +1690,33 @@ function gangTick(){
 /* ============================================================
    CRIME & GANGS (deeper) — recruitment, rackets, snitching, revenge
    ============================================================ */
+// SECURITY: watch posts bleed off district heat and suppress crime/recruitment in range.
+function securityTick(){
+  const posts=[];
+  for(const s of ST.structs.values())if(!s.bp&&DEF[s.type]&&DEF[s.type].security)posts.push(s);
+  if(!posts.length){ST._secZones=null;return;}
+  // bleed heat each tick, scaled by number of posts
+  if(ST.tick%50===0)ST.heat=Math.max(0,(ST.heat||0)-posts.length*1.2);
+  // cache zones for crime checks + render
+  ST._secZones=posts.map(s=>({x:s.x,y:s.y,r:DEF[s.type].secRadius||18}));
+  // suppress gang heat for gangs whose turf overlaps a post
+  if(ST.tick%100===0&&ST.gangs.length){
+    for(const g of ST.gangs){
+      let covered=false;
+      for(const z of ST._secZones){if(g.turf.has(K(z.x,z.y))){covered=true;break}
+        // also check if any turf tile is within radius
+        for(const k of g.turf){if(DIST(KX(k),KY(k),z.x,z.y)<=z.r){covered=true;break}}
+        if(covered)break;}
+      if(covered)g.gangHeat=Math.max(0,(g.gangHeat||0)-3);
+    }
+  }
+}
+// is a point under security coverage? (used to suppress crime)
+function underSecurity(x,y){
+  if(!ST._secZones)return false;
+  for(const z of ST._secZones)if(DIST(x,y,z.x,z.y)<=z.r)return true;
+  return false;
+}
 function crimeTick(){
   if(!ST.gangs.length)return;
   // RECRUITMENT: a gang with room recruits a desperate, low-integrity, unaffiliated pawn nearby
@@ -1572,17 +1726,22 @@ function crimeTick(){
       const members=g.crewIds.map(id=>ST.pawns.find(p=>p.id===id)).filter(Boolean);
       if(!members.length)continue;
       const recruiter=members[0];
-      const prospect=ST.pawns.find(q=>!pawnGang(q)&&q.hp>0
+      const prospect=ST.pawns.find(q=>!pawnGang(q)&&q.hp>0&&!isChild(q)
         &&(q.pers.intg||50)<42&&((q.credits||0)<15||q.homeless||(q.career&&q.career.sat<25))
         &&DIST(q.px,q.py,recruiter.px,recruiter.py)<8
         &&relGet(recruiter.id,q.id)>-20);
       if(prospect&&Math.random()<0.5){
+        if(underSecurity(prospect.px,prospect.py)){
+          // security presence disrupts the pitch
+          if(ST.tick%900===0)log("A watch post disrupted a gang recruitment attempt.","good");
+        }else{
         g.crewIds.push(prospect.id);
         addMod(prospect,"joinedgang","Found a crew",8,TPD*2);
         relAdj(prospect.id,recruiter.id,20);
         remember(prospect,"threw in with "+g.name+" — beats starving alone");
         log(prospect.name+" joined "+g.name+".","warn");
         if(typeof emote==="function")emote(prospect,"idea");
+        }
       }
     }
   }
@@ -1637,7 +1796,10 @@ function crimeTick(){
       if(g.heistCd&&ST.tick<g.heistCd)continue;
       const crew=g.crewIds.map(id=>ST.pawns.find(p=>p.id===id)).filter(p=>p&&p.hp>0);
       if(crew.length<3)continue;
-      if(Math.random()<0.45){
+      // security coverage over the crew sharply reduces heist odds
+      const coveredCrew=crew.filter(p=>underSecurity(p.px,p.py)).length;
+      const heistOdds=coveredCrew>=2?0.12:0.45;
+      if(Math.random()<heistOdds){
         const score=RI(120,260);
         g.bank=(g.bank||0)+score;
         g.gangHeat=Math.min(100,(g.gangHeat||0)+22);
@@ -1776,6 +1938,21 @@ function pawnTick(p){
     return}
   // relationship-driven behaviors (every 80 ticks, non-drafted non-dazed)
   if(ST.tick%80===0&&p.dazed<ST.tick){
+    // REVENGE: a pawn with a standing grudge confronts the target when close
+    const rev=seekRevenge(p);
+    if(rev&&DIST(p.px,p.py,rev.px,rev.py)<4&&Math.random()<0.3){
+      const dmg=Math.round(RI(5,12)*trMul(p,"fightdmg"));
+      damagePawn(rev,dmg);damagePawn(p,Math.round(dmg*0.4));
+      relAdj(p.id,rev.id,-15);ST.heat=Math.min(100,(ST.heat||0)+8);
+      addMod(p,"vengeance","Settled a score",4,TPD*.5);addMod(rev,"attacked","Got jumped",-12,TPD*.5);
+      remember(p,"got even with "+rev.name+" — they had it coming");
+      remember(rev,p.name+" came at me out of nowhere — this isn't over");
+      float(p.px,p.py,"PAYBACK","#ff4757");emote(p,"anger");onlookersReact(p.px,p.py,"shock",8);
+      gossip(p.id,-4,7,p.px,p.py);defendInFight(p,rev);witnessCrime(p,p.px,p.py);
+      log(p.name+" took revenge on "+rev.name+".","warn");
+      p.grudgeTarget=null;          // grudge discharged
+      clearJob(p);return;
+    }
     for(const q of ST.pawns){if(q===p||q.hp<=0)continue;
       const rel=relGet(p.id,q.id);
       const dist=DIST(p.px,p.py,q.px,q.py);
@@ -1912,6 +2089,11 @@ function pawnTick(p){
           if(p.career&&p.career.specialist===K(s.x,s.y))wage=Math.round(wage*1.4);
           else if(fitsVocation(p,s.type))wage=Math.round(wage*1.1);
           let didWork=true;
+          // blackout halts powered production
+          if(ST.blackoutUntil&&ST.tick<ST.blackoutUntil&&(d.prod||d.refine)){
+            float(s.x+.5,s.y+.5,"NO POWER","#ff4757");didWork=false;
+            p.workCd=ST.tick+RI(60,120);p.job=null;syncHUD();
+          }else{
           // raw material production (workstation/chemlab/workshop)
           if(d.prod){ST.goods[d.prod]=(ST.goods[d.prod]||0)+1;
             float(s.x+.5,s.y+.5,"+1 "+d.prod.toUpperCase(),"#39ff88");
@@ -1926,6 +2108,7 @@ function pawnTick(p){
               p.credits=(p.credits||0)+Math.round(wage*0.4);}}  // standby pay
           // vendor clerk earns district income cut passively via vendorTick
           else if(d.vendor){addMod(p,"clerking","Ran the counter",2,TPD*.3)}
+          }
           if(didWork){p.credits=(p.credits||0)+wage;
             // train the vocation's skill a touch each shift
             const vsk=vocationOf(p).sk;if(vsk&&p.sk[vsk]!==undefined){gainXp(p,vsk);
@@ -2212,6 +2395,154 @@ function checkContextualHints(){
 
 /* ---------- events ---------- */
 function scheduleEv(){ST.nextEv=ST.tick+Math.floor(R(.75,1.35)*TPD)}
+const PRICES={stims:22,gear:16,data:8,chem:6,parts:6,wood:7,materials:14,food:5};
+/* ============================================================
+   TRADE CARAVANS — periodic external traders; demand spikes & deals
+   ============================================================ */
+// A caravan arrives wanting to BUY a commodity at a premium (sell opportunity)
+// or SELL one cheap (stock-up opportunity). Telegraphed, time-limited.
+const CARAVAN_GOODS=["materials","gear","stims","wood","data","parts"];
+function maybeCaravan(){
+  if(ST.caravan)return;
+  if(ST.pawns.length<3||ST.tick<TPD*2)return;
+  if(Math.random()>0.06)return;                  // ~6% daily check
+  const good=CH(CARAVAN_GOODS);
+  const buying=Math.random()<0.6;                // mostly buyers (gives you a money sink for surplus)
+  const base=(typeof PRICES!=="undefined"&&PRICES[good])||8;
+  if(buying){
+    // pays a premium per unit of `good` you have in stock when they leave
+    ST.caravan={mode:"buy",good,rate:Math.round(base*R(1.6,2.4)),leaveAt:ST.tick+Math.floor(TPD*R(0.5,0.9)),done:false};
+    log("◈ A trade caravan is buying "+good.toUpperCase()+" at a premium — sell your surplus before they move on.","good");
+  }else{
+    const qty=RI(6,14);
+    ST.caravan={mode:"sell",good,qty,price:Math.round(base*R(0.4,0.7)),leaveAt:ST.tick+Math.floor(TPD*R(0.5,0.9)),done:false};
+    log("◈ A trade caravan is selling cheap "+good.toUpperCase()+" — stock up while it's here.","good");
+  }
+  banner("CARAVAN ARRIVES","good");if(SFX&&SFX.good)SFX.good();
+}
+function caravanTick(){
+  maybeCaravan();
+  const cv=ST.caravan;if(!cv)return;
+  if(cv.mode==="sell"){
+    // auto-buy a trickle into district stock if affordable (district invests in cheap supply)
+    if(ST.tick%200===0&&cv.qty>0&&(ST.income||0)>cv.price*2){
+      ST.income-=cv.price;ST.goods[cv.good]=(ST.goods[cv.good]||0)+1;cv.qty--;
+    }
+  }
+  if(ST.tick>=cv.leaveAt){
+    if(cv.mode==="buy"){
+      // they buy all your surplus of `good` at the premium rate
+      const have=ST.goods[cv.good]||0;
+      if(have>0){const paid=have*cv.rate;ST.goods[cv.good]=0;ST.income=(ST.income||0)+paid;
+        log("The caravan bought "+have+" "+cv.good.toUpperCase()+" for "+paid+"c and moved on.","good");
+        banner("CARAVAN DEAL","good");}
+      else log("The caravan left — you had no "+cv.good.toUpperCase()+" to sell.","info");
+    }else{
+      log("The supply caravan moved on.","info");
+    }
+    ST.caravan=null;
+  }
+}
+/* ============================================================
+   DISASTERS — acute, telegraphed crises with systemic fallout
+   ============================================================ */
+// A disaster is announced (telegraph), then strikes after a delay unless mitigated.
+// ST.pendingDisaster = {kind, strikeAt, x, y, warned}
+function maybeScheduleDisaster(){
+  if(ST.pendingDisaster)return;
+  if(ST.pawns.length<3)return;
+  if(ST.tick<TPD*2)return;                    // grace period early game
+  // only roll for a new disaster about once per day (disasterTick runs every 30 ticks)
+  if(ST.tick%TPD>=30)return;
+  // disasters get likelier with district stress (heat, crisis, crowding)
+  const pressure=clamp((ST.heat||0)/100*0.5 + (ST.crisis?0.3:0) + (ST.pawns.length>=10?0.2:0),0,1);
+  if(Math.random()>0.12+pressure*0.12)return; // ~12% daily base, up to ~24% under heavy pressure
+  const roll=Math.random();
+  let kind;
+  // raids need a gang; fire needs structures; blackout needs production
+  const hasGang=ST.gangs&&ST.gangs.some(g=>g.crewIds.length>=3);
+  const prodStructs=[...ST.structs.values()].filter(s=>!s.bp&&DEF[s.type]&&(DEF[s.type].prod||DEF[s.type].refine));
+  if(roll<0.4&&prodStructs.length){kind="fire";}
+  else if(roll<0.7&&prodStructs.length>=2){kind="blackout";}
+  else if(hasGang){kind="raid";}
+  else if(prodStructs.length){kind="fire";}
+  else return;
+  // pick an epicenter
+  let ex=MW>>1,ey=MH>>1;
+  if(kind==="fire"&&prodStructs.length){const s=CH(prodStructs);ex=s.x;ey=s.y;}
+  else if(ST.pawns.length){const p=CH(ST.pawns);ex=p.px|0;ey=p.py|0;}
+  ST.pendingDisaster={kind,strikeAt:ST.tick+Math.floor(TPD*R(0.4,0.7)),x:ex,y:ey,warned:false};
+  telegraphDisaster();
+}
+function telegraphDisaster(){
+  const dz=ST.pendingDisaster;if(!dz||dz.warned)return;dz.warned=true;
+  const msg={
+    fire:"Smoke is rising near the production district — an electrical fault could spark a fire. Clear the area or build a Watch Post nearby to respond fast.",
+    blackout:"The power grid is straining and lights are flickering — a blackout may hit production soon.",
+    raid:"Gang chatter is spiking — a raid on the block may be coming. Shore up security."
+  }[dz.kind]||"Something's brewing on the block.";
+  log("⚠ WARNING: "+msg,"warn");
+  banner("DISASTER LOOMING","warn");
+  if(SFX&&SFX.alert)SFX.alert();
+}
+function disasterTick(){
+  maybeScheduleDisaster();
+  const dz=ST.pendingDisaster;if(!dz)return;
+  // a watch post near the epicenter can pre-empt some disasters
+  if(underSecurity(dz.x,dz.y)&&(dz.kind==="raid")&&Math.random()<0.04){
+    log("Security presence broke up the gathering before it became a raid.","good");
+    ST.pendingDisaster=null;return;
+  }
+  if(ST.tick>=dz.strikeAt)strikeDisaster();
+}
+function strikeDisaster(){
+  const dz=ST.pendingDisaster;if(!dz)return;
+  ST.pendingDisaster=null;
+  if(dz.kind==="fire")strikeFire(dz);
+  else if(dz.kind==="blackout")strikeBlackout(dz);
+  else if(dz.kind==="raid")strikeRaid(dz);
+}
+function strikeFire(dz){
+  // damages/destroys structures near the epicenter; injures nearby pawns; owners lose property
+  const radius=8;let destroyed=0;
+  const near=[...ST.structs.values()].filter(s=>!s.bp&&DIST(s.x,s.y,dz.x,dz.y)<=radius);
+  for(const s of near){
+    if(Math.random()<0.45){
+      // owner loses property (ties into wealth/inheritance grief)
+      if(s.owner){const o=ST.pawns.find(p=>p.id===s.owner);if(o)loseProperty(o,"a fire took what was mine on the block");}
+      removeStruct(s);destroyed++;
+    }
+  }
+  for(const p of ST.pawns){if(DIST(p.px,p.py,dz.x,dz.y)<=radius){
+    damagePawn(p,RI(8,22));p.stress=Math.min(100,(p.stress||0)+20);
+    addMod(p,"firescare","Survived a fire",-10,TPD);
+    remember(p,"a fire tore through the block — barely got clear");}}
+  ST.heat=Math.min(100,(ST.heat||0)+10);
+  log("🔥 FIRE tore through the production district — "+destroyed+" structures lost.","bad");
+  banner("FIRE","bad");if(SFX&&SFX.die)SFX.die();
+}
+function strikeBlackout(dz){
+  // halts production for a while; raises stress; crime opportunity (heat)
+  ST.blackoutUntil=ST.tick+Math.floor(TPD*R(0.3,0.6));
+  for(const p of ST.pawns){p.stress=Math.min(100,(p.stress||0)+10);
+    if(Math.random()<0.3)remember(p,"the power went out across the block — everything stopped");}
+  ST.heat=Math.min(100,(ST.heat||0)+12);   // darkness breeds crime
+  log("⚡ BLACKOUT — the grid went down. Production is halted until power returns.","bad");
+  banner("BLACKOUT","bad");if(SFX&&SFX.alert)SFX.alert();
+}
+function strikeRaid(dz){
+  // a rival crew invades: injures pawns, steals goods/income, may hurt a defender
+  const stolen=Math.min((ST.income||0),RI(40,90));
+  ST.income=Math.max(0,(ST.income||0)-stolen);
+  ST.goods.stims=Math.max(0,(ST.goods.stims||0)-RI(0,3));
+  let hurt=0;
+  for(const p of ST.pawns){if(DIST(p.px,p.py,dz.x,dz.y)<=10&&Math.random()<0.4){
+    damagePawn(p,RI(10,28));p.stress=Math.min(100,(p.stress||0)+18);hurt++;
+    remember(p,"a crew raided the block — it got violent");}}
+  ST.heat=Math.min(100,(ST.heat||0)+20);
+  log("⚔ GANG RAID — a rival crew hit the block, made off with "+stolen+"c. "+hurt+" hurt.","bad");
+  banner("GANG RAID","bad");if(SFX&&SFX.die)SFX.die();
+}
 function fireEvent(){
   const r=Math.random();
   // economy-aware event injection: override random events when economy conditions are met
@@ -2322,6 +2653,8 @@ function tick(){ST.tick++;
   tickEmotes();
   tickTombstones();
   if(ST.tick>=ST.nextEv)fireEvent();
+  if(ST.tick%30===0)disasterTick();
+  if(ST.tick%30===0)caravanTick();
   // passive crop growth — farm plots slowly yield food on their own (tended or not)
   if(ST.tick%200===0){
     let farms=0,logs=0,mines=0;
@@ -2336,8 +2669,16 @@ function tick(){ST.tick++;
     if(logs>0&&ST.tick%400===0)ST.goods.wood=(ST.goods.wood||0)+Math.max(1,Math.round(logs/3));
     if(mines>0&&ST.tick%600===0)ST.goods.materials=(ST.goods.materials||0)+Math.max(1,Math.round(mines/3));}
   if(ST.tick%160===0){  // vendor sales cycle — auto-sell goods, district takes 40% cut
-    const PRICES={stims:22,gear:16,data:8,chem:6,parts:6,wood:7,materials:14,food:5};
     const ILLEGAL={stims:true};
+    // dynamic pricing: abundant goods fetch less, scarce goods fetch a premium.
+    // stock is measured against a "healthy" reference of ~6 units.
+    const marketPrice=(good)=>{
+      const base=PRICES[good]||8;
+      const stock=ST.goods[good]||0;
+      // multiplier: ~1.6x when stock=0 (scarcity), ~0.55x when stock>=16 (glut)
+      const mult=clamp(1.6-(stock/12),0.55,1.6);
+      return Math.max(1,Math.round(base*mult));
+    };
     for(const s of ST.structs.values()){if(s.bp||!DEF[s.type].vendor)continue;
       const sells=DEF[s.type].sells;
       let good=null;
@@ -2350,7 +2691,7 @@ function tick(){ST.tick++;
         else if((ST.goods.data||0)>0)good="data";}
       if(!good)continue;
       ST.goods[good]--;
-      const price=PRICES[good]||8;
+      const price=marketPrice(good);
       const cut=Math.round(price*0.4);
       ST.income+=cut;
       if(ILLEGAL[good])ST.heat=Math.min(100,(ST.heat||0)+2);
@@ -2383,6 +2724,7 @@ function tick(){ST.tick++;
   if(ST.tick%100===0)driveAmbience();
   if(ST.tick%50===0)checkContextualHints();
   if(ST.tick%200===0&&ST.gangs.length)gangTick();
+  securityTick();
   if(ST.gangs.length)crimeTick();
   if(ST.tick%TPD===0&&ST.tick>0){
     // gear expiry check
@@ -2390,6 +2732,8 @@ function tick(){ST.tick++;
     // daily career update (vocation satisfaction, aspiration, gripes)
     for(const p of ST.pawns)careerTick(p);
     cliqueTick();
+    ageTick();          // children grow toward adulthood
+    tryConception();    // stable partnered pairs may have a child
     // property attachment grows with tenure; wealth class mood effects
     for(const p of ST.pawns){
       if(p.home&&!p.homeless)p.attach=clamp((p.attach||0)+1,0,100);
@@ -2404,8 +2748,8 @@ function tick(){ST.tick++;
       if(relGet(a.id,b.id)>=48&&Math.random()<0.25)tryFormPartnership(a,b);
     }
     genWorkPetitions();
-    // rent + eviction
-    for(const q of ST.pawns){q.credits=(q.credits||0)-(ST.crisis?42:28);
+    // rent + eviction (children are dependents — they don't pay rent or get evicted alone)
+    for(const q of ST.pawns){if(isChild(q))continue;q.credits=(q.credits||0)-(ST.crisis?42:28);
       if(q.credits<0&&!q.homeless){q.homeless=true;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad");loseProperty(q,"couldn't make rent — got evicted, sleeping rough now and it stings to lose my place");q.home=null;}
       else if(q.credits>=0&&q.homeless){q.homeless=false;log(q.name+" cleared their back rent.","good")}}
     // soft collapse: track debt days
@@ -3940,6 +4284,20 @@ function collectAlerts(){
   const alerts=[];
   // crisis state
   if(ST.crisis)alerts.push({sev:"crit",ic:"\u26a0",t:"District in crisis",s:"Income is negative — build revenue or cut losses fast."});
+  // looming disaster warning
+  if(ST.pendingDisaster){const dz=ST.pendingDisaster;
+    const lbl={fire:"Fire risk",blackout:"Grid failing",raid:"Raid brewing"}[dz.kind]||"Disaster looming";
+    const adv={fire:"An electrical fault could spark near production — a Watch Post nearby helps response.",
+      blackout:"A blackout may halt production soon.",
+      raid:"A gang raid may be coming — shore up security."}[dz.kind]||"Something's brewing.";
+    alerts.push({sev:"crit",ic:"\u26a0",t:lbl,s:adv});}
+  if(ST.blackoutUntil&&ST.tick<ST.blackoutUntil)
+    alerts.push({sev:"warn",ic:"\u26a1",t:"Blackout in effect",s:"Production is halted until power is restored."});
+  // trade caravan opportunity
+  if(ST.caravan){const cv=ST.caravan;
+    if(cv.mode==="buy"){const have=ST.goods[cv.good]||0;
+      alerts.push({sev:"info",ic:"\u25C8",t:"Caravan buying "+cv.good.toUpperCase(),s:"Pays "+cv.rate+"c/unit on departure. You have "+have+" in stock — produce more to cash in."});}
+    else alerts.push({sev:"info",ic:"\u25C8",t:"Caravan selling "+cv.good.toUpperCase(),s:"Cheap "+cv.good.toUpperCase()+" available while they're here."});}
   if(ST.debtDays)alerts.push({sev:"crit",ic:"\u26a0",t:"Debt: day "+ST.debtDays+"/6",s:"The district is condemned at day 6 of debt."});
   // gang recruitment risk — unaffiliated, desperate, disaffected citizens near a gang
   if(ST.gangs&&ST.gangs.length){
@@ -4145,14 +4503,15 @@ function applyRequest(rid,oi){
     const mem=c?c.members.map(id=>ST.pawns.find(p=>p.id===id)).filter(Boolean):[];
     if(opt.act==="fund"){ST.income=Math.max(0,(ST.income||0)-120);
       for(const p of mem){addMod(p,"cliquefund","The block looks after us",18,TPD*3);p.rep.city=clamp((p.rep.city||0)+12,-100,100);}
-      if(c)c.loyalty=clamp(c.loyalty+10,0,100);
+      if(c){c.loyalty=clamp(c.loyalty+10,0,100);c.stance=clamp((c.stance||0)+22,-100,100);}
       log((c?c.name:"A clique")+" was funded — morale soared across the group.","good");
     }else if(opt.act==="token"){ST.income=Math.max(0,(ST.income||0)-40);
       for(const p of mem){addMod(p,"cliquetoken","A small gesture",7,TPD*1.5);}
+      if(c)c.stance=clamp((c.stance||0)+6,-100,100);
       log((c?c.name:"A clique")+" got a token gesture.","info");
     }else{ // refuse
       for(const p of mem){addMod(p,"cliquesnub","The block stiffed us",-10,TPD*2);p.rep.city=clamp((p.rep.city||0)-8,-100,100);}
-      if(c)c.loyalty=clamp(c.loyalty-6,0,100);
+      if(c){c.loyalty=clamp(c.loyalty-6,0,100);c.stance=clamp((c.stance||0)-18,-100,100);}
       log((c?c.name:"A clique")+" was refused — the group is sore about it.","warn");
     }
     r.status="answered";renderRequests();refreshTaskBadge&&refreshTaskBadge();return}
@@ -4831,7 +5190,16 @@ function districtStatsHTML(){
       if(!mem.length)continue;
       const rival=c.rival&&ST.cliques.find(x=>x.id===c.rival);
       h+="<div class='srow'><b style='color:#c98bff'>"+c.name+"</b><span>"+mem.map(m=>m.name).join(", ")+"</span></div>";
-      h+="<div class='srow'><span>Loyalty"+(rival?" · rivals "+rival.name:"")+"</span><b>"+(c.loyalty|0)+"</b></div>";}}
+      {const st=c.stance||0;const stLbl=st>=55?"<span style='color:#39ff88'>backs you</span>":st<=-55?"<span style='color:#ff4757'>opposes you</span>":"<span style='opacity:.6'>neutral</span>";
+       h+="<div class='srow'><span>Loyalty"+(rival?" · rivals "+rival.name:"")+"</span><b>"+(c.loyalty|0)+" · "+stLbl+"</b></div>";}}}
+  // MARKET — current dynamic prices reflect supply/demand
+  {const BASE={stims:22,gear:16,data:8,chem:6,parts:6,wood:7,materials:14,food:5};
+   const px=(g)=>{const base=BASE[g];const stock=ST.goods[g]||0;const mult=clamp(1.6-(stock/12),0.55,1.6);return Math.max(1,Math.round(base*mult));};
+   h+="<h4>Market</h4>";
+   for(const g of ["stims","gear","materials","data","chem","parts","wood","food"]){
+     const stock=ST.goods[g]||0;const p=px(g);const base=BASE[g];
+     const trend=p>base?"<span style='color:#39ff88'>▲</span>":p<base?"<span style='color:#ff6b6b'>▼</span>":"·";
+     h+="<div class='srow'><span>"+g+" <span style='opacity:.5'>(stock "+stock+")</span></span><b>"+p+"c "+trend+"</b></div>";}}
   // CONTRABAND POLICY — the player's risk/reward lever over the gang economy
   if(ST.gangs&&ST.gangs.length){
     const totalContra=ST.gangs.reduce((s,g)=>s+(g.contraband||0),0);
@@ -4935,7 +5303,7 @@ function serializeState(){
     goods:ST.goods,income:ST.income,debtDays:ST.debtDays||0,crisis:ST.crisis||false,
     savedAt:Date.now(),
     gangs:(ST.gangs||[]).map(g=>({...g,turf:[...g.turf]})),
-    stats:ST.stats,flags:ST.flags,milestones:ST.milestones||[],tierReached:ST.tierReached||1,contrabandPolicy:ST.contrabandPolicy||"crackdown",hintsSeen:ST.hintsSeen||{},
+    stats:ST.stats,flags:ST.flags,milestones:ST.milestones||[],tierReached:ST.tierReached||1,contrabandPolicy:ST.contrabandPolicy||"crackdown",hintsSeen:ST.hintsSeen||{},pendingDisaster:ST.pendingDisaster||null,blackoutUntil:ST.blackoutUntil||0,caravan:ST.caravan||null,
     ter:Array.from(ST.ter),
     structs:[...ST.structs.values()].map(snapStruct),
     pawns:ST.pawns.map(snapPawn),
@@ -4946,11 +5314,17 @@ function applyState(d){
   ST.goods=d.goods||{data:0,chem:0,parts:0,stims:0,gear:0,food:0,wood:0,materials:0};ST.income=d.income||0;
   ST.debtDays=d.debtDays||0;ST.crisis=d.crisis||false;
   ST.gangs=(d.gangs||[]).map(g=>({...g,turf:new Set(g.turf||[])}));
-  ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];ST.tierReached=d.tierReached||1;ST.contrabandPolicy=d.contrabandPolicy||"crackdown";ST.hintsSeen=d.hintsSeen||{};
+  ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];ST.tierReached=d.tierReached||1;ST.contrabandPolicy=d.contrabandPolicy||"crackdown";ST.hintsSeen=d.hintsSeen||{};ST.pendingDisaster=d.pendingDisaster||null;ST.blackoutUntil=d.blackoutUntil||0;ST.caravan=d.caravan||null;
   ST.ter=new Uint8Array(d.ter||[]);
   ST.structs=new Map((d.structs||[]).map(s=>[K(s.x,s.y),s]));
   ST.pawns=(d.pawns||[]).map(p=>Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,unre:new Map()}));
   for(const p of ST.pawns)if(!p.career)p.career=initCareer(p.sk||{},p.pers||{}); // backfill for pre-career saves
+  for(const p of ST.pawns){ // backfill dynasty fields for pre-dynasty saves
+    if(p.age===undefined)p.age=RI(19,46);
+    if(p.birthDay===undefined)p.birthDay=null;
+    if(p.surname===undefined)p.surname=CH(NL);
+    if(p.child===undefined)p.child=false;
+    if(p.parents===undefined)p.parents=null;}
   ST.beams=[];ST.floats=[];ST.emotes=[];ST.tombs=[];ST.sel=[];ST.rooms=d.rooms||[];
   ST.phase="run";ST.paused=false;ST.speed=1;
   powerRecalc()}
@@ -5063,7 +5437,7 @@ function newGame(){
   {let hi=0;for(const p of ST.pawns){const home=ST.cityHomes[hi%ST.cityHomes.length];hi++;claimHome(p,home);p.attach=RI(3,12);}}
   cam.z=1.4;  // start zoomed into the core on the bigger map
   cam.x=64*T-VW/cam.z/2;cam.y=50*T-VH/cam.z/2;clampCam();
-  ST.lastCrackdown=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.rel={};ST.relMeta={};ST.cliques=[];ST.contrabandPolicy="crackdown";ST.hintsSeen={};relAdj(vex.id,sta.id,25);ST.heat=0;ST.heatWarn=false;
+  ST.lastCrackdown=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.rel={};ST.relMeta={};ST.cliques=[];ST.contrabandPolicy="crackdown";ST.hintsSeen={};ST.pendingDisaster=null;ST.blackoutUntil=0;ST.caravan=null;relAdj(vex.id,sta.id,25);ST.heat=0;ST.heatWarn=false;
   $("log").innerHTML="";DIARY_ENTRIES.length=0;renderDiary();renderRoster();
   log("The sprawl wakes — citizens drifting to homes, jobs, and the night's vices.","info");
   log("You watch over the district. Build it out, steer who you can, and keep the block from tearing itself apart.","info");
