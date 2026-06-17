@@ -215,6 +215,17 @@ Measured over managed 14-day runs (player keeps everyone ≥45 credits):
   across save/load as the district's history.
 - **Visual legibility (checkup)** — children render at 0.62 scale + flagged in inspect;
   watch-post coverage rings; blackout screen-darkening.
+- **Room quality (RimWorld-direction, showcase on homes)** — DONE. `computeRoomQuality(rm)` →
+  0..100 from SPACE (tiles/occupant), BEAUTY (`ROOM_BEAUTY` furniture sums × quality tier), minus
+  UPKEEP (broken items). Cached `rm.qual`/`rm.qualDay` (daily). `roomQuality()`, `roomQTier()`
+  (Squalid→Luxurious), `structsInRoom`, `roomOccupants`, `homeRoom(p)`. Feeds occupant MOOD in
+  moodCalc (−6 squalid .. +10 luxurious). Visuals: `drawPod` now quality-scaled — brighter glow,
+  themed floor grid w/ seams, corner neon nodes at quality≥45. Shown in pawn inspect ("HOME:
+  Pleasant (quality 65)"). This is the PROOF on one room type; pattern extends to other rooms.
+- **Sprite layer** — proved-then-retired for buildings. The vector renderer is the chosen path
+  (sprites clashed with top-down projection — confirmed in-engine). `SPRITE_SRC` now EMPTY;
+  getSprite/drawSprite infra kept dormant + harmless for possible future hero/landmark art.
+  furnstore reverted to 1-tile. (sprites/ folder in repo can be removed if desired.)
 - **Store robots (automation)** — DONE. A vendor store can be AUTOMATED (`automateStore` →
   `s.roboStaffed`, `s.roboHp`): inspect-panel button, costs `ROBO_INSTALL`=160c +
   `ROBO_UPKEEP`=4c/day. `roboTick()` (daily) decays roboHp (~slow, breaks in ~tens of days) +

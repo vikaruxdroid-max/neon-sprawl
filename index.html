@@ -590,7 +590,7 @@ const DEF={
   nursery:    {name:"Nursery",      cost:{income:100},hp:70, blocks:1, work:160, cat:"b", desc:"Cares for the young — children mature faster and weigh less on the block.", civic:"nursery"},
   market:     {name:"Market Hub",   cost:{income:130},hp:80, blocks:1, work:170, cat:"b", desc:"Draws traders — caravans arrive more often and pay better.", civic:"market"},
   hall:       {name:"Community Hall",cost:{income:120},hp:80, blocks:1, work:170, cat:"b", desc:"A gathering place — lifts clique loyalty and warms factions toward you.", civic:"hall"},
-  furnstore:  {name:"Furnishings Store",cost:{income:140},hp:80,blocks:1,work:170,cat:"b",desc:"Sells furniture to residents — they furnish their own homes, and the district earns a cut.", civic:"furnstore", vendor:true, spriteTiles:[2,2]},
+  furnstore:  {name:"Furnishings Store",cost:{income:140},hp:80,blocks:1,work:170,cat:"b",desc:"Sells furniture to residents — they furnish their own homes, and the district earns a cut.", civic:"furnstore", vendor:true},
   housing:    {name:"Housing Unit", cost:{income:150},hp:60, blocks:0, work:180, cat:"b", desc:"Adds one home slot — allows the district to support one more citizen."},
   watchpost:  {name:"Watch Post",   cost:{income:110},hp:90, blocks:1, work:0,   cat:"b", desc:"Security outpost — suppresses crime and bleeds off district heat in range.", security:true, secRadius:18},
   // ── DECOR (nat:1 = not buildable, placed by genCity) ──
@@ -1681,6 +1681,11 @@ function moodCalc(p){
       else if(eff==="art")comfort+=(2+wt)*q;       // status: nicer payoff when you're doing well
     }
     m+=Math.min(comfort,12);                        // cap home-comfort contribution
+    // room QUALITY: a well-built, spacious, beautiful home lifts mood; a squalid one hurts.
+    const hr=homeRoom(p);
+    if(hr){const q=roomQuality(hr);
+      // maps 0..100 quality to roughly −6 (squalid) .. +10 (luxurious)
+      m+=clamp((q-40)*0.18,-6,10);}
   }
   // soft floor: deep misery bottoms out around 6 rather than a dead 0, leaving a
   // sliver of function to recover from (prevents unrecoverable death spirals).
@@ -3334,25 +3339,99 @@ const PODTH={
 function rrect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);
   ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);
   ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+/* ============================================================
+   ROOM QUALITY (RimWorld-direction) — a room's space, beauty, and
+   upkeep combine into a quality score that affects how it LOOKS and
+   how its occupants FEEL. Computed lazily + cached per room per day.
+   ============================================================ */
+// beauty contribution per furniture/decor type (the "nice things" in a room)
+const ROOM_BEAUTY={art:14,bookshelf:8,couch:7,rug:5,tv:4,lamp:3,gym:3,pod:2,
+  fridge:2,shower:1,toilet:1};
+function structsInRoom(rm){
+  const out=[];
+  for(const s of ST.structs.values()){if(s.bp)continue;
+    if(s.x>=rm.x0&&s.x<rm.x0+rm.w&&s.y>=rm.y0&&s.y<rm.y0+rm.h)out.push(s);}
+  return out;
+}
+function roomOccupants(rm){
+  return ST.pawns.filter(p=>p.home&&p.home.x0===rm.x0&&p.home.y0===rm.y0);
+}
+// compute a 0..100 quality score: space (room not cramped) + beauty (nice furniture,
+// scaled by quality tier) − penalties (broken items, squalor). Cached on rm.qual/qualDay.
+function computeRoomQuality(rm){
+  const area=rm.w*rm.h;
+  const occ=Math.max(1,roomOccupants(rm).length);
+  const items=structsInRoom(rm);
+  // SPACE: comfortable at ~9 tiles/occupant, cramped below, diminishing returns above
+  const perCap=area/occ;
+  let space=clamp((perCap-4)/8*40,0,40);            // 0 at ≤4 tiles, ~40 at ~12+/occupant
+  // BEAUTY: sum of furniture beauty, scaled by each item's quality tier; broken = negative
+  let beauty=0,broken=0;
+  for(const s of items){
+    const b=ROOM_BEAUTY[s.type];if(!b)continue;
+    if(isBroken(s)){broken++;beauty-=4;continue;}
+    const q=isFurniture(s)?qualOf(s).effMul:1;
+    beauty+=b*q;
+  }
+  beauty=clamp(beauty,0,55);
+  // UPKEEP penalty: broken things drag a room down hard
+  const upkeep=clamp(broken*6,0,20);
+  const score=clamp(Math.round(space+beauty+15-upkeep),0,100);  // +15 base "it's a home"
+  return score;
+}
+function roomQuality(rm){
+  const today=dayN();
+  if(rm.qualDay===today&&rm.qual!=null)return rm.qual;
+  rm.qual=computeRoomQuality(rm);rm.qualDay=today;
+  return rm.qual;
+}
+// quality tier label/color for UI + visual richness
+const ROOMQ_TIERS=[
+  {min:0, name:"Squalid",   c:"#ff4757"},
+  {min:25,name:"Drab",      c:"#ff8c42"},
+  {min:45,name:"Decent",    c:"#ffd84a"},
+  {min:65,name:"Pleasant",  c:"#39ff88"},
+  {min:82,name:"Luxurious", c:"#7af7ff"},
+];
+function roomQTier(q){let t=ROOMQ_TIERS[0];for(const r of ROOMQ_TIERS)if(q>=r.min)t=r;return t;}
+// the home a pawn lives in, as a room object (for mood hook)
+function homeRoom(p){
+  if(!p.home)return null;
+  for(const rm of (ST.rooms||[]))if(rm.x0===p.home.x0&&rm.y0===p.home.y0)return rm;
+  return null;
+}
 function drawPod(rm){const th=PODTH[rm.theme]||PODTH.den;
   const X=rm.x0*T+1,Y=rm.y0*T+1,W=rm.w*T-2,H=rm.h*T-2;
+  const q=roomQuality(rm);const qt=roomQTier(q);
+  const qf=clamp(q/100,0,1);                 // 0..1 quality factor drives richness
   ctx.save();
-  // floor fill
-  ctx.fillStyle="rgba(0,0,0,.35)";ctx.fillRect(X,Y,W,H);
-  // subtle checker floor tiles
-  ctx.globalAlpha=.04;
+  // floor fill — darker base
+  ctx.fillStyle="rgba(0,0,0,.38)";ctx.fillRect(X,Y,W,H);
+  // richer floor: themed tile grid with quality-scaled brightness + panel seams
   for(let fy=0;fy<rm.h;fy++)for(let fx=0;fx<rm.w;fx++){
-    if((fx+fy)%2===0){ctx.fillStyle=th.c;ctx.fillRect(X+fx*T,Y+fy*T,T,T)}}
-  ctx.globalAlpha=1;
-  // room glow border
-  ctx.shadowColor=th.c;ctx.shadowBlur=10;ctx.fillStyle=th.fill;
+    const cx=X+fx*T,cy=Y+fy*T;
+    // alternating tile shade
+    ctx.globalAlpha=((fx+fy)%2===0)?0.05+qf*0.04:0.02;
+    ctx.fillStyle=th.c;ctx.fillRect(cx,cy,T,T);
+    // tile seam lines (subtle grid) — cleaner-looking in higher quality rooms
+    ctx.globalAlpha=0.05+qf*0.05;ctx.strokeStyle=th.c;ctx.lineWidth=0.5;
+    ctx.strokeRect(cx+0.5,cy+0.5,T-1,T-1);
+  }
+  ctx.globalAlpha=1;ctx.lineWidth=1;
+  // room glow border — brighter & blurrier the higher the quality
+  ctx.shadowColor=th.c;ctx.shadowBlur=7+qf*9;ctx.fillStyle=th.fill;
   rrect(X,Y,W,H,8);ctx.fill();ctx.shadowBlur=0;
-  // inner accent line along walls
-  ctx.strokeStyle=th.c;ctx.globalAlpha=.6;ctx.lineWidth=1.4;
+  // inner accent line along walls (quality boosts opacity)
+  ctx.strokeStyle=th.c;ctx.globalAlpha=0.45+qf*0.4;ctx.lineWidth=1.4;
   rrect(X,Y,W,H,8);ctx.stroke();
   // inner secondary line
   ctx.globalAlpha=.18;ctx.lineWidth=.8;
   rrect(X+3,Y+3,W-6,H-6,6);ctx.stroke();
+  // corner accent nodes — small neon studs at the four corners (luxe detail)
+  if(q>=45){ctx.globalAlpha=0.5+qf*0.5;ctx.fillStyle=qt.c;
+    const r=1.5;
+    for(const [cx,cy] of [[X,Y],[X+W,Y],[X,Y+H],[X+W,Y+H]]){
+      ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.fill();}}
   ctx.globalAlpha=1;ctx.lineWidth=1;ctx.restore()}
 function drawRoomStruct(s){
   // walls are drawn by the room outline already — skip them
@@ -3368,9 +3447,9 @@ function drawRoomStruct(s){
 // drawStruct falls back to the existing vector switch. Sprites are small transparent
 // PNGs in ./sprites/, lazily loaded once and cached. Nothing breaks if the folder is absent.
 const SPRITE_SRC={
-  // map building type -> sprite filename in ./sprites/. Add entries as art is produced.
-  // (proving the system on ONE building first: the furnishings store.)
-  furnstore:"furnstore.png",
+  // Optional building sprites. Empty by default — the vector renderer is the chosen path for
+  // buildings (sprites clashed with the top-down projection). The layer below stays as harmless
+  // infrastructure in case a single hero/landmark asset is ever wanted; add "type":"file.png" to use.
 };
 const _spriteCache={};   // type -> {img, ready:bool, failed:bool}
 function getSprite(type){
@@ -5228,6 +5307,10 @@ function renderInspectCore(){const el=$("inspect");
         active.map(md=>"<span style='color:"+(md.v>=0?"#39ff88":"#ff6b6b")+"'>"+(md.v>=0?"+":"")+md.v+" "+md.l+"</span>").join(" · ")+"</div>";}
     }
     h+="<div class='sub'>TASK: "+jobLabel(e)+"</div>";
+    // home quality readout (RimWorld-style) — surfaces the room mechanic
+    if(!e.child&&!e.homeless){const hr=homeRoom(e);
+      if(hr){const q=roomQuality(hr),qt=roomQTier(q);
+        h+="<div class='sub'>HOME: <span style='color:"+qt.c+"'>"+qt.name+"</span> <span style='opacity:.6'>(quality "+q+")</span></div>";}}
     // child status — clear flag when inspecting a young wisp
     if(e.child){const pn=(e.parents||[]).map(id=>{const pp=ST.pawns.find(x=>x.id===id);return pp?pp.name:null}).filter(Boolean);
       h+="<div class='sub' style='color:#ffd84a'>CHILD"+(e.surname?" · "+e.surname:"")+(e.age!=null?" · age "+e.age:"")+(pn.length?" · child of "+pn.join(" & "):"")+"</div>";}
