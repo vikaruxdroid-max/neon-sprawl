@@ -430,7 +430,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 "use strict";
 /* ============================================================
    NEON SPRAWL — Colony Protocol  v0.1
-   Single-file cyberpunk colony sim (RimWorld-style vertical slice)
+   Single-file cyberpunk colony sim (emergent colony sim vertical slice)
    ============================================================ */
 
 /* ---------- helpers ---------- */
@@ -605,6 +605,8 @@ const DEF={
   furnstore:  {name:"Furnishings Store",cost:{income:140},hp:80,blocks:1,work:170,cat:"b",desc:"Sells furniture to residents — they furnish their own homes, and the district earns a cut.", civic:"furnstore", vendor:true},
   housing:    {name:"Housing Unit", cost:{income:150},hp:60, blocks:0, work:180, cat:"b", desc:"Adds one home slot — allows the district to support one more citizen."},
   watchpost:  {name:"Watch Post",   cost:{income:110},hp:90, blocks:1, work:0,   cat:"b", desc:"Security outpost — suppresses crime and bleeds off district heat in range.", security:true, secRadius:18},
+  powerstation:{name:"Power Station",cost:{income:180},hp:120,blocks:1,work:200, cat:"b", desc:"Generates district power. Without it, buildings run on failing backup — mood and output suffer. Needs a worker to run.", utility:"power", prod:"power", wage:9},
+  waterfac:   {name:"Water Facility",cost:{income:160},hp:100,blocks:1,work:190, cat:"b", desc:"Supplies clean water. Without it, hygiene and health decline across the block. Needs a worker to run.", utility:"water", wage:8},
   // ── DECOR (nat:1 = not buildable, placed by genCity) ──
   bench:      {name:"Bench",       nat:1, hp:40, blocks:0},
   streetlamp: {name:"Street Lamp", nat:1, hp:30, blocks:0},
@@ -613,7 +615,7 @@ const DEF={
   vendmachine:{name:"Vending Machine",nat:1,hp:50,blocks:1},
   planter:    {name:"Planter",     nat:1, hp:30, blocks:0}
 };
-const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","bar","medbed","dealer","farmplot","loggingcamp","mineshaft","park","arcade","hospital","school","nursery","market","hall","furnstore","housing"];
+const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","bar","medbed","dealer","farmplot","loggingcamp","mineshaft","park","arcade","hospital","school","nursery","market","hall","furnstore","housing","powerstation","waterfac"];
 // Build menu: curated minimal categories (start small, expand later). Each entry: type.
 const BUILD_CATS=[
   {name:"Home",     items:["wall","door","pod","lamp","fridge","shower","toilet"]},
@@ -627,7 +629,7 @@ const BUILD_CATS=[
 // glyph per fixture for the build cards
 const BUILD_ICON={wall:"▦",door:"⌷",pod:"☖",lamp:"✦",fridge:"❄",shower:"♒",toilet:"⊡",tv:"▭",gym:"⛏",
   workstation:"⌨",chemlab:"⚗",workshop:"⚙",stimlab:"⚕",gearshop:"⛭",counter:"▤",bar:"♨",medbed:"✚",
-  dealer:"☠",farmplot:"❀",loggingcamp:"🪓",mineshaft:"⛏",park:"❦",arcade:"►",hospital:"✚",school:"✎",nursery:"⊙",market:"⇄",hall:"⌂",furnstore:"🛋",housing:"⌂",watchpost:"◈",couch:"⌗",bookshelf:"▤",art:"◳",rug:"▢"};
+  dealer:"☠",farmplot:"❀",loggingcamp:"🪓",mineshaft:"⛏",park:"❦",arcade:"►",hospital:"✚",school:"✎",nursery:"⊙",market:"⇄",hall:"⌂",furnstore:"🛋",housing:"⌂",watchpost:"◈",powerstation:"⚡",waterfac:"💧",couch:"⌗",bookshelf:"▤",art:"◳",rug:"▢"};
 
 
 // weapons removed — city sim mode
@@ -2221,7 +2223,7 @@ function gainXp(p,k){p.xp[k]=(p.xp[k]||0)+1;
 /* mood */
 function addMod(p,id,label,val,dur){
   for(let i=p.mods.length-1;i>=0;i--)if(p.mods[i].id===id)p.mods.splice(i,1);
-  p.mods.push({id,l:label,v:val,until:ST.tick+dur})}
+  p.mods.push({id,l:label,v:Math.round(val),until:ST.tick+dur})}
 function moodCalc(p){
   p.mods=p.mods.filter(m=>m.until>ST.tick);
   let m=42+trAdd(p,"mood");
@@ -2345,8 +2347,8 @@ function scoreJobs(p){
   const robTgt=nearestStruct(p,s=>s.type==="counter"&&!s.bp);
   const gearStr=!p.hasGear&&(p.credits||0)>=15&&(ST.goods.gear||0)>0?
     nearestStruct(p,s=>s.type==="gearshop"&&!s.bp):null;
-  const stealTgt=p.pers.intg<35&&(p.credits||0)<15&&(p.addiction||0)>20?
-    ST.pawns.find(q=>q.id!==p.id&&(q.credits||0)>20&&DIST(p.px,p.py,q.px,q.py)<10&&relGet(p.id,q.id)>-60):null;
+  const stealTgt=p.pers.intg<28&&(p.credits||0)<8&&(p.addiction||0)>30&&ST.tick>(p.crimeCd||0)?
+    ST.pawns.find(q=>q.id!==p.id&&(q.credits||0)>25&&DIST(p.px,p.py,q.px,q.py)<10&&relGet(p.id,q.id)>-60):null;
   // VISIT: when social, a wisp may visit a friend/partner's HOME to hang out (consensual).
   // pick the closest person whose home they may enter and who they like.
   let visitTgt=null;
@@ -2358,7 +2360,7 @@ function scoreJobs(p){
       if(d<bd&&d<28){bd=d;visitTgt=q;}}}
   // BURGLE: a desperate, low-integrity wisp may break into a stranger's home to rob it.
   let burgleTgt=null;
-  if(!isChild(p)&&p.pers.intg<32&&(p.credits||0)<18&&ST.tick>(p.crimeCd||0)){let bd=1e9;
+  if(!isChild(p)&&p.pers.intg<26&&(p.credits||0)<10&&ST.tick>(p.crimeCd||0)){let bd=1e9;
     for(const q of ST.pawns){if(q.id===p.id||!q.home||areFamily(p,q))continue;
       if((q.credits||0)<25)continue;             // worth robbing
       if(relGet(p.id,q.id)>20)continue;          // won't rob people they like
@@ -2691,6 +2693,15 @@ function crimeTick(){
 }
 // SNITCHING: a witness to a crime may report the perp, spiking heat on them
 function witnessCrime(perp,x,y){
+  // THE ENFORCER — if a loyal enforcer is near the crime, they reliably report it (it's their job).
+  const enf=ST.pawns.find(p=>p.role==="enforcer"&&p.hp>0&&!p.sleeping&&(p.allegiance||0)<10&&DIST(p.px,p.py,x,y)<14);
+  if(enf&&enf.id!==perp.id){
+    ST.heat=Math.min(100,(ST.heat||0)+14);
+    relAdj(perp.id,enf.id,-25);perp.snitchedBy=enf.id;
+    tryEmote(enf,"excl",120);
+    log("⚖ The Enforcer caught "+perp.name+" in the act — heat spikes.","warn");
+    return;
+  }
   for(const q of ST.pawns){
     if(q.id===perp.id||q.hp<=0||q.sleeping)continue;
     if(DIST(q.px,q.py,x,y)>6)continue;
@@ -3147,6 +3158,8 @@ function pawnTick(p){
           else{
             float(p.px,p.py,"+"+take+"c","#c98bff");
             remember(p,"skimmed "+take+"c off "+v.name+" — clean")}
+          witnessCrime(p,p.px,p.py);          // the Enforcer or a bystander may report it
+          p.crimeCd=ST.tick+RI(TPD,TPD*2);    // cooldown — no serial pickpocketing
           p.job=null;syncHUD()}}
       break}
     case "visit":{const o=ST.pawns.find(q=>q.id===j.oid);
@@ -3454,7 +3467,7 @@ function caravanTick(){
 }
 /* ============================================================
    STORYTELLER — the engagement engine. Beyond disasters, the city throws INSURRECTION-THEMED
-   events at you that interrupt the routine and force a DECISION (RimWorld's proven loop-breaker).
+   events at you that interrupt the routine and force a DECISION (a proven engagement loop-breaker).
    Each event reads the sim state, presents 2-3 choices, and ripples through movement/regime/intel.
    ============================================================ */
 // active decision shown to the player; null when none. {id, title, body, opts:[{label,fn,hint}]}
@@ -3482,9 +3495,14 @@ const STORY_EVENTS=[
       title:"An Anonymous Tip",
       body:"A scrawled note names a location where the regime stashed supplies — credits, or intel on their operations. Acting on it means exposure if it's a trap.",
       opts:[
-        {label:"Raid the cache",hint:"likely reward, small exposure risk",fn:()=>{
-          if(Math.random()<0.75){const gain=RI(12,25);M().intel+=gain;ST.income+=RI(20,50);log("The cache was real — +"+gain+" intel and credits seized.","good");}
-          else{M().exposure=clamp(M().exposure+12,0,100);log("It was bait — the regime was watching. Exposure spikes.","warn");}
+        {label:"Raid the cache",hint:"your operative goes in — Tradecraft improves the odds",fn:()=>{
+          const av=theAvatar();const nm=av?av.name:"You";
+          // your operative's Tradecraft shifts the success odds (skilled spies avoid traps)
+          const check=opsCheck("tradecraft",11);
+          if(check.pass){const gain=RI(12,25);M().intel+=gain;ST.income+=RI(20,50);
+            log(nm+" worked the cache clean — +"+gain+" intel and credits seized.","good");}
+          else{M().exposure=clamp(M().exposure+12,0,100);
+            log(nm+" walked into a trap — the regime was watching. Exposure spikes.","warn");}
         }},
         {label:"Ignore it",hint:"safe",fn:()=>{log("Too risky. You let it go.","info");}},
       ]}),
@@ -3890,10 +3908,27 @@ function tick(){ST.tick++;
       if(def.work>=140||def.civic||def.security||def.vendor)upkeepBuildings++;}
      const upkeep=Math.round(upkeepBuildings*1.5);   // ~1.5c per major building/day
      if(upkeep>0){ST.income=(ST.income||0)-upkeep;ST.lastUpkeep=upkeep;}}
-    // rent + eviction (children are dependents — they don't pay rent or get evicted alone)
-    for(const q of ST.pawns){if(isChild(q))continue;q.credits=(q.credits||0)-(ST.crisis?42:28);
-      if(q.credits<0&&!q.homeless){q.homeless=true;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad");loseProperty(q,"couldn't make rent — got evicted, sleeping rough now and it stings to lose my place");q.home=null;}
-      else if(q.credits>=0&&q.homeless){q.homeless=false;log(q.name+" cleared their back rent.","good")}}
+    // UTILITIES — power & water. When a staffed facility exists, the block runs clean. Without one,
+    // residents suffer: no power drags mood, no water drags hygiene/health. Gives "unpowered" meaning.
+    {const struts=[...ST.structs.values()];
+     const hasPower=struts.some(s=>!s.bp&&DEF[s.type]&&DEF[s.type].utility==="power"&&ST.pawns.some(p=>p.assigned===K(s.x,s.y)));
+     const hasWater=struts.some(s=>!s.bp&&DEF[s.type]&&DEF[s.type].utility==="water"&&ST.pawns.some(p=>p.assigned===K(s.x,s.y)));
+     ST.utilPower=hasPower;ST.utilWater=hasWater;
+     for(const q of ST.pawns){if(isChild(q))continue;
+       if(!hasPower)addMod(q,"nopower","No power on the block",-4,TPD+50);
+       if(!hasWater){addMod(q,"nowater","No clean water",-3,TPD+50);if(ST.tick%TPD===0)q.needs.hyg=Math.max(8,(q.needs.hyg||50)-4);}}}
+    for(const q of ST.pawns){if(isChild(q))continue;
+      // SUBSISTENCE: everyone scrapes a little from odd jobs/scavenging/hustling, so the unemployed
+      // aren't doomed to a death spiral. Employed wisps still earn more from their shifts on top.
+      const subsist=q.homeless?6:10;
+      q.credits=(q.credits||0)+subsist-(ST.crisis?16:11);
+      if(q.credits<0&&!q.homeless){
+        q.rentDebt=(q.rentDebt||0)+1;
+        if(q.rentDebt===2)log(q.name+" is falling behind on rent.","warn");
+        if(q.rentDebt>=4){q.homeless=true;q.rentDebt=0;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad");loseProperty(q,"couldn't make rent — got evicted, sleeping rough now and it stings to lose my place");q.home=null;}
+      }
+      else if(q.credits>=0){if(q.rentDebt)q.rentDebt=0;
+        if(q.homeless){q.homeless=false;log(q.name+" cleared their back rent.","good");}}}
     // soft collapse: track debt days
     if(ST.income<0){ST.debtDays=(ST.debtDays||0)+1;
       if(ST.debtDays===4&&!ST.crisis){ST.crisis=true;
@@ -4181,7 +4216,7 @@ function rrect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);
   ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);
   ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
 /* ============================================================
-   ROOM QUALITY (RimWorld-direction) — a room's space, beauty, and
+   ROOM QUALITY — a room's space, beauty, and
    upkeep combine into a quality score that affects how it LOOKS and
    how its occupants FEEL. Computed lazily + cached per room per day.
    ============================================================ */
@@ -4988,9 +5023,26 @@ function drawPawn(p){
     ctx.fillStyle="rgba(0,0,0,0.6)";ctx.fillRect(X-8,Y+9,16,3);
     const hpCol=p.hp>60?"#39ff88":p.hp>30?"#ffc947":"#ff3d5a";
     ctx.fillStyle=hpCol;ctx.fillRect(X-8,Y+9,16*clamp(p.hp/100,0,1),3)}
-  // name when selected
-  if(sel){ctx.fillStyle=p.accent;ctx.font="bold 7px monospace";ctx.textAlign="center";
-    ctx.fillText(p.name.split(" ")[0],X,Y-20);ctx.textAlign="left"}
+  // NAME — always shown, BELOW the wisp. The player's operative is bold+cyan; named roles use their
+  // role accent; ordinary wisps are dim. (Emotions/alerts render ABOVE; names below — clear separation.)
+  {const isRole=!!p.role,isYou=!!p.isAvatar;
+   const nm=p.name.split(" ")[0];
+   ctx.textAlign="center";
+   if(isYou){ctx.font="bold 8px monospace";ctx.fillStyle="#22ddff";}
+   else if(isRole){ctx.font="bold 7px monospace";ctx.fillStyle=p.accent;}
+   else if(sel){ctx.font="7px monospace";ctx.fillStyle=p.accent;}
+   else{ctx.font="7px monospace";ctx.fillStyle="rgba(170,190,210,.55)";}
+   // a subtle dark backing for legibility
+   const ny=Y+22;
+   if(isYou||isRole||sel){const w=ctx.measureText(nm).width;
+     ctx.fillStyle="rgba(2,8,20,.55)";ctx.fillRect(X-w/2-2,ny-7,w+4,9);
+     ctx.fillStyle=isYou?"#22ddff":isRole?p.accent:p.accent;}
+   ctx.fillText(nm,X,ny);ctx.textAlign="left";}
+  // ROLE marker — a small colored diamond above named role-wisps so the cast is findable at a glance
+  if(p.role&&!p.isAvatar){const R0=ROLES[p.role];if(R0){
+    ctx.fillStyle=R0.accent;ctx.globalAlpha=0.9;
+    ctx.beginPath();ctx.moveTo(X,Y-15);ctx.lineTo(X-3,Y-18);ctx.lineTo(X,Y-21);ctx.lineTo(X+3,Y-18);ctx.closePath();ctx.fill();
+    ctx.globalAlpha=1;}}
   // AVATAR marker — a pulsing cyan ring + a chevron above, so YOU are always findable
   if(p.isAvatar){
     const pul=0.5+0.35*Math.sin(ST.tick*0.1);
@@ -6198,7 +6250,7 @@ function renderInspectCore(){const el=$("inspect");
     if(e.mods&&e.mods.length){
       const active=e.mods.filter(md=>md.until>ST.tick&&md.l).slice().sort((a,b)=>Math.abs(b.v)-Math.abs(a.v)).slice(0,3);
       if(active.length){h+="<div class='sub' style='font-size:10px;opacity:.85'>"+
-        active.map(md=>"<span style='color:"+(md.v>=0?"#39ff88":"#ff6b6b")+"'>"+(md.v>=0?"+":"")+md.v+" "+md.l+"</span>").join(" · ")+"</div>";}
+        active.map(md=>"<span style='color:"+(md.v>=0?"#39ff88":"#ff6b6b")+"'>"+(md.v>=0?"+":"")+Math.round(md.v)+" "+md.l+"</span>").join(" · ")+"</div>";}
     }
     h+="<div class='sub'>TASK: "+jobLabel(e)+"</div>";
     // ROLE identity — show the named character's role + alignment prominently
@@ -6227,7 +6279,7 @@ function renderInspectCore(){const el=$("inspect");
           +" <button class='tb' id='i-unassign' style='font-size:9px;padding:2px 6px;margin-left:4px'>unassign</button></div>";}
       else h+="<div class='sub' style='opacity:.7'>ASSIGNED TO: <span style='opacity:.6'>nothing (works where needed)</span></div>";
     }
-    // home quality readout (RimWorld-style) — surfaces the room mechanic
+    // home quality readout — surfaces the room mechanic
     if(!e.child&&!e.homeless){const hr=homeRoom(e);
       if(hr){const q=roomQuality(hr),qt=roomQTier(q);
         h+="<div class='sub'>HOME: <span style='color:"+qt.c+"'>"+qt.name+"</span> <span style='opacity:.6'>(quality "+q+")</span></div>";}}
@@ -6263,7 +6315,7 @@ function renderInspectCore(){const el=$("inspect");
       const alC=al>30?"#5cff9e":al<-30?"#ff5470":"var(--dim)";
       const alLbl=e.informant?"REGIME INFORMANT":e.recruited?("CELL "+(e.cellRole||"member").toUpperCase()):
         al>30?"sympathetic":al<-30?"loyalist":"undecided";
-      h+="<div class='sub'>ALLEGIANCE <span style='color:"+alC+"'>"+alLbl+"</span> ("+(al>0?"+":"")+al+")</div>";
+      h+="<div class='sub'>ALLEGIANCE <span style='color:"+alC+"'>"+alLbl+"</span> ("+(al>0?"+":"")+Math.round(al)+")</div>";
       if(!e.recruited&&!e.informant){
         const pot=radicalPotential(e);
         const ch=Math.round(clamp(0.3+pot/120,0.05,0.92)*100);

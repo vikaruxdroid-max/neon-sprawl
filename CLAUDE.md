@@ -42,6 +42,28 @@ done yet.
   `ccStats/ccPointsUsed/ccRemaining/ccSyncName` helpers, wired in the #modal click handler
   (data-ccbg/ccinc/ccdec/cc-begin/cc-back). Default fallback intact if skipped. Probe-verified: base
   spreads, point math, 10-cap, bg-switch, full creation→spawn pipeline all correct.
+- **Fixes & balance batch (test-build hardening)** — DONE. (1) EVICTION SPIRAL fixed: rent lowered
+  (28→11/day, crisis 42→16) + baseline SUBSISTENCE income (10/day employed-or-not, homeless 6) so the
+  unemployed aren't doomed + 4-day debt grace with a warning at day 2 (was instant eviction). Result:
+  ~2 evicted of 13 after 6 days (was near-total collapse). (2) NO DECIMALS: addMod rounds values at
+  source; allegiance/mood displays rounded. (3) NAMES under every wisp always-on — player operative
+  bold cyan, role-wisps bold in role-accent + a colored diamond marker above (the cast is findable);
+  ordinary wisps dim, names BELOW (emotions/alerts above — clean separation). (4) CRIME: Enforcer now
+  reliably reports robberies in range (+14 heat, it's their job); theft thresholds tightened (intg<28,
+  credits<8, addiction>30) + cooldown after each theft (no serial pickpocketing); steal triggers
+  witnessCrime. (5) UTILITIES: new Power Station (⚡) + Water Facility (💧) buildings — staffed = block
+  runs clean; absent = mood drag (no power) + gradual hygiene/health decline (no water, softened to
+  once-daily so it's not an instant epidemic). ST.utilPower/utilWater flags. (6) Cache event now runs
+  through the OPERATIVE (Tradecraft check shifts odds, names them in the log). (7) All RimWorld refs
+  stripped from comments (were never player-facing anyway). VERIFIED NON-BUGS: collision is solid (0%
+  wall-clip over 5029 samples — perceived clipping was wisps crossing walkable decor); roles DO spawn
+  + survive save/load (the "missing roles" was loading a pre-build save; "lost on load" test was a
+  false alarm counting ===6 after eviction deaths). Stable, all bounds valid. NOTE: probe_final.js +
+  correct.js now exceed in-container timeouts (POP 7→12 × their huge tick-batches) — game runs smooth
+  (0.35ms/tick); use trimmed ≤10-day runs. STILL PENDING from the 25-item request: camera lock-to-wisp
+  on events, flippable/rebalanced character panel, override-refusal button + thoughts display
+  (outliers/critical only), collapsible requests window, emotion-clarity review, further music chill
+  pass, utility-worker roles, and the DOCX mechanics document.
 - **Named ROLE-WISPS — the city's power structure** — DONE. 6 named characters spawn from turn one
   (POP bumped 7→12 so roles + generic citizens coexist): Doctor (civic, clinic), Shopkeeper (civic,
   store), Enforcer (REGIME force), Mayor (REGIME force), Informant (secret regime snitch), Fixer
