@@ -679,7 +679,7 @@ const DEF={
   furnstore:  {name:"Furnishings Store",cost:{income:140},hp:80,blocks:1,work:170,cat:"b",desc:"Sells furniture to residents — they furnish their own homes, and the district earns a cut.", civic:"furnstore", vendor:true},
   housing:    {name:"Housing Unit", cost:{income:150},hp:60, blocks:0, work:180, cat:"b", desc:"Adds one home slot — allows the district to support one more citizen."},
   watchpost:  {name:"Watch Post",   cost:{income:110},hp:90, blocks:1, work:0,   cat:"b", desc:"Security outpost — suppresses crime and bleeds off district heat in range.", security:true, secRadius:18},
-  powerstation:{name:"Power Station",cost:{income:180},hp:120,blocks:1,work:200, cat:"b", desc:"Generates district power. Without it, buildings run on failing backup — mood and output suffer. Needs a worker to run.", utility:"power", prod:"power", wage:9},
+  powerstation:{name:"Power Station",cost:{income:180},hp:120,blocks:1,work:200, cat:"b", desc:"Generates district power. Without it, buildings run on failing backup — mood and output suffer. Needs a worker to run.", utility:"power", wage:9},
   waterfac:   {name:"Water Facility",cost:{income:160},hp:100,blocks:1,work:190, cat:"b", desc:"Supplies clean water. Without it, hygiene and health decline across the block. Needs a worker to run.", utility:"water", wage:8},
   copstation: {name:"Precinct",     cost:{income:150},hp:110,blocks:1,work:160, cat:"b", desc:"Regime police post — the Enforcer's station. Suppresses crime and projects regime presence.", security:true, secRadius:16, wage:11, roleHome:"enforcer"},
   streetvendor:{name:"Street Vendor",cost:{income:60}, hp:50, blocks:1,work:120, cat:"b", desc:"A noodle-and-stim cart on the strip — cheap food and goods, street-level commerce.", vendor:true, sells:"food", wage:7},
@@ -2441,8 +2441,12 @@ function scoreJobs(p){
   const hyg=p.needs.hyg??80,fun=p.needs.fun??70,socN=p.needs.socN??70,soc=p.pers.soc;
   const showStr=(!p.homeless&&(homeFixture(p,"shower")||homeFixture(p,"toilet")))||nearestStruct(p,s=>(s.type==="shower"||s.type==="toilet")&&!s.bp&&!isBroken(s));
   const funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar"||s.type==="park"||s.type==="arcade"||s.type==="couch")&&!s.bp&&!isBroken(s));
-  let mate=null,_md=1e9;for(const q of ST.pawns){if(q.id===p.id)continue;
+  let mate=null,_md=1e9;
+  // after a conversation, a pawn won't immediately start another (prevents endless re-socialize loops)
+  if(!(p.socCd&&ST.tick<p.socCd))
+  for(const q of ST.pawns){if(q.id===p.id)continue;
     if(relGet(p.id,q.id)<-40)continue;  // don't socialize toward rivals/enemies
+    if(p.lastSocPartner===q.id&&ST.tick<(p.lastSocT||0)+400)continue; // not the same person just-talked-to
     // don't chase someone into a home you're not welcome in (no barging to socialize)
     {const ho=homeOwnerAt(q.px|0,q.py|0);if(ho&&ho!==p&&!canEnterHome(p,ho))continue;}
     let dd=DIST(p.px,p.py,q.px,q.py);
@@ -3010,16 +3014,36 @@ function pawnTick(p){
   // sleeping wake conditions
   if(p.sleeping&&ST.tick%20===0&&foeNear(p,7)){
     p.sleeping=false;clearJob(p);addMod(p,"rude","Combat woke me",-4,TPD*.3)}
-  // SOCIAL HOLD: if someone is actively socializing WITH this pawn, the pawn pauses to "chat back"
-  // (holds position, faces them, emits the occasional bubble) instead of wandering off mid-conversation.
-  if(p.socWith&&ST.tick<(p.socUntil||0)){
+  // SOCIAL HOLD: if someone is socializing WITH this pawn, the pawn pauses to "chat back" instead of
+  // wandering off. BUT only if this pawn isn't itself running a socialize job (otherwise the hold's
+  // job=null would kill its own conversation progress — that was an infinite re-init loop). A hard
+  // elapsed cap also guarantees release if the initiator's job ends abnormally.
+  if(p.socWith&&ST.tick<(p.socUntil||0)&&!(p.job&&p.job.t==="socialize")){
     const partner=ST.pawns.find(q=>q.id===p.socWith);
-    if(partner&&DIST(p.px,p.py,partner.px,partner.py)<3){
+    if(p.socHoldStart==null)p.socHoldStart=ST.tick;
+    if(partner&&DIST(p.px,p.py,partner.px,partner.py)<3&&(ST.tick-p.socHoldStart)<80){
       p.path=null;p.job=null;                                  // stay put for the conversation
       if(ST.tick%18===0)tryEmote(p,Math.random()<0.5?"chat":"happy",60);
       return;
-    } else { p.socWith=null; }                                 // partner left — release the hold
-  } else if(p.socWith){ p.socWith=null; }                      // lock expired
+    } else { p.socWith=null;p.socUntil=0;p.socHoldStart=null; } // partner left or cap hit — release
+  } else if(p.socWith&&!(p.job&&p.job.t==="socialize")&&ST.tick>=(p.socUntil||0)){ p.socWith=null;p.socUntil=0;p.socHoldStart=null; }
+
+  // STUCK DETECTOR (safety net): if a pawn has a job but isn't moving AND isn't making progress, its path
+  // is dead-ended (e.g. can't squeeze to a work tile). Drop the job, mark the target unreachable, pick
+  // something else — prevents pawns freezing. (A pawn working/learning in place advances prog, so it's
+  // NOT counted as stuck — only genuinely stalled jobs are.)
+  if(p.job&&!p.sleeping&&!p.socWith){
+    const here=(p.px*4|0)+","+(p.py*4|0);
+    const prog=p.job.prog||0;
+    if(p._lastCell===here&&prog===(p._lastProg||0)){p._stuckT=(p._stuckT||0)+1;}
+    else{p._stuckT=0;p._lastCell=here;p._lastProg=prog;}
+    if(p._stuckT>140){                                  // ~14s frozen with no movement AND no progress
+      const j=p.job;
+      if(j.s){markUnre(p,j.s.x,j.s.y);}                  // don't keep retrying the same dead-end target
+      else if(j.oid){const o=ST.pawns.find(q=>q.id===j.oid);if(o){p.lastSocPartner=o.id;p.lastSocT=ST.tick;p.socCd=ST.tick+300;}}
+      clearJob(p);p._stuckT=0;
+    }
+  } else { p._stuckT=0; }
 
   if(!p.job)p.job=chooseJob(p);
   const j=p.job;if(!j)return;
@@ -3132,18 +3156,23 @@ function pawnTick(p){
       if(r==="fail"){p.job=null;break}
       if(r==="arr"){
         // SIDE-BY-SIDE: lock the pair together so the partner pauses, faces, and both show emotes —
-        // making the interaction legible (you can see both thought bubbles). Set a short social lock on
-        // BOTH pawns; the partner's pawnTick will hold position while socWith is active.
-        p.socWith=o.id;p.socUntil=ST.tick+45;
-        if(!o.socWith){o.socWith=p.id;o.socUntil=ST.tick+45;o.path=null;}   // partner stops to chat back
-        // emit social emotes so the moment reads visually (alternating so it looks like a conversation)
+        // making the interaction legible. The lock is bounded by a HARD elapsed-time cap (not job prog,
+        // which can stall if pathing re-evaluates) so it always releases cleanly — no stuck pairs.
+        if(j.startT==null)j.startT=ST.tick;             // remember when the chat began
+        const elapsed=ST.tick-j.startT;
+        p.socWith=o.id;p.socUntil=ST.tick+8;            // short rolling lock, refreshed only while adjacent
+        if(!o.socWith||o.socWith===p.id){o.socWith=p.id;o.socUntil=ST.tick+8;o.path=null;}
         if(j.prog%14===0)tryEmote(p,Math.random()<0.5?"happy":"chat",60);
         if(j.prog%14===7)tryEmote(o,Math.random()<0.5?"happy":"chat",60);
-        j.prog++;if(j.prog>=40){p.needs.socN=100;o.needs.socN=Math.min(100,(o.needs.socN||70)+25);relAdj(p.id,o.id,3.5);
-        p.socWith=null;o.socWith=null;
-        // close, compatible pairs may pair up
-        if(relGet(p.id,o.id)>=48&&Math.random()<0.06)tryFormPartnership(p,o);
-        p.job=null}}
+        j.prog++;
+        // complete on job progress OR the hard time cap (whichever first) — guarantees release
+        if(j.prog>=40||elapsed>=70){p.needs.socN=100;o.needs.socN=Math.min(100,(o.needs.socN||70)+25);relAdj(p.id,o.id,3.5);
+          p.socWith=null;o.socWith=null;p.socUntil=0;o.socUntil=0;p.socHoldStart=null;o.socHoldStart=null;
+          // cooldowns so they don't immediately re-initiate with each other (was an endless-loop bug)
+          p.socCd=ST.tick+300;o.socCd=ST.tick+300;
+          p.lastSocPartner=o.id;p.lastSocT=ST.tick;o.lastSocPartner=p.id;o.lastSocT=ST.tick;
+          if(relGet(p.id,o.id)>=48&&Math.random()<0.06)tryFormPartnership(p,o);
+          p.job=null;}}
       break}
     case "work":{const s=j.s;
       if(structAt(s.x,s.y)!==s||s.bp||(s.surgeT&&ST.tick<s.surgeT)){p.job=null;break}

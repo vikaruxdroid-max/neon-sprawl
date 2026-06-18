@@ -39,7 +39,35 @@ done yet.
 
 ## ⚡ LATEST STATE (read this first — reconciled from the live VM, June 2026) ⚡
 
-**FOUR FEATURES + MOTEL START + BUG FIXES (most recent session):**
+**DEBUG + STUCK-LOOP PASS (most recent session) — found + fixed real bugs:**
+- **Social-lock infinite loop (SELF-INFLICTED by last session's side-by-side feature):** a stuck-loop
+  detector caught pawns holding the `socWith` lock for 184t→1052t (design was 45t). Root cause traced via
+  tick-by-tick logging: the SOCIAL HOLD path (`p.job=null` to freeze the partner) was ALSO firing on the
+  conversation INITIATOR, killing its own socialize-job progress every other tick, so `prog` never climbed
+  to 40 and the pair re-initiated forever every ~8t. FIX: (a) the social hold now only applies if the pawn
+  is NOT running its own socialize job (`!(p.job&&p.job.t==="socialize")`); (b) conversation completes on
+  job-prog≥40 OR a hard elapsed cap (`elapsed>=70`); (c) post-chat cooldowns (`socCd`, `lastSocPartner`/
+  `lastSocT`) stop immediate re-initiation with the same partner. Verified: max lock now ~39t, bounded.
+- **Frozen pawns (pre-existing):** pawns stuck 600t+ at a workstation, `prog` frozen at 20 — a pathing
+  dead-end (couldn't squeeze the last tile to a work target whose adjacent tiles were tight). Added a
+  general STUCK DETECTOR in pawnTick: if a pawn has a job but hasn't moved AND `prog` hasn't advanced for
+  ~140t, drop the job, `markUnre` the target, re-choose. IMPORTANT: it checks BOTH no-move AND no-prog, so
+  pawns legitimately working/learning in place (which advance prog) are NOT killed. Verified: genuinely-
+  stuck incidents went 11 → 0.
+- **Phantom "power" good (real bug):** the Power Station had `prod:"power"`, so working it accumulated a
+  `ST.goods.power` good that nothing consumes and the HUD never shows (the goods object is data/chem/parts/
+  stims/gear/food/scrap). Its SIBLING the Water Facility correctly had NO `prod` — power is a UTILITY, not
+  a good. FIX: removed `prod:"power"`. The utility effect (no staffed power building → every adult gets a
+  -4 "No power" mood mod; no water → -3 + hygiene drain) is fully implemented at lines ~4136 and works;
+  the building still does everything its description promises, minus the phantom good.
+- **Audit method:** built a stuck-loop detector (tracks per-pawn position-stillness, job-thrash rate,
+  social-lock duration) + a missing-item scan (building types referenced but not in DEF, goods referenced
+  but not in the goods object, emote kinds not in EMOTES). Most missing-item hits were false positives
+  (`murder`/`informant` are CASE types not buildings; `text` is an AI block type) — only `power` was real.
+
+---
+
+## ⚡ FEATURES STATE (prior session) ⚡
 - **Avatar motel/fixer-room start (+ sleep-anywhere fix):** the avatar was sleeping on the ground because
   `mkSleep` targets sleep-PODS and the avatar didn't reliably own one. FIX + feature: the avatar now spawns
   living in the FIXER'S BACK ROOM (`ST.fixerHome`, registered as a reserved cityHome at world ~51,71) with
