@@ -392,6 +392,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
     <button class="tb" id="b-load" title="Load">📂</button>
     <button class="tb" id="b-fs" title="Fullscreen">⛶</button>
     <button class="tb" id="b-atmo" title="Rain & fog"><span class="hud-icon">☂</span></button>
+    <button class="tb" id="b-storm" title="Lightning"><span class="hud-icon">⚡</span></button>
     <button class="tb" id="b-mute" title="Sound">🔊</button>
     <button class="tb" id="b-help" title="Help">?</button>
   </div>
@@ -1567,6 +1568,10 @@ function genCity(){
 
   // ── FIXER ROW (west underbelly) — the broker's rough joint beside the den ──
   placeRoom(50,67,11,6,{x:55,y:72},[{t:"fixercorner",x:1,y:1},{t:"dealer",x:3,y:1},{t:"counter",x:5,y:1},{t:"streetvendor",x:8,y:1},{t:"pod",x:1,y:4},{t:"pod",x:9,y:4}]);
+  // THE FIXER'S BACK ROOM — the avatar starts here, crashing in the fixer's quarters (pod at world 51,71)
+  // while they build up. Registered as a home so the operative has a real base to return to & sleep in.
+  ST.fixerHome={x0:50,y0:67,w:11,h:6,bed:{x:51,y:71},door:{x:55,y:72},fixerRoom:true};
+  ST.cityHomes.push(ST.fixerHome);
 
   // ── CITY HALL (corporate sector) — the seat of district power ──
   placeRoom(76,49,11,7,{x:81,y:55},[{t:"counter",x:1,y:1},{t:"counter",x:2,y:1},{t:"workstation",x:4,y:1},{t:"workstation",x:6,y:1},{t:"workstation",x:8,y:1},{t:"lamp",x:5,y:1},{t:"bookshelf",x:1,y:4},{t:"couch",x:3,y:4},{t:"rug",x:4,y:4},{t:"art",x:9,y:4}]);
@@ -2987,6 +2992,17 @@ function pawnTick(p){
   // sleeping wake conditions
   if(p.sleeping&&ST.tick%20===0&&foeNear(p,7)){
     p.sleeping=false;clearJob(p);addMod(p,"rude","Combat woke me",-4,TPD*.3)}
+  // SOCIAL HOLD: if someone is actively socializing WITH this pawn, the pawn pauses to "chat back"
+  // (holds position, faces them, emits the occasional bubble) instead of wandering off mid-conversation.
+  if(p.socWith&&ST.tick<(p.socUntil||0)){
+    const partner=ST.pawns.find(q=>q.id===p.socWith);
+    if(partner&&DIST(p.px,p.py,partner.px,partner.py)<3){
+      p.path=null;p.job=null;                                  // stay put for the conversation
+      if(ST.tick%18===0)tryEmote(p,Math.random()<0.5?"chat":"happy",60);
+      return;
+    } else { p.socWith=null; }                                 // partner left — release the hold
+  } else if(p.socWith){ p.socWith=null; }                      // lock expired
+
   if(!p.job)p.job=chooseJob(p);
   const j=p.job;if(!j)return;
   switch(j.t){
@@ -3096,7 +3112,17 @@ function pawnTick(p){
       {const ho=homeOwnerAt(o.px|0,o.py|0);if(ho&&ho!==p&&!canEnterHome(p,ho)){p.job=null;break}}
       const r=gotoCell(p,o.px|0,o.py|0,1);
       if(r==="fail"){p.job=null;break}
-      if(r==="arr"){j.prog++;if(j.prog>=40){p.needs.socN=100;relAdj(p.id,o.id,3.5);
+      if(r==="arr"){
+        // SIDE-BY-SIDE: lock the pair together so the partner pauses, faces, and both show emotes —
+        // making the interaction legible (you can see both thought bubbles). Set a short social lock on
+        // BOTH pawns; the partner's pawnTick will hold position while socWith is active.
+        p.socWith=o.id;p.socUntil=ST.tick+45;
+        if(!o.socWith){o.socWith=p.id;o.socUntil=ST.tick+45;o.path=null;}   // partner stops to chat back
+        // emit social emotes so the moment reads visually (alternating so it looks like a conversation)
+        if(j.prog%14===0)tryEmote(p,Math.random()<0.5?"happy":"chat",60);
+        if(j.prog%14===7)tryEmote(o,Math.random()<0.5?"happy":"chat",60);
+        j.prog++;if(j.prog>=40){p.needs.socN=100;o.needs.socN=Math.min(100,(o.needs.socN||70)+25);relAdj(p.id,o.id,3.5);
+        p.socWith=null;o.socWith=null;
         // close, compatible pairs may pair up
         if(relGet(p.id,o.id)>=48&&Math.random()<0.06)tryFormPartnership(p,o);
         p.job=null}}
@@ -3549,6 +3575,16 @@ const PRICES={stims:22,gear:16,data:8,chem:6,parts:6,scrap:7,food:5};
 // A caravan arrives wanting to BUY a commodity at a premium (sell opportunity)
 // or SELL one cheap (stock-up opportunity). Telegraphed, time-limited.
 const CARAVAN_GOODS=["scrap","gear","stims","data","chem","parts"];
+// pick where the caravan physically sets up: next to a Market if one exists, else near the main road edge.
+function caravanSpot(){
+  for(const s of ST.structs.values()){if(!s.bp&&s.type==="market"){
+    // an open tile just outside the market
+    for(const [dx,dy] of [[0,-1],[1,0],[-1,0],[0,1]]){const X=s.x+dx,Y=s.y+dy;if(INB(X,Y)&&colCost(X,Y)>=0)return{x:X,y:Y};}
+    return{x:s.x,y:s.y-1};}}
+  // fallback: a spot on the main horizontal arterial toward the east edge
+  if(typeof ROADS!=="undefined"&&ROADS.h&&ROADS.h.length){const r=ROADS.h[0];return{x:Math.min(r[1]-2,r[0]+Math.floor((r[1]-r[0])*0.8)),y:r[2]};}
+  return{x:Math.floor(MW*0.8),y:Math.floor(MH*0.5)};
+}
 function maybeCaravan(){
   if(ST.caravan)return;
   if(ST.pawns.length<3||ST.tick<TPD*2)return;
@@ -3560,11 +3596,11 @@ function maybeCaravan(){
   const mkBonus=1+markets*0.12;                  // markets pay better / sell cheaper
   if(buying){
     // pays a premium per unit of `good` you have in stock when they leave
-    ST.caravan={mode:"buy",good,rate:Math.round(base*R(1.6,2.4)*mkBonus),leaveAt:ST.tick+Math.floor(TPD*R(0.5,0.9)),done:false};
+    ST.caravan={mode:"buy",good,rate:Math.round(base*R(1.6,2.4)*mkBonus),leaveAt:ST.tick+Math.floor(TPD*R(0.5,0.9)),done:false,x:caravanSpot().x,y:caravanSpot().y};
     log("◈ A trade caravan is buying "+good.toUpperCase()+" at a premium — sell your surplus before they move on.","good");
   }else{
     const qty=RI(6,14);
-    ST.caravan={mode:"sell",good,qty,price:Math.max(2,Math.round(base*R(0.4,0.7)/mkBonus)),leaveAt:ST.tick+Math.floor(TPD*R(0.5,0.9)),done:false};
+    ST.caravan={mode:"sell",good,qty,price:Math.max(2,Math.round(base*R(0.4,0.7)/mkBonus)),leaveAt:ST.tick+Math.floor(TPD*R(0.5,0.9)),done:false,x:caravanSpot().x,y:caravanSpot().y};
     log("◈ A trade caravan is selling cheap "+good.toUpperCase()+" — stock up while it's here.","good");
   }
   banner("CARAVAN ARRIVES","good");if(SFX&&SFX.good)SFX.good();
@@ -3906,7 +3942,6 @@ function gameOver(){ST.phase="over";
     statRows()+(hasSave()?"<button class='tb big' id='m-continue'>LOAD LAST SAVE</button>":"")+
     "<button class='tb big' id='m-restart'>REINITIALIZE</button>")}
 /* ---------- master tick ---------- */
-function updateFlags(){}  // survival checklist retired — sandbox city has no win-objectives
 function tick(){ST.tick++;
   if(ST.tick%5===0){const P=ST.pawns;for(let i=0;i<P.length;i++)for(let j=i+1;j<P.length;j++)
     if(DIST(P[i].px,P[i].py,P[j].px,P[j].py)<5)relAdj(P[i].id,P[j].id,0.02)}
@@ -3999,7 +4034,7 @@ function tick(){ST.tick++;
           addMod(best,"gear","Got kitted out",3,TPD*.5);
           float(s.x+.5,s.y+.5,"GEARED","#7aa2ff")}}
       else float(s.x+.5,s.y+.5,"SOLD +"+cut+"c","#39ff88")}}
-  if(ST.tick%30===0){updateFlags();genRequests();expireRequests()}
+  if(ST.tick%30===0){genRequests();expireRequests()}
   if(ST.tick%TPD===0&&ST.tick>0)checkMilestones(); // daily milestone check
   if(ST.tick%TPD===0&&ST.tick>0&&typeof autosave==="function")autosave(); // daily autosave
   if(ST.tick%120===0)checkTier(); // district tier progression
@@ -4153,8 +4188,11 @@ function glowSprite(hex){
 }
 // stamp a cached glow centered at world (wx,wy) with given radius + alpha
 function stampGlow(hex,wx,wy,radius,alpha){
-  ctx.globalAlpha=alpha;
-  ctx.drawImage(glowSprite(hex),wx-radius,wy-radius,radius*2,radius*2);
+  // during a lightning strike, every glow gets a brief boost so the whole map's neon "pops" on the flash
+  const sg=STORM.on?STORM.flash:0;
+  ctx.globalAlpha=Math.min(1,alpha*(1+sg*1.8)+sg*0.12);
+  const r2=radius*(1+sg*0.25);
+  ctx.drawImage(glowSprite(hex),wx-r2,wy-r2,r2*2,r2*2);
   ctx.globalAlpha=1;
 }
 let VW=0,VH=0,dpr=1;
@@ -5036,6 +5074,7 @@ const EMOTES={
   dizzy:   {s:"\u204b", c:"#c98bff", rise:8, life:40, wob:1.8},
   idea:    {s:"\u273c", c:"#fff1a8", rise:12, life:38, wob:.8},
   gross:   {s:"\u2754", c:"#a8ff78", rise:8, life:34, wob:.6},
+  chat:    {s:"\u201c", c:"#bfe8ff", rise:11, life:34, wob:.6}, // speech mark — conversation
 };
 function emote(p,kind){
   if(!p||p.hp<=0&&kind!=="ghost")return;
@@ -5084,6 +5123,33 @@ function drawEmotes(x0,y0,x1,y1){
 function tickEmotes(){
   if(!ST.emotes)return;
   for(let i=ST.emotes.length-1;i>=0;i--)if(--ST.emotes[i].ttl<=0)ST.emotes.splice(i,1);
+}
+// draw the trade caravan on the map while it's in town — a glowing cart with a goods banner, so the
+// "caravan arrives" event corresponds to something the player can actually SEE and walk to.
+function drawCaravan(x0,y0,x1,y1){
+  const cv=ST.caravan;if(!cv||cv.x==null)return;
+  if(cv.x<x0||cv.x>=x1||cv.y<y0||cv.y>=y1)return;
+  const X=cv.x*T,Y=cv.y*T,t=performance.now()*0.001;
+  const col=cv.mode==="buy"?"#39ff88":"#ffc947";
+  // soft ground glow so it reads as a destination
+  ctx.save();ctx.globalAlpha=0.18+0.06*Math.sin(t*2);
+  const gg=ctx.createRadialGradient(X+T/2,Y+T/2,0,X+T/2,Y+T/2,T*1.6);
+  gg.addColorStop(0,col);gg.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.fillStyle=gg;ctx.beginPath();ctx.arc(X+T/2,Y+T/2,T*1.6,0,7);ctx.fill();ctx.restore();
+  // cart body
+  ctx.fillStyle="#1a1206";ctx.fillRect(X+1,Y+4,T-2,T-6);
+  ctx.fillStyle="#2a1c0a";ctx.fillRect(X+2,Y+5,T-4,T-8);
+  // striped awning
+  for(let i=0;i<4;i++){ctx.fillStyle=i%2?col:"#0a0a0a";ctx.fillRect(X+1+i*((T-2)/4),Y+2,(T-2)/4,3);}
+  // wheel hints
+  ctx.fillStyle="#0a0a0a";ctx.fillRect(X+2,Y+T-2,2,2);ctx.fillRect(X+T-4,Y+T-2,2,2);
+  // floating goods banner
+  ctx.save();ctx.textAlign="center";ctx.font="bold 6px monospace";
+  const lit=0.7+0.3*Math.sin(t*2.4);
+  ctx.globalAlpha=0.55;ctx.fillStyle="rgba(2,6,14,.9)";ctx.fillRect(X+T/2-16,Y-9,32,7);
+  ctx.globalAlpha=lit;ctx.fillStyle=col;
+  ctx.fillText((cv.mode==="buy"?"BUY ":"SELL ")+cv.good.toUpperCase(),X+T/2,Y-3.5);
+  ctx.restore();
 }
 function drawTombstones(x0,y0,x1,y1){
   if(!ST.tombs||!ST.tombs.length)return;
@@ -5372,15 +5438,20 @@ function drawStreetLayer(x0,y0,x1,y1){
   // (building name labels kept as wayfinding)
 
   // ── PUDDLE SHIMMER (on horizontal arterials near core) ──
+  // PERF: build the radial gradient ONCE at the origin, then translate to each puddle, instead of
+  // allocating a fresh createRadialGradient per puddle per frame (was a per-frame hotspot).
   const pshimmer=0.08+0.06*Math.sin(t*2.1);
+  if(!_puddleGrad){_puddleGrad=ctx.createRadialGradient(T*.4,T*.2,0,T*.4,T*.2,T*.6);
+    _puddleGrad.addColorStop(0,"rgba(0,180,255,.5)");_puddleGrad.addColorStop(1,"rgba(0,0,0,0)");}
+  ctx.fillStyle=_puddleGrad;
   ROADS.h.forEach(([rx0,rx1,ry])=>{
     for(let px=rx0+5;px<rx1;px+=20){
       if(px<x0||px>x1||ry<y0||ry>y1)continue;
       const X=px*T,Y=ry*T+T*.9;
       ctx.globalAlpha=pshimmer;
-      const rg=ctx.createRadialGradient(X+T*.4,Y+T*.2,0,X+T*.4,Y+T*.2,T*.6);
-      rg.addColorStop(0,"rgba(0,180,255,.5)");rg.addColorStop(1,"rgba(0,0,0,0)");
-      ctx.fillStyle=rg;ctx.beginPath();ctx.ellipse(X+T*.4,Y+T*.2,T*.55,T*.18,0,0,7);ctx.fill();
+      ctx.save();ctx.translate(X,Y);
+      ctx.beginPath();ctx.ellipse(T*.4,T*.2,T*.55,T*.18,0,0,7);ctx.fill();
+      ctx.restore();
       ctx.globalAlpha=1;}});
 
   // ── ZEBRA CROSSING at the central spine / mid-arterial intersection ──
@@ -5531,6 +5602,7 @@ function render(){
     if(s.x<x0||s.x>=x1||s.y<y0||s.y>=y1)continue;
     if(DEF[s.type]&&DEF[s.type].nat)continue;   // suspended-void look: hide open-area decor (benches, lamps, crates, dumpsters, planters)
     drawStruct(s);}
+  drawCaravan(x0,y0,x1,y1);
   for(const p of ST.pawns)drawPawn(p);
   drawTombstones(x0,y0,x1,y1);
   drawEmotes(x0,y0,x1,y1);
@@ -5566,10 +5638,44 @@ function render(){
   // ── ATMOSPHERE OVERLAY (rain + drifting smog) — opt-in via the ☂ HUD toggle, off by default
   // so it never costs framerate unless the player wants the mood. Screen-space, cheap.
   if(ATMO.on){drawAtmosphere();}
+  // ── LIGHTNING (⚡ toggle) — periodic flashes; the flash value also drives sprite-glow elsewhere.
+  if(STORM.on){drawLightning();}
 }
 
 // rain + smog atmosphere, drawn in screen space. State + particle pool created lazily.
 const ATMO={on:false,drops:null,fog:0};
+// LIGHTNING storm: when on, schedules flashes. STORM.flash (0..1) ramps up on a strike and decays —
+// it's read by drawLightning (screen flash) AND by the sprite glow (stormGlow()) so neon pops on strikes.
+const STORM={on:false,flash:0,nextAt:0,seq:0};
+function stormGlow(){return STORM.on?STORM.flash:0;}   // 0..1 extra glow factor during a flash
+function drawLightning(){
+  const now=performance.now();
+  // schedule the next strike
+  if(now>=STORM.nextAt){
+    STORM.flash=1; STORM.seq++;
+    STORM.nextAt=now+2200+Math.random()*5200;   // a strike every ~2.2–7.4s
+  }
+  if(STORM.flash>0.001){
+    // a strike is often a quick double-flash; model with a fast decay + a small secondary bump
+    STORM.flash*=0.86;
+    if(STORM.flash>0.55&&Math.random()<0.12)STORM.flash=Math.min(1,STORM.flash+0.4); // flicker
+    // screen flash: cool white-blue, brightest at the top (sky) fading down
+    const a=STORM.flash;
+    const fg=ctx.createLinearGradient(0,0,0,VH);
+    fg.addColorStop(0,"rgba(200,225,255,"+(0.42*a).toFixed(3)+")");
+    fg.addColorStop(0.5,"rgba(170,200,255,"+(0.22*a).toFixed(3)+")");
+    fg.addColorStop(1,"rgba(140,170,230,"+(0.06*a).toFixed(3)+")");
+    ctx.fillStyle=fg;ctx.fillRect(0,0,VW,VH);
+    // an occasional jagged bolt across the sky on the strongest flashes
+    if(a>0.7){
+      ctx.save();ctx.globalAlpha=a;ctx.strokeStyle="rgba(220,235,255,0.9)";ctx.lineWidth=2;ctx.lineCap="round";
+      let bx=VW*(0.2+Math.random()*0.6),by=0;ctx.beginPath();ctx.moveTo(bx,by);
+      const segs=5+((Math.random()*4)|0);
+      for(let i=0;i<segs;i++){bx+=(Math.random()-0.5)*VW*0.12;by+=VH/segs*(0.7+Math.random()*0.6);ctx.lineTo(bx,by);}
+      ctx.stroke();ctx.restore();
+    }
+  }
+}
 function initRain(){const a=[];const n=Math.round((VW*VH)/5500);  // density scales to canvas
   for(let i=0;i<n;i++)a.push({x:Math.random()*VW,y:Math.random()*VH,len:6+Math.random()*10,sp:7+Math.random()*7,w:Math.random()*0.5+0.3});
   return a;}
@@ -5607,6 +5713,7 @@ function drawAtmosphere(){
 // cached day/night vignette — rebuilds only when the (quantized) tint or canvas size changes,
 // instead of allocating a full-screen radial gradient every frame.
 let _vigCache=null,_vigKey="";
+let _puddleGrad=null;   // cached radial gradient for puddle shimmer (built once, translated per puddle)
 function vignetteGradient(r,g,b){
   const key=r+","+g+","+b+"|"+VW+"x"+VH;
   if(_vigCache&&_vigKey===key)return _vigCache;
@@ -7164,6 +7271,9 @@ $("b-load").onclick=()=>{SFX.ui();openLoadSlots()};
 $("b-atmo").onclick=()=>{SFX.ui();ATMO.on=!ATMO.on;ATMO.fog=0;
   const b=$("b-atmo");if(b){b.style.color=ATMO.on?"#22ddff":"";b.title=ATMO.on?"Rain & fog: ON":"Rain & fog: OFF";}
 };
+$("b-storm").onclick=()=>{SFX.ui();STORM.on=!STORM.on;STORM.flash=0;STORM.nextAt=0;
+  const b=$("b-storm");if(b){b.style.color=STORM.on?"#ffe066":"";b.title=STORM.on?"Lightning: ON":"Lightning: OFF";}
+};
 $("b-diary").onclick=()=>{SFX.ui();openOverlay("diary")};
 $("b-crew").onclick=()=>{SFX.ui();openOverlay("crew")};
 $("b-tasks").onclick=()=>{SFX.ui();openOverlay("tasks")};
@@ -7578,11 +7688,13 @@ function newGame(){
     if(colCost(x,y)<0)continue;
     if(ST.pawns.some(q=>(q.px|0)===x&&(q.py|0)===y))continue;
     ST.pawns.push(mkPawn(x,y))}}
-  {let hi=0;for(const p of ST.pawns){const home=ST.cityHomes[hi%ST.cityHomes.length];hi++;claimHome(p,home);p.attach=RI(3,12);}}
-  // THE AVATAR — your operative, dropped into the core. Uses the creation spec if one was made.
-  {const av=mkAvatar(63,49,window.PENDING_AVATAR||null);
+  {let hi=0;const regularHomes=ST.cityHomes.filter(h=>!h.fixerRoom);for(const p of ST.pawns){const home=regularHomes[hi%regularHomes.length];hi++;claimHome(p,home);p.attach=RI(3,12);}}
+  // THE AVATAR — your operative. Starts crashing in the FIXER'S BACK ROOM (the motel-room beginning):
+  // a borrowed pod in the fixer's quarters while you scrape together money and work your way up.
+  {const av=mkAvatar(51,71,window.PENDING_AVATAR||null);   // spawn AT the fixer-room pod
    ST.pawns.push(av);
-   const ah=ST.cityHomes[0];if(ah){claimHome(av,ah);av.attach=8;}
+   const ah=ST.fixerHome||ST.cityHomes[0];if(ah){claimHome(av,ah);av.attach=2;}  // low attach — it's borrowed, not owned
+   av.startedAtFixer=true;
    ST.sel=[av];  // start with your operative selected
   }
   cam.z=1.4;  // start zoomed into the core on the bigger map
@@ -7591,7 +7703,7 @@ function newGame(){
   $("log").innerHTML="";DIARY_ENTRIES.length=0;CHRONICLE.length=0;renderDiary();renderRoster();
   log("The sprawl wakes — citizens drifting to homes, jobs, and the night's vices.","info");
   log("You watch over the district. Build it out, steer who you can, and keep the block from tearing itself apart.","info");
-  updateFlags();syncHUD();renderInspect();refreshSpd();hideModal();
+  syncHUD();renderInspect();refreshSpd();hideModal();
   banner("DAY 1 — THE SPRAWL","good")}
 
 // ── PERF HUD (press P) — self-contained DOM overlay; measures real frame rate in-browser, incl. fullscreen ──
