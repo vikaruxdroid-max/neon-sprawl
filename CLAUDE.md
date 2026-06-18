@@ -35,6 +35,63 @@ done yet.
 **IMMEDIATE city-first work queue:** ~~character-CREATION SCREEN~~ (DONE) → stat-gated DIALOGUE
 (opsCheck/ops built to feed it) → job/farming VISUALS + litter → deep testing/tuning.
 
+---
+
+## ⚡ LATEST STATE (read this first — reconciled from the live VM, June 2026) ⚡
+
+**⚠ MULTI-SESSION DIVERGENCE WARNING — READ BEFORE EDITING.** Work happens on this game in MORE THAN
+ONE place. A separate session (or the user's own edits) built features DIRECTLY into the live VM that
+never came back to any single container. This caused a real divergence that took a full session to
+untangle. **At the START of any session that will modify the game, the user must upload their current
+`index.html` from the repo FIRST**, so the work is based on the true latest. The md5 is the tripwire:
+if the hash you're working from ≠ the VM's hash (`md5sum /var/www/game/neon-sprawl/index.html`), the
+files have diverged and you MUST reconcile before writing anything. The canonical source of truth is
+the VM file, NOT any container copy.
+
+**Features that originated on the VM (from a parallel session) — DO NOT clobber or duplicate these:**
+- **Spore Vat building** (`sporevat`, "Spore Vat", income-cost building) + `vatTier()` (tier logic) +
+  `initBlobs()` (floating bio-blob rendering) + `togglePerfHUD()` (a performance HUD toggle).
+- **A generative PIANO instrument with C418-style reverb/echo** woven into the audio engine: an `echo`
+  delay bus, `echoFb`/`echoLp` feedback+filter, a `pianoIn` send, and a `stopMelody` cleanup. (NOTE:
+  this was the basis the audio was later rewritten on — see below.)
+- A richer ROAD network with thematic district comments ("THE DIVIDE — underclass | corporate sector",
+  "labor | civic divide").
+
+**This session's work (applied ON TOP of the VM base, all validated + shipped):**
+1. **Rain/fog atmosphere toggle** — the ☂ HUD button (id `b-atmo`) toggles `ATMO.on` (OFF by default so
+   it never costs framerate). `drawAtmosphere()` + `initRain()` render drifting smog + diagonal rain,
+   screen-space, only when on. The button uses a `.hud-icon` span (a bare 🌧 emoji rendered BLANK in the
+   HUD font — that was a real bug; use ☂ in a hud-icon span).
+2. **More ambient floating elements** — MOTES 12→18 (less edge-biased so they drift through the core),
+   BLOBS 10→16. Tasteful bump, render-cheap.
+3. **AUDIO ENGINE FULLY REWRITTEN to kill a persistent "hum"** — THE KEY LESSON: the hum was NOT a
+   composition problem, it was a SYNTHESIS defect. **Any raw OscillatorNode held open with no amplitude
+   envelope IS an electrical hum** (a steady unchanging waveform = electrical noise; detuned sustained
+   oscillators beating against each other = "two currents near each other"). Three failed attempts
+   removed the wrong sustained source each time (drone → pads → chord-engine bass) — the problem was that
+   ANYTHING sustained at all, not which notes. The FIX is architectural: **NOTHING sustains.** Every
+   voice (`piano`, `bell`, `padSwell`, `bassPulse`) is created, ramped up, held, ramped down, and
+   AUTO-STOPPED. Pads BREATHE (fade in/hold/fade out, retriggered by a scheduler) instead of being held.
+   Verified mechanically: every `.start()` in the file has a matching `.stop()`; ZERO continuous sound
+   sources remain (the old looping vinyl-hiss `nsrc.loop=true` is also gone). Added a procedural
+   convolution REVERB (3.2s tail from exp-decay noise, no file). Procedural composition (C-pentatonic/
+   Lydian, original — deliberately NOT Subwoofer Lullaby's C-Am-F-G-Em): `_bars` lays chords (bassPulse +
+   padSwell) every ~5.2s, `_melody` sparse piano every 3–7.5s, `_bells` rare shimmer every 9–20s. Matches
+   the user's spec: 55–70 BPM feel, sparse, long reverb, soft pads, bell harmonics, no percussion,
+   procedural, seamless loop, CPU-friendly. **CAVEAT: Claude cannot hear audio** — the STRUCTURE is
+   correct + the hum is structurally eliminated, but mix balance (bass vs piano loudness, chord pace) is
+   untested and may need ear-tuning. There is a headless AUDIO ENGINE TEST now (Web Audio mock) that
+   confirms ambientStart/ambientSet/toggleMute build + run without throwing.
+
+**Validation harness in container** (`/home/claude/work`): `build_smoke.js` (15 gates, expect ALL TESTS
+PASS), a RENDER smoke-test (mock canvas → drawStruct on all structs + drawTerrain + drawAtmosphere), an
+AUDIO engine test (Web Audio mock), dead-fn/dupe checks, CSS brace balance, trimmed ≤8-day stability run.
+POP=12 makes full-length probes exceed the in-container bash timeout — use TRIMMED ≤8-day runs (this is a
+harness-timing artifact, not a game bug; real-time ticks are ~0.35ms, smooth).
+
+---
+
+
 - **Character-creation screen** — DONE. NEW DISTRICT now routes through `showCharCreate()` before
   newGame: pick 1 of 5 backgrounds (live stat preview), distribute OPS_POINT_BUDGET(4) extra points
   via +/- per attribute (capped 0-10, remaining counter), enter a codename. BEGIN sets
@@ -42,6 +99,65 @@ done yet.
   `ccStats/ccPointsUsed/ccRemaining/ccSyncName` helpers, wired in the #modal click handler
   (data-ccbg/ccinc/ccdec/cc-begin/cc-back). Default fallback intact if skipped. Probe-verified: base
   spreads, point math, 10-cap, bg-switch, full creation→spawn pipeline all correct.
+- **Professions + new buildings + cyberpunk resource re-theme** — DONE. (1) ROLES now work at the
+  CORRECT location instead of drifting to generic terminals: each role's workType points at its real
+  workplace (doctor→medbed, shopkeeper→counter, enforcer→copstation, mayor→mayorhouse, fixer→
+  fixercorner). genCity builds these role workplaces in the civic zone; newGame spawns each role NEXT to
+  their post and sets p.assigned=K(building). The work system already prefers p.assigned, plus a ROLE
+  ANCHOR in chooseJob sends a role-wisp to its post during work hours (08-19) unless a need is pressing,
+  and role work-desirability gets a 1.6x boost. Result: roles on-duty ~37-82% of work hours (citizens
+  can reliably find the Doctor at the clinic, etc.). (2) NEW BUILDINGS w/ defs, icons, build-menu
+  categories, city placement: Precinct (copstation, Enforcer's post, security), Street Vendor
+  (streetvendor, cheap food cart), Admin Villa (mayorhouse, Mayor's seat, civic), Fixer Corner
+  (fixercorner, Fixer's black-market node). New build categories: Utility (power/water), expanded Order
+  (watchpost+copstation). (3) CYBERPUNK RESOURCE RE-THEME: wood→scrap (Salvage Yard, ex-logging camp,
+  strips scrap from dead sectors), materials→data (Data Den, ex-mine shaft, grey-market hacking).
+  Updated EVERYWHERE: goods object (3 init sites), production trickle, vendor sales, PRICES, BASE,
+  CARAVAN_GOODS, HUD pips + sync loop, economy/market panels, zone signs (THE WOODS→SALVAGE SECTOR,
+  OLD MINE→DATA SLUMS), help text, data-den glow. Scavenger vocation (ex-laborer). ZERO wood/materials
+  refs remain (verified). Validated: scrap/data accumulate + sell, roles assigned + survive save/load,
+  stable 9-day run, bounds + economy valid. STILL PENDING: NPC request pacing (too frequent → weekly
+  city-council idea), tabs-shouldn't-resize-window + bigger character window, building reorg/resize
+  pass, furniture for new buildings, general UI/GUI check.
+- **Rain toggle fix + removed the music hum** — DONE. (1) RAIN BUTTON wasn't rendering — the 🌧 emoji
+  was a blank glyph in the HUD font, so there was no button to click ("rain didn't work" = no toggle
+  visible). Swapped to a ☂ umbrella in a .hud-icon span (matches the other HUD buttons, renders
+  reliably). Also made the rain CLEARLY visible when on: density up (VW*VH/9000 → /5500), brighter
+  streaks (rgba(170,205,240,0.9) cool-white), stronger slant, fade tied to ATMO.fog. Verified via
+  render smoke-test (186 drops, 0 errors). (2) MUSIC HUM REMOVED — the constant low "humming" was the
+  base DRONE: two detuned 55Hz triangle oscillators at gain 0.42 under everything. Removed it entirely
+  (o1/o2/droneG gone, no orphan refs). The warm Am9 sine PAD (L1) is now the base bed — always gently
+  present (was gated at intensity>0.10) — so the music is melodic and calm with NO droning fundamental.
+  Vinyl hiss + L2/L3 layers kept. LFO now modulates the pad filter. Validated: tests pass, audio engine
+  intact, stable 8-day run. SCREENSHOTS confirmed the visual pass landed well (neon signs NEXUS CORP/
+  BODEGA/CHROME BAR/MEDCENTER reading clearly, color-coded buildings). STILL PENDING: building footprint
+  reorg/resize, furniture for new buildings, weekly city-council.
+- **Visual cyberpunk city pass** — DONE. The terrain renderer had a strong COMPETING aesthetic
+  (bioluminescent mushrooms/spores carpeting the ground = alien-forest, not cyberpunk). Per user, KEPT
+  the psychedelic accent but made the city read cyberpunk-first. (1) MUSHROOMS dialed back from 12%→6%
+  of walkable tiles, spore-seep .82→.87 — now punctuation, not carpet. (2) CYBERPUNK STREET-GRIME layer
+  added to drawTerrain (static, drawn once to tctx, ZERO per-frame cost): oil slicks w/ iridescent
+  cyan/magenta sheen, scattered trash/debris flecks w/ metallic glints, exposed conduit/cable runs w/
+  live-current glow pips. This is the dominant ground texture now. (3) RAIN/FOG ATMOSPHERE TOGGLE — the
+  🌧 HUD button (id b-atmo) toggles ATMO.on (OFF by default so it never costs framerate). drawAtmosphere()
+  renders drifting layered smog gradients + diagonal rain streaks, screen-space, fades in. ATMO state +
+  initRain particle pool. (4) NEON MARQUEE SIGNS — the biggest top-down "cyberpunk city" signal: NEON_SIGNS
+  map (17 landmark types → {label,color}), rendered above each as a flickering glowing sign w/ additive
+  glow halo, dark backing, neon underline tube, position-keyed brownout flicker. Per-frame but only for
+  visible landmarks. e.g. CLINIC (green), GEAR (amber), PRECINCT (red), ADMIN (purple), FIXER (orange),
+  NOODLES, ARCADE, STIMS. Caught + fixed a `t` scoping bug via a headless render smoke-test (drawStruct
+  on all 414 structs + drawTerrain + drawAtmosphere = 0 errors). Validated: tests pass, stable 8-day run,
+  all roles alive, no dead/dupes. Perf-respectful (grime static, atmo opt-in, signs cull to viewport).
+  STILL PENDING: building footprint reorg/resize (structures are 1-tile icons; a multi-tile building
+  redesign is a separate deep pass), furniture for new buildings, weekly city-council session.
+- **Character panel sizing + request pacing** — DONE. (1) Inspect panel now FIXED SIZE (360px wide ×
+  560px tall, max-height calc(100vh-130px), overflow-y:auto) so switching tabs NEVER resizes the window
+  — and it's wider for readability. Narrow-screen variant gets max-height:50vh. (2) NPC REQUEST PACING:
+  was a flood (~13 wisps × one per 600 ticks). Now a global cooldown (900 ticks min between any two
+  petitions), a hard cap of 3 simultaneous pending, longer per-wisp gap (2400 ticks ≈ once/day), and
+  picks ONE eligible wisp at random per cycle instead of all at once. Measured ~3/day, max 3 pending.
+  STILL PENDING: weekly city-council session (to batch routine flashpoints — noted as the natural next
+  feature), building reorg/resize visual pass, furniture for the new buildings, deeper UI/GUI polish.
 - **UI cluster + mechanics document** — DONE. (1) CHARACTER PANEL rebuilt into 4 TABS: STATUS (vital
   bars + mood drivers + task/credits/stress), PERSON (operative attrs, role desc, vocation, skills,
   TEMPERAMENT personality readout), TIES (allegiance, clique/gang, rep, relationships), MIND (thoughts
@@ -341,11 +457,6 @@ node build_smoke.js          # expect ALL TESTS PASS
 node probe_final.js          # 15-day full run, must end STABLE + COMPLETE
 ```
 
-> **Lesson (visual passes):** validate by calling `render()` ITSELF, not just individual draw
-> fns — a render-scope `ReferenceError` (a bare `t` in the floor-caustics block) once blanked the
-> screen while per-fn tests still passed. In the harness set `ST.phase="play"` + `VW/VH/dpr` and
-> call `render()` a few frames; `drawStreetLayer` defines its own `t`, `render()` does NOT.
-
 ### Test harness
 - `smoke.js` = the 19 assertions (C economy, E pathing, F1-F3 job AI, G1-G14 save/load).
 - `build_smoke.js` = bundles `stubs.js` + the `<script>` + `smoke.js` into `smoke_bundle.js`, runs it.
@@ -413,40 +524,6 @@ Measured over managed 14-day runs (player keeps everyone ≥45 credits):
 ## 8. Roadmap / opportunities
 
 **BUILT & SHIPPED (do not rebuild — verify against code first):**
-- **Deep-ocean wireframe + circuit-roads + civic-district overhaul** — DONE (this arc).
-  · AESTHETIC: terrain backdrop is now a vertical abyss gradient (#0c2226→#07141c→#02080e) +
-    radial depth fog + edge vignette; tile grid removed (suspended/floating look). `drawPod`
-    rooms converted from solid checkered floor → hollow neon WIREFRAME (faint themed wash +
-    inner luminance + layered halo/bright border + animated pulsing corner studs).
-  · LIFE: bioluminescent mushrooms (density >.80, green/teal motes) + `initBlobs`/`BLOBS` —
-    10 slow lingering plankton-jelly clusters (additive, white sparkle flashes). `BLOBS=null`
-    reset beside both `MOTES=null` sites.
-  · DOOR: `drawStruct` case "door" is now a proximity SLIDING blast door — panels part when a
-    citizen is within 2.4 tiles, per-struct `s._do` lerp + smoothstep, glowing cyan portal.
-  · SPORE VAT — tiered upgradeable farm building. `DEF.sporevat` (food, tiered), `VAT_TIERS`
-    [Spore Vat→Algae Bloom→Bio-Reactor], `vatTier(s)`; tier-scaled food in the 200-tick food
-    tick (+T3 chem trickle); 3-tier render; inspect STAGE line + UPGRADE button (`i-upgrade`).
-  · genCity LAYOUT REWORK — `ROADS` rewritten so roads NEVER cross buildings; x70 = magenta
-    DIVIDE spine (underclass W | corporate E); roads 2-wide. Homes aligned; labor tier W,
-    corporate sector E. Graffiti/zone-labels/posters removed (HOME + building name labels kept).
-  · 4 furnished rooms added (placeRoom): HYDRO FARM, FIXER ROW, CITY HALL, POLICE PRECINCT.
-  · CIRCUIT-BOARD ROADS — removed the dashed security-zone rings (kept `_secZones` for gameplay
-    coverage, just not drawn) AND the round junction-node glows; replaced with subtle PCB traces:
-    branch stubs off each arterial (alt sides, ~17/19-tile spacing) ending in glowing via-pads,
-    larger via-pads at crossings. In `drawStreetLayer`, road-colored, travelling-pulse kept.
-  · NEON DETAILS — floor caustics (6 drifting additive pools, render()), holographic billboards
-    (4, drawStreetLayer), blob sparkles, animated trim. ⚠ caustics first shipped with a bare `t`
-    → render-scope `ReferenceError: t is not defined` (blank screen); FIXED to a local
-    `ct=performance.now()*0.001`. Lesson baked into §5.
-  · CHILL MUSIC (C418/Minecraft feel) — added a sparse GENERATIVE PIANO over the existing Am9
-    pad: soft sine+bell note (`pno`), C-major-pentatonic, 1 (sometimes 2–3) notes/phrase,
-    2.6–7s of space, long decay, through a feedback `echo` DelayNode send. In `ambientStart`
-    (closures; `stopMelody` on `_amb`). Mute-gated. Pentatonic-over-Am = warm, not melancholy.
-  · CIVIC DISTRICT (SE) — replaced the loose scattered civic icons with 6 furnished `placeRoom`
-    rooms laid into the road-carved cells (x112/x120/y82): Learning Hub (NW), Admin Villa (NMID,
-    Mayor roleHome), Hospital-over-Precinct (NE, Enforcer roleHome), Entertainment Complex (SW),
-    Market Hall (SE, Shopkeeper counters + Fixer roleHome). Validated: 0 room-on-road, 0 overlaps,
-    all 3 roleHomes intact. Total rooms 16→22.
 - **Render perf** — DONE. Structure-draw loop now iterates `ST.structs` directly + viewport-culls
   each (was: scan every viewport tile w/ Map lookup). ~35× faster at zoom-out. In `render()`.
 - **Onboarding** — DONE. `checkContextualHints()` + `hintOnce(id,msg)` fire once when the player

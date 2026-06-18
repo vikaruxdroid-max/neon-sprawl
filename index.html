@@ -391,6 +391,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
     <button class="tb" id="b-save" title="Save">💾</button>
     <button class="tb" id="b-load" title="Load">📂</button>
     <button class="tb" id="b-fs" title="Fullscreen">⛶</button>
+    <button class="tb" id="b-atmo" title="Rain & fog"><span class="hud-icon">☂</span></button>
     <button class="tb" id="b-mute" title="Sound">🔊</button>
     <button class="tb" id="b-help" title="Help">?</button>
   </div>
@@ -506,89 +507,127 @@ const SFX=(()=>{let ac=null,mut=false;
     ambientStart(){
       const a=ctx();if(!a)return;
       if(this._amb)return;
+      // ── MASTER + REVERB BUS ─────────────────────────────────────────────────────────────────────
+      // Master gain feeds the speakers. A convolution reverb (long, soft tail) gives the "exploration /
+      // wide space" feel. EVERYTHING goes through a per-voice amplitude envelope — there are NO raw
+      // continuously-running oscillators, which is what removes the constant electrical "hum".
       const master=a.createGain();master.gain.value=mut?0:0.0;master.connect(a.destination);
-      // gentle space echo (C418-style air) — piano notes send here for a soft, roomy tail
-      const echo=a.createDelay();echo.delayTime.value=0.30;
-      const echoFb=a.createGain();echoFb.gain.value=0.32;
-      const echoLp=a.createBiquadFilter();echoLp.type="lowpass";echoLp.frequency.value=2200;
-      echo.connect(echoLp);echoLp.connect(echoFb);echoFb.connect(echo);
-      const echoOut=a.createGain();echoOut.gain.value=0.5;echo.connect(echoOut);echoOut.connect(master);
-      const pianoIn=a.createGain();pianoIn.gain.value=1;pianoIn.connect(master);pianoIn.connect(echo);
-      // base drone: two softly-detuned LOW TRIANGLE oscillators (warm, rounded — no harsh sawtooth)
-      // tuned to A1 (~55Hz) as the tonal root for a melancholy A-minor feel
-      const droneG=a.createGain();droneG.gain.value=0.42;
-      const lp=a.createBiquadFilter();lp.type="lowpass";lp.frequency.value=420;
-      const o1=a.createOscillator();o1.type="triangle";o1.frequency.value=55;
-      const o2=a.createOscillator();o2.type="triangle";o2.frequency.value=55*1.004;
-      o1.connect(droneG);o2.connect(droneG);droneG.connect(lp);lp.connect(master);
-      o1.start();o2.start();
-      // soft "vinyl hiss" — quiet lowpassed noise (lofi texture, not the old harsh bandpass wind)
-      const nbuf=a.createBuffer(1,a.sampleRate*2,a.sampleRate);
-      const nd=nbuf.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=(Math.random()*2-1)*0.5;
-      const nsrc=a.createBufferSource();nsrc.buffer=nbuf;nsrc.loop=true;
-      const nfilt=a.createBiquadFilter();nfilt.type="lowpass";nfilt.frequency.value=2600;
-      const nG=a.createGain();nG.gain.value=0.025;
-      nsrc.connect(nfilt);nfilt.connect(nG);nG.connect(master);nsrc.start();
-      // MUSIC LAYERS — each a gated gain that fades in as intensity rises. ALL warm/soft now.
-      const mkLayer=(freqs,type,base,filtHz)=>{
-        const lg=a.createGain();lg.gain.value=0;
-        const f=a.createBiquadFilter();f.type="lowpass";f.frequency.value=filtHz||1200;
-        f.connect(master);lg.connect(f);
-        const oscs=freqs.map(fr=>{const o=a.createOscillator();o.type=type;o.frequency.value=fr;o.connect(lg);o.start();return o;});
-        return{lg,base,oscs};};
-      // layer 1: Am9 warm pad (A-C-E-G-B feel) — the soothing core, comes in first. soft sine.
-      const L1=mkLayer([110,130.81,164.81,196],"sine",0.06,1100);
-      // layer 2: a gentle higher voicing (C-E-G, wistful shimmer) at mid intensity — triangle, soft
-      const L2=mkLayer([261.63,329.63,392],"triangle",0.03,1800);
-      // layer 3: a LOW WARM SWELL for "busy/danger" — adds depth & a touch of melancholy, never tension.
-      // (Dmin-ish low fifth: D-A) soft triangle, heavily filtered so it's felt more than heard.
-      const L3=mkLayer([73.42,110],"triangle",0.05,360);
-      // very slow LFO on the drone filter for gentle organic movement
-      const lfo=a.createOscillator();lfo.frequency.value=0.035;
-      const lfoG=a.createGain();lfoG.gain.value=55;lfo.connect(lfoG);lfoG.connect(lp.frequency);lfo.start();
-      // ── GENTLE GENERATIVE PIANO — sparse, warm, lots of space (C418 / Minecraft feel) ──
-      // soft electric-piano note: sine + bell-ish 2nd harmonic, soft attack, long decay, sent through the echo for air
-      const pno=(freq,vel)=>{ if(mut)return; const t0=a.currentTime;
+      // build an impulse response procedurally (no audio file) — exponential-decay noise = a smooth hall
+      const irLen=Math.floor(a.sampleRate*3.2);                 // ~3.2s reverb tail
+      const ir=a.createBuffer(2,irLen,a.sampleRate);
+      for(let ch=0;ch<2;ch++){const d=ir.getChannelData(ch);
+        for(let i=0;i<irLen;i++){const t=i/irLen;d[i]=(Math.random()*2-1)*Math.pow(1-t,2.6);}}
+      const reverb=a.createConvolver();reverb.buffer=ir;
+      const revWet=a.createGain();revWet.gain.value=0.55;       // how much reverb in the mix
+      const revLp=a.createBiquadFilter();revLp.type="lowpass";revLp.frequency.value=2600; // soften the tail
+      reverb.connect(revLp);revLp.connect(revWet);revWet.connect(master);
+      // a "send" bus: voices connect here to be heard dry AND sent to reverb
+      const dry=a.createGain();dry.gain.value=0.9;dry.connect(master);
+      const sendIn=(node,wet)=>{node.connect(dry);const s=a.createGain();s.gain.value=wet==null?1:wet;node.connect(s);s.connect(reverb);};
+      // ── VOICE BUILDERS (each creates, envelopes, and AUTO-STOPS its oscillators — nothing lingers) ──
+      // soft piano-ish note: sine fundamental + faint bell harmonic, gentle attack, long decay.
+      const piano=(freq,vel,when)=>{ if(mut)return; const t0=(when||a.currentTime);
         const o=a.createOscillator();o.type="sine";o.frequency.value=freq;
-        const oh=a.createOscillator();oh.type="triangle";oh.frequency.value=freq*2.001;
-        const ohg=a.createGain();ohg.gain.value=0.22;oh.connect(ohg);
+        const oh=a.createOscillator();oh.type="triangle";oh.frequency.value=freq*2.001; // bell shimmer
+        const ohg=a.createGain();ohg.gain.value=0.18;oh.connect(ohg);
         const g=a.createGain();g.gain.setValueAtTime(0.0001,t0);
-        g.gain.exponentialRampToValueAtTime(vel,t0+0.03);
-        g.gain.exponentialRampToValueAtTime(0.0001,t0+2.8);
-        o.connect(g);ohg.connect(g);g.connect(pianoIn);
-        o.start(t0);oh.start(t0);o.stop(t0+2.9);oh.stop(t0+2.9); };
-      // C major pentatonic, C3..C5 — warm, never dissonant over the Am pad
-      const SCALE=[130.81,146.83,164.81,196.00,220.00,261.63,293.66,329.63,392.00,440.00,523.25];
-      let _mi=5, _melodyOn=true, _mTimer=null;
-      const _phrase=()=>{ if(!_melodyOn)return;
-        if(!mut){
-          const notes=1+(Math.random()<0.42?1:0)+(Math.random()<0.16?1:0);   // mostly 1, sometimes 2–3
+        g.gain.exponentialRampToValueAtTime(vel,t0+0.04);              // soft attack
+        g.gain.exponentialRampToValueAtTime(0.0001,t0+3.2);            // long decay
+        o.connect(g);ohg.connect(g);sendIn(g,0.8);
+        o.start(t0);oh.start(t0);o.stop(t0+3.3);oh.stop(t0+3.3); };    // AUTO-STOP — no lingering tone
+      // bell-like harmonic: a brief, pure, high shimmer (occasional sparkle).
+      const bell=(freq,vel,when)=>{ if(mut)return; const t0=(when||a.currentTime);
+        const o=a.createOscillator();o.type="sine";o.frequency.value=freq;
+        const g=a.createGain();g.gain.setValueAtTime(0.0001,t0);
+        g.gain.exponentialRampToValueAtTime(vel,t0+0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001,t0+2.4);
+        o.connect(g);sendIn(g,1.0);
+        o.start(t0);o.stop(t0+2.5); };
+      // PAD SWELL: a soft chord that FADES IN, holds briefly, and FADES OUT — then it's gone. Because it
+      // breathes instead of sustaining, there is no steady electrical tone. Retriggered by the scheduler.
+      const padSwell=(freqs,peak,dur,when)=>{ if(mut)return; const t0=(when||a.currentTime);
+        const g=a.createGain();g.gain.setValueAtTime(0.0001,t0);
+        const lp=a.createBiquadFilter();lp.type="lowpass";lp.frequency.value=900;
+        g.connect(lp);sendIn(lp,0.7);
+        const oscs=freqs.map((fr,i)=>{const o=a.createOscillator();
+          o.type=i===0?"triangle":"sine";o.frequency.value=fr;
+          // tiny per-osc detune for warmth WITHOUT the harsh beating that reads as a hum
+          o.detune.value=(i-1)*3;
+          o.connect(g);return o;});
+        const atk=dur*0.4, rel=dur*0.5;
+        g.gain.exponentialRampToValueAtTime(peak,t0+atk);             // slow swell in
+        g.gain.setValueAtTime(peak,t0+atk+dur*0.1);
+        g.gain.exponentialRampToValueAtTime(0.0001,t0+atk+dur*0.1+rel); // fade fully out
+        const stopAt=t0+atk+dur*0.1+rel+0.1;
+        oscs.forEach(o=>{o.start(t0);o.stop(stopAt);});               // AUTO-STOP
+      };
+      // sub bass PULSE: a low note that swells and releases under a chord (warmth, not a held drone).
+      const bassPulse=(freq,peak,dur,when)=>{ if(mut)return; const t0=(when||a.currentTime);
+        const o=a.createOscillator();o.type="sine";o.frequency.value=freq;
+        const g=a.createGain();g.gain.setValueAtTime(0.0001,t0);
+        const lp=a.createBiquadFilter();lp.type="lowpass";lp.frequency.value=180;
+        o.connect(g);g.connect(lp);sendIn(lp,0.25);
+        g.gain.exponentialRampToValueAtTime(peak,t0+dur*0.35);
+        g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+        o.start(t0);o.stop(t0+dur+0.1); };
+      // ── PROCEDURAL COMPOSITION ──────────────────────────────────────────────────────────────────
+      // Original, NOT Subwoofer Lullaby. C-Lydian-ish palette (calm, "wonder"): C D E F# G A B.
+      // Chords are simple triads built on scale degrees; the scheduler drifts between them slowly so the
+      // piece evolves and loops seamlessly (procedural — no fixed sequence to "end").
+      const PENT=[261.63,293.66,329.63,392.00,440.00,523.25,587.33,659.25]; // C pentatonic-ish, C4..E5
+      const BELLS=[1046.50,1174.66,1318.51,1567.98];                         // high sparkle octave
+      // chord pool: each = {bass, pad[3]} in Hz. Warm, consonant, slow-moving.
+      const PROG=[
+        {bass:65.41, pad:[261.63,329.63,392.00]},   // C
+        {bass:55.00, pad:[277.18,329.63,440.00]},   // Am-ish
+        {bass:49.00, pad:[293.66,369.99,440.00]},   // G-ish
+        {bass:43.65, pad:[261.63,349.23,440.00]},   // F-ish
+        {bass:58.27, pad:[293.66,349.23,440.00]},   // Bb-ish (gentle colour)
+      ];
+      let _bar=0, _pi=4, _on=true, _t1=null,_t2=null,_t3=null;
+      const intensity=()=>this._amb?this._amb.intensity:0.2;
+      // BAR scheduler: every ~5s lay down a chord (bass pulse + pad swell), drifting through the pool.
+      const _bars=()=>{ if(!_on)return; if(!mut){
+          const ch=PROG[_bar%PROG.length];
+          const lvl=0.5+intensity()*0.5;                  // a touch fuller when the district is busy
+          padSwell(ch.pad, 0.040*lvl, 5.4);               // breathing pad — fades fully, no sustain
+          bassPulse(ch.bass, 0.060*lvl, 5.0);             // warm low pulse under it
+          _bar++;
+        }
+        _t1=setTimeout(_bars, 5200);                       // ~one chord per 5.2s (slow, ~58 BPM feel)
+      };
+      // PIANO scheduler: sparse single notes with lots of space, gentle stepwise drift.
+      const _melody=()=>{ if(!_on)return; if(!mut){
+          const notes=1+(Math.random()<0.35?1:0);          // mostly 1 note, sometimes 2
           for(let n=0;n<notes;n++){
-            _mi=Math.max(0,Math.min(SCALE.length-1,_mi+(Math.floor(Math.random()*5)-2)));  // gentle stepwise drift
-            const vel=0.05+Math.random()*0.035, f=SCALE[_mi];
-            setTimeout(()=>pno(f,vel), n*(360+Math.random()*240));
+            _pi=Math.max(0,Math.min(PENT.length-1,_pi+(Math.floor(Math.random()*5)-2)));
+            piano(PENT[_pi], 0.05+Math.random()*0.03, a.currentTime + n*(0.5+Math.random()*0.4));
           }
         }
-        _mTimer=setTimeout(_phrase, 2600+Math.random()*4400);   // 2.6–7.0s of space between phrases
+        _t2=setTimeout(_melody, 3000+Math.random()*4500);   // 3.0–7.5s of space between notes
       };
-      _mTimer=setTimeout(_phrase, 1800);
-      const stopMelody=()=>{_melodyOn=false;if(_mTimer)clearTimeout(_mTimer);};
-      this._amb={master,lp,L1,L2,L3,o1,o2,intensity:0,night:0,stopMelody};
+      // BELL scheduler: rare high shimmer for "wonder".
+      const _bells=()=>{ if(!_on)return;
+        if(!mut && Math.random()<0.6) bell(BELLS[Math.floor(Math.random()*BELLS.length)], 0.025, a.currentTime);
+        _t3=setTimeout(_bells, 9000+Math.random()*11000);   // every 9–20s, sometimes skipped
+      };
+      _t1=setTimeout(_bars, 400);
+      _t2=setTimeout(_melody, 2600);
+      _t3=setTimeout(_bells, 7000);
+      const stopMelody=()=>{_on=false;[_t1,_t2,_t3].forEach(t=>t&&clearTimeout(t));};
+      this._amb={master,reverb,revWet,intensity:0.2,night:0,stopMelody};
     },
     ambientSet(intensity,nightAmt){
-      // intensity 0..1 (district activity+heat); nightAmt 0..1 (darkness)
+      // intensity 0..1 (district activity+heat); nightAmt 0..1 (darkness). The scheduler reads intensity
+      // for fullness; here we just set the overall level and warm the reverb at night. No sustained nodes
+      // to fade — the music is entirely event-scheduled, so there is nothing that can drone.
       const A=this._amb;if(!A)return;const a=ac;if(!a)return;
-      const t=a.currentTime,glide=2.2;   // slower glides = calmer transitions
+      const t=a.currentTime,glide=2.6;
       A.intensity=intensity;A.night=nightAmt||0;
-      const overall=mut?0:0.15;
+      const overall=mut?0:0.16;
       A.master.gain.linearRampToValueAtTime(overall,t+glide);
-      // drone warms/mellows at night rather than darkening harshly
-      A.lp.frequency.linearRampToValueAtTime(360+(1-(nightAmt||0))*180,t+glide);
-      // fade music layers in by threshold (gentle warmth as things get busier — never harsh)
-      const set=(L,on,target)=>L.lg.gain.linearRampToValueAtTime(mut?0:(on?target:0),t+glide);
-      set(A.L1,intensity>0.10,A.L1.base);
-      set(A.L2,intensity>0.40,A.L2.base);
-      set(A.L3,intensity>0.68,A.L3.base);
+      // a touch more reverb / softer at night for a calmer, wider feel
+      A.revWet.gain.linearRampToValueAtTime(0.45+(nightAmt||0)*0.18,t+glide);
     },
     ambientStop(){const A=this._amb;if(A&&A.master)try{A.master.gain.value=0}catch(e){}},
     toggleMute(){mut=!mut;
@@ -5226,7 +5265,7 @@ function menuBg(){ctx.setTransform(dpr,0,0,dpr,0,0);
 let MOTES=null;
 let BLOBS=null;
 function initBlobs(){const COL=["#39d4ff","#7af7ff","#a259ff","#5cffd0"],a=[];
-  const N=10;
+  const N=16;   // a few more floating clusters for ambience (was 10) — still sparse, not busy
   for(let i=0;i<N;i++){
     const orbs=2+RI(0,2),cl=[];                       // 2-4 orbs per cluster
     for(let k=0;k<orbs;k++)cl.push({dx:(Math.random()-.5)*9,dy:(Math.random()-.5)*9,r:1.3+Math.random()*1.7});
@@ -5234,11 +5273,11 @@ function initBlobs(){const COL=["#39d4ff","#7af7ff","#a259ff","#5cffd0"],a=[];
       vx:(Math.random()-.5)*.05,vy:(Math.random()-.5)*.05,orbs:cl});}
   return a;}
 function initMotes(){const SPORE=["#39ff88","#5cffd0","#7affb0","#a259ff","#5cffd0"],a=[];
-  const N=12; // wisp count — kept low per design (8-15 range)
+  const N=18; // a few more drifting sparks for ambience (was 12) — kept tasteful
   for(let i=0;i<N;i++){
-    // bias spawn toward map edges (nature outskirts), away from built core
+    // bias spawn toward map edges (nature outskirts), but let more drift through the core too
     let mx,my;
-    if(Math.random()<0.7){
+    if(Math.random()<0.55){
       // edge band
       const edge=RI(0,3);
       if(edge===0){mx=RI(2,MW-3);my=RI(2,18)}
@@ -5523,7 +5562,47 @@ function render(){
   if(ST.blackoutUntil&&ST.tick<ST.blackoutUntil){
     const flick=0.62+0.06*Math.sin(performance.now()*0.02)+(Math.random()<0.03?0.1:0);
     ctx.fillStyle="rgba(2,4,10,"+flick.toFixed(2)+")";ctx.fillRect(0,0,VW,VH);
-  }}
+  }
+  // ── ATMOSPHERE OVERLAY (rain + drifting smog) — opt-in via the ☂ HUD toggle, off by default
+  // so it never costs framerate unless the player wants the mood. Screen-space, cheap.
+  if(ATMO.on){drawAtmosphere();}
+}
+
+// rain + smog atmosphere, drawn in screen space. State + particle pool created lazily.
+const ATMO={on:false,drops:null,fog:0};
+function initRain(){const a=[];const n=Math.round((VW*VH)/5500);  // density scales to canvas
+  for(let i=0;i<n;i++)a.push({x:Math.random()*VW,y:Math.random()*VH,len:6+Math.random()*10,sp:7+Math.random()*7,w:Math.random()*0.5+0.3});
+  return a;}
+function drawAtmosphere(){
+  // drifting smog haze — a slow-moving translucent gradient wash, layered for depth
+  const t=performance.now()*0.00006;
+  ATMO.fog=Math.min(1,ATMO.fog+0.02);   // fades in when toggled on
+  const fogA=0.10*ATMO.fog;
+  ctx.save();
+  for(let i=0;i<2;i++){
+    const ox=((Math.sin(t*(i+1))*0.5+0.5)*VW*0.4)-(VW*0.1);
+    const fg=ctx.createLinearGradient(ox,0,ox+VW,VH);
+    fg.addColorStop(0,"rgba(40,30,60,0)");
+    fg.addColorStop(0.5,"rgba("+(30+i*15)+","+(24+i*8)+","+(50+i*10)+","+fogA+")");
+    fg.addColorStop(1,"rgba(20,30,50,0)");
+    ctx.fillStyle=fg;ctx.fillRect(0,0,VW,VH);
+  }
+  ctx.restore();
+  // rain — diagonal streaks, brighter and denser so it clearly reads as falling rain
+  if(!ATMO.drops)ATMO.drops=initRain();
+  ctx.save();
+  const skew=3.0;  // slant
+  ctx.lineWidth=1.1;ctx.lineCap="round";
+  for(const d of ATMO.drops){
+    d.y+=d.sp;d.x+=skew*0.45;
+    if(d.y>VH){d.y=-d.len;d.x=Math.random()*VW;}
+    if(d.x>VW)d.x-=VW;
+    ctx.globalAlpha=(d.w*0.55+0.35)*ATMO.fog;
+    ctx.strokeStyle="rgba(170,205,240,0.9)";
+    ctx.beginPath();ctx.moveTo(d.x,d.y);ctx.lineTo(d.x-skew*d.len*0.22,d.y+d.len);ctx.stroke();
+  }
+  ctx.globalAlpha=1;ctx.restore();
+}
 
 // cached day/night vignette — rebuilds only when the (quantized) tint or canvas size changes,
 // instead of allocating a full-screen radial gradient every frame.
@@ -7082,6 +7161,9 @@ $("b-fs").onclick=()=>{SFX.ui();
   }
 };
 $("b-load").onclick=()=>{SFX.ui();openLoadSlots()};
+$("b-atmo").onclick=()=>{SFX.ui();ATMO.on=!ATMO.on;ATMO.fog=0;
+  const b=$("b-atmo");if(b){b.style.color=ATMO.on?"#22ddff":"";b.title=ATMO.on?"Rain & fog: ON":"Rain & fog: OFF";}
+};
 $("b-diary").onclick=()=>{SFX.ui();openOverlay("diary")};
 $("b-crew").onclick=()=>{SFX.ui();openOverlay("crew")};
 $("b-tasks").onclick=()=>{SFX.ui();openOverlay("tasks")};
