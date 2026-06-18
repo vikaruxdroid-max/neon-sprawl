@@ -573,7 +573,7 @@ const DEF={
   counter:    {name:"Shop Counter", cost:{}, hp:80, blocks:1, work:120, cat:"b", desc:"Vendor — sells goods, earns district income.", vendor:true},
   bar:        {name:"Bar Counter",  cost:{}, hp:80, blocks:1, work:120, cat:"b", desc:"Drinks, food, socializing, sells Stims.", vendor:true, sells:"stims"},
   medbed:     {name:"Med Bay",      cost:{}, hp:80, blocks:0, work:160, cat:"b", desc:"Treat injury and disease."},
-  dealer:     {name:"Dealer Spot",  cost:{}, hp:40, blocks:0, work:100, cat:"b", desc:"Sells Stims off the books, earns district income.", vendor:true, sells:"stims", illegal:true},
+  dealer:     {name:"Dealer Spot",  cost:{}, hp:40, blocks:0, work:100, cat:"b", desc:"Sells Stims off the books, earns district income.", vendor:true, sells:"stims", illegal:true, selfRun:true},
   chemlab:    {name:"Chem Lab",     cost:{income:80}, hp:70, blocks:1, work:150, cat:"b", desc:"Produces Chem raw material.", prod:"chem", prodRate:220, wage:9},
   workshop:   {name:"Workshop",     cost:{income:80}, hp:80, blocks:1, work:150, cat:"b", desc:"Produces Parts raw material.", prod:"parts", prodRate:200, wage:9},
   stimlab:    {name:"Stim Lab",     cost:{income:120},hp:70, blocks:1, work:160, cat:"b", desc:"Refines Chem + Data → Stims. High margin, raises heat.", refine:{in:["chem","data"],out:"stims"}, wage:11},
@@ -1245,6 +1245,32 @@ function homeStructs(p){const out=[];if(!p.home)return out;const h=p.home;
   for(const s of ST.structs.values()){if(s.bp)continue;
     if(s.x>=h.x0&&s.x<h.x0+h.w&&s.y>=h.y0&&s.y<h.y0+h.h)out.push(s);}
   return out;}
+/* ============================================================
+   HOME VISITING & PRIVATE PROPERTY — wisps know whose home is whose,
+   respect it by relationship tier, and enter for reasons (social,
+   relationship, crime). Built on existing rel/grudge/gang systems.
+   ============================================================ */
+// which pawn OWNS the home containing tile (x,y)? null if not a home / unclaimed.
+function homeOwnerAt(x,y){
+  for(const p of ST.pawns){const h=p.home;if(!h)continue;
+    if(x>=h.x0&&x<h.x0+h.w&&y>=h.y0&&y<h.y0+h.h)return p;}
+  return null;
+}
+// are a and b family (partners or parent/child)?
+function areFamily(a,b){
+  if(!a||!b)return false;
+  if(partnerOf(a)===b||partnerOf(b)===a)return true;
+  if((a.parents||[]).includes(b.id)||(b.parents||[]).includes(a.id))return true;
+  return false;
+}
+// may pawn p LEGITIMATELY enter owner's home? relationship-tiered:
+//  own home / family → always; good friend (rel>50) → yes; else no.
+function canEnterHome(p,owner){
+  if(!owner||owner===p)return true;
+  if(areFamily(p,owner))return true;
+  if(relGet(p.id,owner.id)>50)return true;
+  return false;
+}
 function spendAtStore(p,amount){
   p.credits=(p.credits||0)-amount;
   ST.income=(ST.income||0)+Math.round(amount*0.4);   // district takes a 40% cut of furniture sales
@@ -1732,7 +1758,11 @@ function unre(p,x,y){const u=p.unre.get(K(x,y));return u!==undefined&&u>ST.tick}
 function markUnre(p,x,y){p.unre.set(K(x,y),ST.tick+300)}
 function randNear(p,r){for(let i=0;i<10;i++){
   const X=clamp((p.px|0)+RI(-r,r),0,MW-1),Y=clamp((p.py|0)+RI(-r,r),0,MH-1);
-  if(colCost(X,Y)>=0)return{x:X,y:Y}}return null}
+  if(colCost(X,Y)<0)continue;
+  // private property: don't wander into a home that isn't yours (unless you may enter it)
+  const owner=homeOwnerAt(X,Y);
+  if(owner&&owner!==p&&!canEnterHome(p,owner))continue;
+  return{x:X,y:Y}}return null}
 
 /* job search */
 function homeFixture(p,type){if(!p.home)return null;const h=p.home;
@@ -1788,6 +1818,36 @@ function scoreJobs(p){
     nearestStruct(p,s=>s.type==="gearshop"&&!s.bp):null;
   const stealTgt=p.pers.intg<35&&(p.credits||0)<15&&(p.addiction||0)>20?
     ST.pawns.find(q=>q.id!==p.id&&(q.credits||0)>20&&DIST(p.px,p.py,q.px,q.py)<10&&relGet(p.id,q.id)>-60):null;
+  // VISIT: when social, a wisp may visit a friend/partner's HOME to hang out (consensual).
+  // pick the closest person whose home they may enter and who they like.
+  let visitTgt=null;
+  if(!isChild(p)&&socN<55&&!p.homeless){let bd=1e9;
+    for(const q of ST.pawns){if(q.id===p.id||!q.home||isChild(q))continue;
+      if(!canEnterHome(p,q))continue;            // only homes they're welcome in
+      if(relGet(p.id,q.id)<25&&!areFamily(p,q))continue;
+      const d=DIST(p.px,p.py,q.home.x0+2,q.home.y0+2);
+      if(d<bd&&d<28){bd=d;visitTgt=q;}}}
+  // BURGLE: a desperate, low-integrity wisp may break into a stranger's home to rob it.
+  let burgleTgt=null;
+  if(!isChild(p)&&p.pers.intg<32&&(p.credits||0)<18&&ST.tick>(p.crimeCd||0)){let bd=1e9;
+    for(const q of ST.pawns){if(q.id===p.id||!q.home||areFamily(p,q))continue;
+      if((q.credits||0)<25)continue;             // worth robbing
+      if(relGet(p.id,q.id)>20)continue;          // won't rob people they like
+      const d=DIST(p.px,p.py,q.home.x0+2,q.home.y0+2);
+      if(d<bd&&d<22){bd=d;burgleTgt=q;}}}
+  // HOMICIDE (gated, rare, dark-but-earned): only a deep grudge OR gang vendetta, and only
+  // from a violent/low-integrity wisp. Telegraphed + heavy consequences at execution.
+  let killTgt=null;
+  if(!isChild(p)&&ST.tick>(p.killCd||0)&&p.pers.intg<28&&(p.pers.imp||0)>55){
+    const g=p.grudgeTarget?ST.pawns.find(q=>q.id===p.grudgeTarget):null;
+    const grudgeDeep=g&&relGet(p.id,g.id)<-70;
+    const myGang=pawnGang(p);
+    let vendetta=null;
+    if(myGang)for(const q of ST.pawns){const qg=pawnGang(q);
+      if(qg&&qg!==myGang&&relGet(p.id,q.id)<-55){vendetta=q;break;}}
+    const tgt=grudgeDeep?g:vendetta;
+    if(tgt&&tgt.home&&DIST(p.px,p.py,tgt.home.x0+2,tgt.home.y0+2)<26)killTgt=tgt;
+  }
   const gang=pawnGang(p);
   const onTurf=gang&&gang.turf.has(K(p.px|0,p.py|0));
   const turfBonus=onTurf?20:0;
@@ -1808,6 +1868,9 @@ function scoreJobs(p){
     crime:(robTgt&&cred<20)?clamp(30-cred*1.1+turfBonus+nightBonus,0,100):0,
     steal:stealTgt?clamp(35-(cred*1.2)+turfBonus+nightBonus,0,100):0,
     buygear:gearStr?clamp(40-(cred*0.5),0,70):0,
+    visit:visitTgt?clamp(58-socN*0.5+(relGet(p.id,visitTgt.id)>60?12:0),0,75):0,
+    burgle:burgleTgt?clamp(40-cred*1.0+turfBonus+nightBonus,0,100):0,
+    homicide:killTgt?clamp(55+nightBonus+turfBonus,0,100):0,
     learn:(schoolStr&&food>40&&rest>35&&!p.sick)?clamp(18+cur*0.15+ind*0.1,0,45):0};
   const pw={
     eat:0.5+cau/100,sleep:0.5+cau/100,build:0.5+ind/100,
@@ -1817,8 +1880,11 @@ function scoreJobs(p){
     crime:(100-p.pers.intg)/100*(0.4+p.pers.imp/150),
     steal:(100-p.pers.intg)/100*(0.3+p.pers.imp/120),
     buygear:0.5+p.pers.ind/150,
+    visit:0.5+soc/100,
+    burgle:(100-p.pers.intg)/100*(0.35+p.pers.imp/120),
+    homicide:(100-p.pers.intg)/100*(0.25+p.pers.imp/110),
     learn:0.4+p.pers.amb/150+cur/200};
-  const sm={eat:1,sleep:1,build:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1,treat:1,substance:1,crime:1,steal:1,buygear:1,learn:1};
+  const sm={eat:1,sleep:1,build:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1,treat:1,substance:1,crime:1,steal:1,buygear:1,learn:1,visit:1,burgle:1,homicide:1};
   if(p.sched){const S=p.sched,hr=hourN();
     sm.sleep*=inWin(hr,S.sleepAt,S.wake)?1.9:(rest<18?0.7:0.12);
     sm.work*=inWin(hr,S.workStart,S.workEnd)?1.6:0.6;
@@ -1842,6 +1908,9 @@ function scoreJobs(p){
     {k:"steal",  mk:()=>stealTgt?{t:"steal",oid:stealTgt.id,prog:0}:null},
     {k:"buygear",mk:()=>gearStr?{t:"buygear",s:gearStr,prog:0}:null},
     {k:"learn",  mk:()=>schoolStr?{t:"learn",s:schoolStr,prog:0}:null},
+    {k:"visit",  mk:()=>visitTgt?{t:"visit",oid:visitTgt.id,prog:0}:null},
+    {k:"burgle", mk:()=>burgleTgt?{t:"burgle",oid:burgleTgt.id,prog:0,phase:0}:null},
+    {k:"homicide",mk:()=>killTgt?{t:"homicide",oid:killTgt.id,prog:0,phase:0}:null},
     {k:"idle",   mk:()=>{const w=randNear(p,5)||{x:p.px|0,y:p.py|0};return{t:"idle",until:ST.tick+RI(25,70),x:w.x,y:w.y}}}];
   if(p.cmd){const a=acts.find(x=>x.k===p.cmd);p.cmd=null;
     if(a){const cj=a.mk();
@@ -1872,6 +1941,9 @@ function jobLabel(p){
     case "treat":return "At the clinic";case "substance":return "Using";
     case "crime":return "Running a job";case "rob":return "Robbing someone";
     case "steal":return "Scoping a mark";
+    case "visit":return "Visiting";
+    case "burgle":return "Breaking in";
+    case "homicide":return "Stalking someone";
     case "buygear":return "Getting kitted out";
     case "learn":return "Studying";
     default:return "Idling"}}
@@ -2519,7 +2591,8 @@ function pawnTick(p){
           v.credits=(v.credits||0)-take;p.credits=(p.credits||0)+take;
           applyDrift(p,{intg:-1});
           // victim notices based on stress + awareness (30% base)
-          const catchBase=(0.30+(v.stress>50?0.15:0)+(relGet(p.id,v.id)<-20?0.15:0)-(night?0.12:0))*trMul(p,"street");
+          const isNight=lightLevel(hourN())>0.3;
+          const catchBase=(0.30+(v.stress>50?0.15:0)+(relGet(p.id,v.id)<-20?0.15:0)-(isNight?0.12:0))*trMul(p,"street");
           const caught=Math.random()<catchBase;
           if(caught){
             v.stress=Math.min(100,(v.stress||0)+18);
@@ -2536,6 +2609,91 @@ function pawnTick(p){
           else{
             float(p.px,p.py,"+"+take+"c","#c98bff");
             remember(p,"skimmed "+take+"c off "+v.name+" — clean")}
+          p.job=null;syncHUD()}}
+      break}
+    case "visit":{const o=ST.pawns.find(q=>q.id===j.oid);
+      if(!o||o===p||!o.home||o.hp<=0){p.job=null;break}
+      // go to the host's home; hang out there. Mutual social + relationship bump.
+      const hx=o.home.x0+RI(1,o.home.w-2),hy=o.home.y0+RI(1,o.home.h-2);
+      const r=gotoCell(p,hx,hy,0);
+      if(r==="fail"){p.job=null;break}
+      if(r==="arr"){j.prog++;if(j.prog>=44){
+        p.needs.socN=100;relAdj(p.id,o.id,5);relAdj(o.id,p.id,4);
+        const close=relGet(p.id,o.id)>=48;
+        addMod(p,"visited","Visited a friend",close?6:4,TPD*.4);
+        // if the host is home, they enjoy the company too
+        if(DIST(o.px,o.py,hx,hy)<6){o.needs.socN=Math.min(100,(o.needs.socN||0)+30);
+          addMod(o,"hosted","Had company over",close?6:4,TPD*.4);
+          if(close&&Math.random()<0.05)tryFormPartnership(p,o);}
+        remember(p,"spent time at "+o.name+"'s place");
+        p.job=null;}}
+      break}
+    case "burgle":{const v=ST.pawns.find(q=>q.id===j.oid);
+      if(!v||v===p||!v.home){p.job=null;break}
+      // break into the victim's HOME (not their person). Riskier + bigger score than pickpocketing.
+      const tx=v.home.x0+2,ty=v.home.y0+2;
+      const r=gotoCell(p,tx,ty,0);
+      if(r==="fail"){p.crimeCd=ST.tick+TPD;p.job=null;break}
+      if(r==="arr"){j.prog++;
+        // if the owner is HOME, this is far more likely to be caught (and can escalate)
+        const ownerHome=DIST(v.px,v.py,tx,ty)<4&&!v.sleeping;
+        if(j.prog>=40){
+          const take=clamp(RI(15,30),0,v.credits||0);
+          v.credits=(v.credits||0)-take;p.credits=(p.credits||0)+take;
+          applyDrift(p,{intg:-2});p.crimeCd=ST.tick+RI(TPD,TPD*2);
+          const isNight=lightLevel(hourN())>0.3;
+          const catchBase=(ownerHome?0.6:0.22)+(relGet(p.id,v.id)<-20?0.1:0)-(isNight?0.1:0);
+          if(Math.random()<catchBase){
+            v.stress=Math.min(100,(v.stress||0)+25);
+            relAdj(p.id,v.id,-55);ST.heat=(ST.heat||0)+12;
+            if(!v.grudgeTarget)v.grudgeTarget=p.id;     // burglary breeds a grudge
+            float(p.px,p.py,"BURGLED!","#ff2d95");
+            addMod(v,"burgled","Someone broke into my home",-14,TPD*.7);
+            remember(v,p.name+" broke into my home and took "+take+"c");
+            remember(p,"got made breaking into "+v.name+"'s place");
+            log(p.name+" broke into "+v.name+"'s home — and was seen.","warn");
+            chronicle&&chronicle(p.name+" burgled "+v.name+"'s home","crime");
+            for(const w of ST.pawns){if(w===p||w===v)continue;
+              if(DIST(w.px,w.py,p.px,p.py)<7){relAdj(w.id,p.id,-10);
+                remember(w,"saw "+p.name+" break into "+v.name+"'s home")}}
+          }else{
+            float(p.px,p.py,"+"+take+"c","#c98bff");
+            remember(p,"cleaned out "+take+"c from "+v.name+"'s place — ghost");}
+          p.job=null;syncHUD()}}
+      break}
+    case "homicide":{const v=ST.pawns.find(q=>q.id===j.oid);
+      if(!v||v===p||v.hp<=0){p.job=null;break}
+      // GATED, DARK, TELEGRAPHED. Stalk to the target's home, then a violent confrontation.
+      const tx=v.home?v.home.x0+2:(v.px|0),ty=v.home?v.home.y0+2:(v.py|0);
+      const r=gotoCell(p,tx,ty,1);
+      if(r==="fail"){p.killCd=ST.tick+TPD*2;p.job=null;break}
+      // telegraph: as the killer closes in, a warning float + the target grows fearful
+      if(j.phase===0&&DIST(p.px,p.py,v.px,v.py)<5){j.phase=1;
+        float(p.px,p.py,"!","#ff2d95");
+        addMod(v,"stalked","Felt watched",-6,TPD*.3);}
+      if(r==="arr"){j.prog++;
+        if(j.prog>=35){
+          p.killCd=ST.tick+TPD*4;
+          // the victim may survive if they're healthy/lucky — it's an attack, not an instakill
+          const lethal=Math.random()<0.6;
+          ST.heat=Math.min(100,(ST.heat||0)+30);
+          relAdj(p.id,v.id,-100);
+          float(p.px,p.py,lethal?"MURDER":"ATTACK!","#ff2d95");
+          for(const w of ST.pawns){if(w===p)continue;
+            if(DIST(w.px,w.py,p.px,p.py)<9){relAdj(w.id,p.id,-60);
+              w.stress=Math.min(100,(w.stress||0)+30);
+              if(!w.grudgeTarget&&(relGet(w.id,v.id)>20||areFamily(w,v)))w.grudgeTarget=p.id; // loved ones swear revenge
+              remember(w,"witnessed "+p.name+" attack "+v.name+" — horrifying")}}
+          if(lethal){
+            log("⚠ "+p.name+" murdered "+v.name+".","warn");
+            chronicle&&chronicle(p.name+" killed "+v.name,"crime");
+            killPawn(v,"was murdered by "+p.name);
+          }else{
+            damagePawn(v,RI(30,55));
+            log(p.name+" attacked "+v.name+" — they survived.","warn");
+            remember(v,p.name+" tried to kill me — I won't forget");
+            if(!v.grudgeTarget)v.grudgeTarget=p.id;
+          }
           p.job=null;syncHUD()}}
       break}
   }
@@ -2698,9 +2856,9 @@ function checkContextualHints(){
   // EXPANSION — first expansion petition
   if(ST.requests&&ST.requests.some(r=>r.kind==="expand"))
     hintOnce("expand","A resident is PETITIONING TO EXPAND their home — they've outgrown a cramped space and have the means. Fund it (or split the cost) and their home physically grows, with a lasting boost to their mood and loyalty. Deny it and they'll resent it.");
-  // ROBOTS — first automated store
-  if([...ST.structs.values()].some(s=>s.roboStaffed))
-    hintOnce("robot","You AUTOMATED a store with a robot. Robots work around the clock and never quit, but they earn less than a happy human clerk and won't spend wages back into the block — and they wear out, needing repair. Best when you're short on people; humans are better when content.");
+  // STORES NEED STAFF — first time a store sits idle for lack of a worker
+  if([...ST.structs.values()].some(s=>s.idle&&DEF[s.type]&&DEF[s.type].vendor&&!DEF[s.type].selfRun))
+    hintOnce("staffstore","Stores now need a WORKER to earn — an unstaffed store (\u26A0) sits idle. Select a citizen, then click the store and ASSIGN them, or AUTOMATE it with a robot. Unstaffed commerce makes no money.");
 }
 
 /* ---------- events ---------- */
@@ -2995,8 +3153,14 @@ function tick(){ST.tick++;
       return Math.max(1,Math.round(base*mult));
     };
     for(const s of ST.structs.values()){if(s.bp||!DEF[s.type].vendor)continue;
-      // a robot-staffed store works 24/7 (reliable) but a broken robot is offline.
-      if(s.roboStaffed&&roboBroken(s))continue;   // broken robot → store offline, no sales
+      // STAFFING REQUIRED: a store only operates with a working robot OR an assigned human on
+      // site. Unstaffed → idle, earns nothing. Staffing is a real decision. (dealer self-runs.)
+      const robo=roboWorking(s);
+      if(s.roboStaffed&&roboBroken(s))continue;   // broken robot → offline
+      const clerk=robo?null:ST.pawns.find(p=>p.assigned===K(s.x,s.y)&&p.hp>0&&DIST(p.px,p.py,s.x,s.y)<3.5);
+      const selfRun=DEF[s.type].selfRun;
+      if(!robo&&!clerk&&!selfRun){s.idle=true;continue;}
+      s.idle=false;
       const sells=DEF[s.type].sells;
       let good=null;
       if(sells&&(ST.goods[sells]||0)>0)good=sells;
@@ -3014,10 +3178,9 @@ function tick(){ST.tick++;
       //  · a working ROBOT → reliable but flat, slightly BELOW an unstaffed baseline's potential
       //  · nobody → baseline
       let staffMul=1.0;
-      if(roboWorking(s))staffMul=0.85;          // robots: reliable, but skim less than a good clerk
-      else{const clerk=ST.pawns.find(p=>p.assigned===K(s.x,s.y)&&p.hp>0&&DIST(p.px,p.py,s.x,s.y)<3);
-        if(clerk&&(clerk.mood||50)>=55)staffMul=1.25;   // a happy human on the counter sells best
-        else if(clerk)staffMul=1.05;}
+      if(robo)staffMul=0.85;                       // robots: reliable, but skim less than a good clerk
+      else if(clerk)staffMul=(clerk.mood||50)>=55?1.25:1.05;  // a happy human on the counter sells best
+      else staffMul=0.7;                            // self-run (dealer): owner hustles, lower throughput
       const cut=Math.round(price*0.4*staffMul);
       ST.income+=cut;
       if(ILLEGAL[good])ST.heat=Math.min(100,(ST.heat||0)+2);
@@ -3884,6 +4047,12 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
     ctx.font="7px monospace";ctx.textAlign="center";
     ctx.fillStyle=roboBroken(s)?"#ff4757":"#7aa2ff";
     ctx.fillText("\u2699",X+4,Y+T-2);ctx.textAlign="left";
+  }
+  // idle store (needs a worker): pulsing amber "no staff" cue so the player can see it
+  if(!s.bp&&s.idle&&DEF[s.type]&&DEF[s.type].vendor&&!DEF[s.type].selfRun){
+    const pul=0.55+0.45*Math.sin(ST.tick*0.12);
+    ctx.globalAlpha=pul;ctx.fillStyle="#ffb454";ctx.font="bold 9px monospace";ctx.textAlign="center";
+    ctx.fillText("\u26A0",X+T/2,Y-3);ctx.globalAlpha=1;ctx.textAlign="left";
   }
   if(s.decon){ctx.strokeStyle="#ff3d5a";ctx.lineWidth=1.2;
     ctx.beginPath();ctx.moveTo(X+3,Y+3);ctx.lineTo(X+T-3,Y+T-3);
@@ -5398,6 +5567,7 @@ function renderInspectCore(){const el=$("inspect");
     // economy fixture info
     if(!e.bp&&(d.prod||d.refine||d.vendor)){
       const assignees=ST.pawns.filter(p=>p.assigned===K(e.x,e.y));
+      if(e.idle&&!DEF[e.type].selfRun)h+="<div class='sub' style='color:#ffb454'>\u26A0 IDLE — needs a worker or robot to earn</div>";
       h+="<div class='sub'>WORKER: "+(e.roboStaffed?("<span style='color:#7aa2ff'>ROBOT"+(roboBroken(e)?" — <span style=\"color:#ff4757\">BROKEN</span>":" ("+(e.roboHp|0)+"%)")+"</span>"):(assignees.length?assignees.map(p=>p.name).join(", "):"unassigned"))+"</div>";
       if(d.prod)h+="<div class='sub'>PRODUCES: "+d.prod.toUpperCase()+" (stock: "+(ST.goods[d.prod]||0)+")</div>";
       if(d.refine)h+="<div class='sub'>REFINES: "+d.refine.in.map(k=>k.toUpperCase()).join("+")+
@@ -5423,8 +5593,7 @@ function renderInspectCore(){const el=$("inspect");
       if(contracted.length)h+="<button class='tb' id='i-fire'>FIRE CONTRACTED</button>";
     }
     if(d.desc)h+="<div class='sub'>"+d.desc+"</div>";
-    if(e.bp)h+="<button class='tb' id='i-cancel'>CANCEL</button>";
-    else if(e.type==="scrap"||e.type==="cache")
+    if(e.type==="scrap"||e.type==="cache")
       h+="<button class='tb' id='i-salv'>"+(e.desig?"UNMARK":"SALVAGE")+"</button>";
     else if(e.type==="ruin"||d.cat==="b")
       h+="<button class='tb' id='i-decon'>"+(e.decon?"CANCEL DECON":"DECONSTRUCT")+"</button>";
@@ -5470,7 +5639,6 @@ $("inspect").addEventListener("click",e=>{
   else if(id==="i-roborepair"){
     const tgt=ST.sel.find(e=>e.kind!=="pawn");
     if(tgt&&repairRobo(tgt)){renderInspect();syncHUD()}}
-  else if(id==="i-cancel"&&sel&&sel.bp){cancelBp(sel);ST.sel=[];renderInspect()}
   else if(id==="i-salv"&&sel){sel.desig=!sel.desig;
     if(sel.desig)ST.flags.salv=true;renderInspect()}
   else if(id==="i-decon"&&sel){sel.decon=!sel.decon;renderInspect()}});
@@ -5696,7 +5864,7 @@ $("submenu").addEventListener("click",e=>{
   const card=e.target.closest("[data-tool]");
   if(card){SFX.ui();
     const dt=card.dataset.tool;
-    if(dt.startsWith("build:"))setTool({k:"build",type:dt.slice(6)});
+    if(dt.startsWith("build:")){setTool({k:"build",type:dt.slice(6)});closeSub();}  // dismiss menu so you can see/place
     else setTool({k:dt});
     refreshToolBtns();return;}
   const cmd=e.target.closest("[data-cmd]");

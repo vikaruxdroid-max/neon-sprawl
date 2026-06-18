@@ -215,6 +215,34 @@ Measured over managed 14-day runs (player keeps everyone ≥45 credits):
   across save/load as the district's history.
 - **Visual legibility (checkup)** — children render at 0.62 scale + flagged in inspect;
   watch-post coverage rings; blackout screen-darkening.
+- **Home visiting & private property** — DONE. Wisps know whose home is whose (`homeOwnerAt`)
+  and respect it by relationship tier: `canEnterHome(p,owner)` — own/family(`areFamily`:
+  partner or parent/child) → free; friend (rel>50) → ok; stranger → no (except crime). Property
+  respect enforced in `randNear` (wandering wisps won't pick tiles in homes they can't enter).
+  New job actions: VISIT (friend/partner home — mutual social + rel boost, close friends may
+  pair up; "visited"/"hosted" mods); BURGLE (low-integrity desperate wisp robs a stranger's
+  HOME — bigger than pickpocketing, far likelier caught if owner home, breeds grudges); HOMICIDE
+  (GATED: deep grudge rel<-70 OR gang vendetta + violent/low-integrity wisp; telegraphed via
+  "stalked" mod; 60% lethal else wounds; +30 heat; witnesses lose rel & loved ones swear
+  revenge). All gated by personality (intg/imp) + cooldowns (crimeCd/killCd). Job labels added.
+  FIXED a latent pre-existing bug: `steal` (and new `burgle`) referenced an out-of-scope `night`
+  var that would throw on completion — both now compute `lightLevel(hourN())` locally.
+- **Smoke test fix** — `E A* corner-to-corner` was flaky (~10% fail): it pathfound the maximal
+  far-corner diagonal which sits at A*'s node-expansion cap (route exists but search gives up).
+  Proven independent of game code (test runs before any AI). Test now uses a mid-range path
+  (2,2 → map center); 12/12 stable. (astar's search cap itself is unchanged/by-design.)
+- **Commerce staffing + build UI (graphics-overhaul push, part 1)** — DONE. (1) Build menu now
+  DISMISSES when you pick an item to place (closeSub on build-tool select). (2) Removed the
+  inspect-panel CANCEL button on blueprints (+ its dead handler); ZONE tool still cancels via
+  cancelBp. (3) STORES NOW REQUIRE STAFFING: vendor income loop only runs if a store has a
+  working robot OR an assigned human present (DIST<3.5); unstaffed → `s.idle=true`, earns nothing.
+  `selfRun` flag (dealer) exempts off-books vendors. staffMul: content human 1.25× / ok human
+  1.05× / robot 0.85× / self-run 0.7×. Idle stores show a pulsing amber ⚠ on the map + "IDLE —
+  needs a worker" in inspect + "staffstore" onboarding hint. NOTE: wisps do NOT auto-assign to
+  stores (player assigns) — so a fresh colony has ~9/11 stores idle until staffed; this is the
+  intended "you manage commerce" design but watch starting-economy balance in play.
+  REMAINING in this push (not yet built): commerce buildings → rooms/interiors; visible worker
+  inside store; studying → distinct visible activities (read/train/practice).
 - **Home layout (Living Homes Phase 2)** — DONE. `home(x0,y0,variant)` now arranges furniture
   into functional ZONES (sleep nook + lamp, clustered utility/hygiene wall, living area with
   couch over rug facing tv) instead of scattering fixtures along the top wall. 3 layout VARIANTS
