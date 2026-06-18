@@ -1,5 +1,42 @@
 # NEON SPRAWL — Colony Protocol · Developer Handoff
 
+## ★ END-GOAL VISION (LOCKED — the north star for all future work) ★
+A **clandestine grand-strategy game**: three genres fused by ONE verb — *clandestine influence* — at
+three zoom levels:
+- **Personal (RPG):** the operative/avatar (6 Operative Attributes), grows + persists across cities.
+- **City (social sim):** the full simulation that exists today — ONE city fully live at a time.
+- **World (4X by ESPIONAGE ONLY):** many cities competing via misinformation, sabotage, economic
+  leverage, cyberattacks, turning populations. NEVER armies. A war of shadows.
+
+**CORE TECHNICAL COMMITMENT — one live city at a time.** Running 4-6 full sims simultaneously is
+NOT feasible in a single-file browser game (perf + memory). Instead: the ACTIVE city runs the full
+sim as now; DORMANT neighbors are compressed SUMMARY state (population, regime grip, stability,
+economy, your influence, key NPCs, ongoing ops) advanced by a lightweight OFFSCREEN MODEL. You
+TRAVEL to a neighbor → its full sim is generated/restored from summary (same city system, fresh
+instance) and your home city goes dormant. The operative is the BRIDGE — moves between cities
+carrying stats/reputation. The fiction (a lone shadow-architect who travels) matches the constraint
+(one live city at a time) EXACTLY — the limitation IS the design.
+
+**Political world:** global oligarchy = overarching enemy controlling many cities, BUT cities have
+local flavor — some oligarch-held, some rival-faction-run, some independent. A varied map.
+
+**Stories:** a light AUTHORED spine (designed beats + named characters, hand-placed, keyed to world
+state) for memorable moments + PROCEDURAL story events (extending the storyteller) seeded by world
+state for replay. Authored for the spine; procedural for texture.
+
+**SEQUENCING CONTRACT (agreed):** finish + harden the SINGLE CITY first — creation screen → dialogue
+→ visuals → deep testing — before ANY world-layer work. Do not touch the world layer until the city
+is genuinely complete and fun. Three risks each get a dedicated DESIGN PASS before implementation
+when we get there: (1) the offscreen-city model (making dormant cities feel alive on return),
+(2) clean city state-swapping in/out of live ST with the operative persisting, (3) rival-faction AI
+that runs ops against you. The world is the cathedral; the city is the foundation — and it isn't
+done yet.
+
+**IMMEDIATE city-first work queue:** character-CREATION SCREEN (backend done, UI pending) → stat-
+gated DIALOGUE (opsCheck/ops built to feed it) → job/farming VISUALS + litter → deep testing/tuning.
+
+---
+
 ## ⚡ DIRECTION SHIFT (current arc): INSURRECTION SIM + DETECTIVE MERGE
 The player is the hidden architect of an underground movement vs. an oligarch regime that controls
 the governments/AI/world. NEW MERGE: investigation/detective layer — espionage IS detective work.
@@ -10,6 +47,21 @@ sim (Shadows of Doubt meets a colony sim), NOT a single-protagonist detective ga
 build order still open: Espionage(DONE) → Influence → Generational/education → Resource-leverage →
 endgame; detective layer interleaves (Layer 1 DONE below).
 
+- **Fullscreen + job clarity + AVATAR foundation** — DONE (partial push; creation-screen + visuals
+  still pending). (1) Fullscreen toggle button (⛶) in HUD controls, cross-browser. (2) Job clarity:
+  clicking a wisp now shows VOCATION + ASSIGNED-TO building + an inline unassign button (i-unassign
+  works from the pawn panel now, not just the building side). (3) THE AVATAR — a controllable special
+  pawn (`isAvatar`) with 6 OPERATIVE ATTRIBUTES (`ops{guile,insight,nerve,presence,tradecraft,
+  resolve}`, 0-10). `OPS_ATTRS`, `OPS_BACKGROUNDS` (5: analyst/fixer/defector/ideologue/ghost, each a
+  balanced stat spread), `OPS_POINT_BUDGET=4`. `mkAvatar(x,y,spec)` (committed: allegiance 100,
+  recruited leader, cyan accent), `theAvatar()`, `ops(p,k)` safe accessor, `opsCheck(attr,diff)`
+  (d10+stat). Spawned in newGame from `window.PENDING_AVATAR` spec (or default), auto-selected, given
+  a home. Distinct map marker (pulsing cyan ring + chevron). Inspect panel shows the 6 attributes +
+  background. STATS MATTER NOW: Guile→recruit success (+3%/pt), Tradecraft→intel baseline + exposure
+  shielding, Nerve→opsCheck on regime sweeps (composure blunts burns + cuts exposure). Persists via
+  snapPawn Object.assign; probe-verified (spawn/spec/save-load/stable). NEXT: character-CREATION
+  SCREEN (background pick + point-buy at new game), job/farming VISUALS, litter, then later the
+  stat-gated DIALOGUE that opsCheck/ops are built to feed.
 - **Furniture life-bar → inspect (UX)** — DONE. Removed the world-drawn HP bar for FURNITURE
   (kept for structural/defensive pieces where damage is tactical). Furniture condition now shows in
   the click/inspect panel as "QUALITY: <tier> · CONDITION: good/worn/failing (N%)" + owner. Cleaner
