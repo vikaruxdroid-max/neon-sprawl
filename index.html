@@ -1113,6 +1113,121 @@ function goToGround(){
   m.intel-=cost;m.exposure=Math.max(0,m.exposure-25);REG().awareness=Math.max(0,REG().awareness-15);
   log("The network goes quiet — exposure drops.","good");return true;
 }
+
+/* ═══════════ AVATAR OPERATIONS — the player's insurgent toolkit. Each op spends intel, rolls an
+   ops-check against the relevant stat, and applies consequences. HIGH RISK: failure spikes exposure +
+   regime awareness and can blow back hard. Success advances the cause but still leaves a trace. Running
+   ops GROWS the relevant stat over time (you get better at what you practice) and builds your district
+   REPUTATION (feared/respected), which colors how wisps react to you. */
+// op definitions: stat = which ops attribute, diff = base difficulty, cost = intel, target = needs a target?
+const AVATAR_OPS={
+  sabotage:  {name:"Sabotage Infrastructure", stat:"tradecraft", diff:13, cost:10, target:"utility",
+    desc:"Knock out a power or water building — blackout, chaos, a blow to the regime's grip. Failure means you're spotted."},
+  intel:     {name:"Gather Intel", stat:"insight", diff:11, cost:0, target:null,
+    desc:"Work your contacts and surveil the block. Success feeds your network intel. Failure tips off the regime."},
+  dissent:   {name:"Spread Dissent", stat:"presence", diff:12, cost:6, target:null,
+    desc:"Stir the block against the regime — raise support. A rousing op moves people; a clumsy one exposes you."},
+  frame:     {name:"Frame a Regime Asset", stat:"guile", diff:14, cost:14, target:"regime",
+    desc:"Plant evidence on a regime loyalist — turn the district against them, weaken their grip. The hardest, riskiest op."},
+};
+// reputation: -100 (feared/ruthless) .. +100 (beloved/respected). Built by op outcomes + their nature.
+function avatarRep(){const a=theAvatar();return a?(a.rep&&a.rep.district||0):0;}
+function adjAvatarRep(delta){const a=theAvatar();if(!a)return;a.rep=a.rep||{};a.rep.district=clamp((a.rep.district||0)+delta,-100,100);}
+// running an op trains the stat used (diminishing as it climbs toward 10)
+function trainOpStat(stat){const a=theAvatar();if(!a||!a.ops)return;
+  a.opXp=a.opXp||{};a.opXp[stat]=(a.opXp[stat]||0)+1;
+  const need=4+a.ops[stat]*2;                         // higher stats take more reps
+  if(a.opXp[stat]>=need&&a.ops[stat]<10){a.opXp[stat]=0;a.ops[stat]++;
+    log("Your "+stat.toUpperCase()+" sharpened to "+a.ops[stat]+" — practice pays.","good");
+    float(a.px,a.py,stat.toUpperCase()+" \u2191","#22ddff");}
+}
+// the unified op runner. opKey ∈ AVATAR_OPS, target = optional pawn/struct depending on the op.
+function runAvatarOp(opKey,target){
+  const op=AVATAR_OPS[opKey];if(!op)return false;
+  const m=M(),a=theAvatar();
+  if(!a){flashMsg&&flashMsg("No operative");return false;}
+  if((m.intel||0)<op.cost){flashMsg&&flashMsg("Need "+op.cost+" intel for this op");return false;}
+  // exposure makes ops harder — the more the regime suspects you, the riskier everything is
+  const expPenalty=Math.floor((m.exposure||0)/25);     // +0..4 to difficulty
+  const check=opsCheck(op.stat,op.diff+expPenalty);
+  m.intel-=op.cost;
+  trainOpStat(op.stat);                                // practice regardless of outcome
+  if(check.pass){
+    opSuccess(opKey,target,check);
+    // big successes (high margin) leave less trace
+    const trace=check.margin>=4?2:5;
+    m.exposure=clamp((m.exposure||0)+trace,0,100);
+    return true;
+  } else {
+    opFailure(opKey,target,check);
+    return false;
+  }
+}
+function opSuccess(opKey,target,check){
+  const m=M();
+  switch(opKey){
+    case "sabotage":{
+      if(target&&target.kind==="s"){
+        target.sabotaged=ST.tick+Math.floor(TPD*R(1.0,1.5));   // building offline 1-1.5 days (spans daily checks)
+        const util=DEF[target.type]&&DEF[target.type].utility;
+        if(util==="power"){ST.blackoutUntil=ST.tick+Math.floor(TPD*R(0.4,0.7));}
+        ST.heat=Math.min(100,(ST.heat||0)+8);
+        m.support=clamp((m.support||0)+6,0,100);              // a visible blow rallies people
+        REG().grip=Math.max(0,(REG().grip||60)-5);
+        log("\u2715 You sabotaged the "+DEF[target.type].name+" — "+(util==="power"?"the grid's down.":"the block runs dry.")+" The regime reels.","good");
+        banner("SABOTAGE","good");if(SFX&&SFX.alert)SFX.alert();
+        chronicle("You struck the "+DEF[target.type].name+" — "+util+" sabotage.","\u2715");
+        adjAvatarRep(-6);                                      // sabotage is feared, not loved
+      }
+      break;}
+    case "intel":{
+      const gain=RI(6,12)+Math.floor(check.margin/2);
+      m.intel+=gain;
+      log("\u25c6 Your operative worked the block — +"+gain+" intel.","good");
+      adjAvatarRep(2);
+      break;}
+    case "dissent":{
+      const gain=RI(5,10)+Math.floor(check.margin/2);
+      m.support=clamp((m.support||0)+gain,0,100);
+      // nearby wisps warm to the cause
+      const av=theAvatar();
+      if(av)for(const q of ST.pawns){if(q.isAvatar||isChild(q))continue;if(DIST(av.px,av.py,q.px,q.py)<8){q.allegiance=clamp((q.allegiance||0)+4,-100,100);}}
+      log("\u2687 You stirred the block — support +"+gain+".","good");
+      adjAvatarRep(5);                                          // championing people earns goodwill
+      break;}
+    case "frame":{
+      if(target&&target.kind==="pawn"){
+        target.framed=true;target.allegiance=clamp((target.allegiance||0)+30,-100,100); // discredited toward regime's enemies
+        REG().grip=Math.max(0,(REG().grip||60)-8);
+        m.support=clamp((m.support||0)+5,0,100);
+        // turn the block against the framed asset
+        for(const q of ST.pawns){if(q.id===target.id||isChild(q))continue;if(Math.random()<0.4)relAdj(q.id,target.id,-15);}
+        log("\u2624 You framed "+target.name+" — the block turns on a regime asset.","good");
+        banner("ASSET FRAMED","good");
+        chronicle("You framed "+target.name+", a regime loyalist.","\u2624");
+        adjAvatarRep(-4);
+      }
+      break;}
+  }
+}
+function opFailure(opKey,target,check){
+  const m=M();
+  // HIGH RISK: failure spikes exposure + awareness; a bad miss can trigger immediate regime attention
+  const sev=check.margin<=-4?"botched":"slipped";
+  const expHit=sev==="botched"?22:12;
+  m.exposure=clamp((m.exposure||0)+expHit,0,100);
+  REG().awareness=clamp((REG().awareness||0)+(sev==="botched"?14:7),0,100);
+  const opName=AVATAR_OPS[opKey].name;
+  if(sev==="botched"){
+    log("\u26a0 Your "+opName+" was BOTCHED — the regime's onto you. Exposure spikes.","bad");
+    banner("OP BOTCHED","bad");if(SFX&&SFX.alert)SFX.alert();
+    // a botched op near regime forces can draw an enforcer
+    const enf=ST.pawns.find(p=>p.role==="enforcer"&&p.hp>0);
+    if(enf&&theAvatar()&&Math.random()<0.5){enf.grudgeTarget=theAvatar().id;log("An enforcer marks you after the botched op.","warn");}
+  } else {
+    log("\u26a0 Your "+opName+" slipped — you weren't caught, but exposure rose.","warn");
+  }
+}
 /* ============================================================
    INVESTIGATION / CASES — the city generates mysteries; you solve them to earn intel and weaken
    the regime. Investigation IS espionage. Three case types:
@@ -4276,8 +4391,8 @@ function tick(){ST.tick++;
     // UTILITIES — power & water. When a staffed facility exists, the block runs clean. Without one,
     // residents suffer: no power drags mood, no water drags hygiene/health. Gives "unpowered" meaning.
     {const struts=[...ST.structs.values()];
-     const hasPower=struts.some(s=>!s.bp&&DEF[s.type]&&DEF[s.type].utility==="power"&&ST.pawns.some(p=>p.assigned===K(s.x,s.y)));
-     const hasWater=struts.some(s=>!s.bp&&DEF[s.type]&&DEF[s.type].utility==="water"&&ST.pawns.some(p=>p.assigned===K(s.x,s.y)));
+     const hasPower=struts.some(s=>!s.bp&&!(s.sabotaged>ST.tick)&&DEF[s.type]&&DEF[s.type].utility==="power"&&ST.pawns.some(p=>p.assigned===K(s.x,s.y)));
+     const hasWater=struts.some(s=>!s.bp&&!(s.sabotaged>ST.tick)&&DEF[s.type]&&DEF[s.type].utility==="water"&&ST.pawns.some(p=>p.assigned===K(s.x,s.y)));
      ST.utilPower=hasPower;ST.utilWater=hasWater;
      for(const q of ST.pawns){if(isChild(q))continue;
        if(!hasPower)addMod(q,"nopower","No power on the block",-4,TPD+50);
@@ -6066,6 +6181,23 @@ function paintTo(c){if(!PT.lastC){PT.lastC=c;paintCell(c.x,c.y);return}
   PT.lastC=c}
 
 function clickSelect(c){const p=pawnAt(c.wx,c.wy);
+  // AVATAR OP TARGETING: if we're picking a target for sabotage/frame, resolve it here
+  if(ST.opTargeting){
+    const opKey=ST.opTargetingOp;const need=ST.opTargeting;
+    if(need==="utility"){
+      const s=structAt(c.x,c.y);
+      if(s&&DEF[s.type]&&DEF[s.type].utility&&!s.bp){
+        s.kind="s";runAvatarOp(opKey,s);ST.opTargeting=null;ST.opTargetingOp=null;
+        ST.sel=ST.sel&&ST.sel[0]&&ST.sel[0].isAvatar?ST.sel:[theAvatar()].filter(Boolean);
+        renderInspect();syncHUD();return;
+      }else{flashMsg&&flashMsg("Not a power/water building — pick a utility, or tap the op again to cancel.");return;}
+    }else if(need==="regime"){
+      if(p&&!p.isAvatar&&!isChild(p)&&(p.regimeForce||p.informant||(p.allegiance||0)<-20)){
+        p.kind="pawn";runAvatarOp(opKey,p);ST.opTargeting=null;ST.opTargetingOp=null;
+        ST.sel=[theAvatar()].filter(Boolean);renderInspect();syncHUD();return;
+      }else{flashMsg&&flashMsg("Not a regime asset — pick a loyalist/enforcer/informant, or tap the op again to cancel.");return;}
+    }
+  }
   if(p){ST.sel=[p];renderInspect();return}
   const s=structAt(c.x,c.y);if(s){ST.sel=[s];renderInspect();return}
   ST.sel=[];renderInspect()}
@@ -7022,6 +7154,24 @@ function renderInspectCore(){const el=$("inspect");
         if(hr){const q=roomQuality(hr),qt=roomQTier(q);
           h+="<div class='sub'>HOME: <span style='color:"+qt.c+"'>"+qt.name+"</span> <span style='opacity:.6'>(quality "+q+")</span></div>";}}
       else if(e.homeless)h+="<div class='sub' style='color:#ff8c42'>HOMELESS \u2014 sleeping rough</div>";
+      // ── AVATAR OPERATIONS PANEL — your insurgent toolkit ──
+      if(e.isAvatar){
+        const m=M();const rep=avatarRep();
+        const repLbl=rep>40?"BELOVED":rep>10?"RESPECTED":rep<-40?"FEARED":rep<-10?"RUTHLESS":"UNKNOWN";
+        const repCol=rep>10?"#5cff9e":rep<-10?"#ff7a8c":"#8aa8c8";
+        h+="<div class='ordsec' style='color:#22ddff;margin-top:10px'>OPERATIONS</div>";
+        h+="<div class='sub' style='font-size:10px'>Intel <span style='color:#22ddff;font-weight:600'>"+(m.intel|0)+"</span> \u00b7 Exposure <span style='color:#ff5470;font-weight:600'>"+(m.exposure|0)+"</span> \u00b7 Rep <span style='color:"+repCol+";font-weight:600'>"+repLbl+"</span></div>";
+        if((m.exposure|0)>40)h+="<div class='sub' style='font-size:9px;color:#ff8c42'>\u26a0 High exposure \u2014 ops are riskier. Lie low to cool off.</div>";
+        h+="<div class='opsgrid' style='display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px'>";
+        for(const ok in AVATAR_OPS){const op=AVATAR_OPS[ok];
+          const afford=(m.intel||0)>=op.cost;
+          const lbl=op.name.replace(/^(Sabotage|Gather|Spread|Frame.*)/,(x)=>x).split(" ")[0];
+          h+="<button class='tb i-op' data-op='"+ok+"' title='"+op.desc+"' style='font-size:9px;padding:5px 4px;border-color:"+(afford?"rgba(34,221,255,.4)":"rgba(120,140,160,.25)")+";color:"+(afford?"#bfe8ff":"#6a7a8c")+"'>"+op.name.toUpperCase()+(op.cost?" ("+op.cost+")":"")+"</button>";
+        }
+        h+="</div>";
+        h+="<button class='tb' id='i-lielow' style='font-size:9px;padding:4px;margin-top:4px;border-color:rgba(122,162,255,.4);color:#aebfff'>\u25ad LIE LOW \u2014 reduce exposure (12 intel)</button>";
+        if(ST.opTargeting)h+="<div class='sub' style='font-size:10px;color:#ffd24a;margin-top:4px'>\u25c9 Select a "+(ST.opTargeting==='utility'?"power/water building":"regime asset")+" to "+ST.opTargetingOp+", or tap an op again to cancel.</div>";
+      }
     }
     else if(tab==="person"){
       if(e.child){const pn=(e.parents||[]).map(id=>{const pp=ST.pawns.find(x=>x.id===id);return pp?pp.name:null}).filter(Boolean);
@@ -7149,6 +7299,21 @@ $("inspect").addEventListener("click",e=>{
   if(tabBtn){SFX.ui&&SFX.ui();INSPECT_TAB=tabBtn.dataset.itab;renderInspect();return;}
   const ob=e.target.closest&&e.target.closest(".ob");
   if(ob){const s=ST.sel[0];if(s&&s.kind==="pawn"){SFX.ui();clearJob(s);s.job=null;s.cmd=ob.dataset.o;s.refusedOrder=false;renderInspect()}return}
+  // AVATAR OPERATIONS: op button clicked
+  const opBtn=e.target.closest&&e.target.closest(".i-op");
+  if(opBtn){const opKey=opBtn.dataset.op;const op=AVATAR_OPS[opKey];SFX.ui&&SFX.ui();
+    if(!op)return;
+    if(op.target){
+      // targeted op (sabotage/frame): toggle targeting mode — player then clicks a building/pawn
+      if(ST.opTargeting===op.target&&ST.opTargetingOp===opKey){ST.opTargeting=null;ST.opTargetingOp=null;}
+      else{ST.opTargeting=op.target;ST.opTargetingOp=opKey;
+        flashMsg&&flashMsg("Select a "+(op.target==="utility"?"power/water building":"regime asset")+" to "+opKey);}
+      renderInspect();
+    }else{
+      // direct op (intel/dissent): run it now
+      runAvatarOp(opKey,null);renderInspect();syncHUD();
+    }
+    return;}
   const id=e.target.id;if(!id)return;
   const sel=ST.sel[0];SFX.ui();
   if(id==="i-force"&&sel&&sel.kind==="pawn"){
@@ -7163,6 +7328,7 @@ $("inspect").addEventListener("click",e=>{
     renderInspect();syncHUD();return;
   }
   if(id==="i-talk"&&sel&&sel.kind==="pawn")openChat(sel);
+  else if(id==="i-lielow"){if(goToGround()){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
   else if(id==="i-back"&&sel&&sel.kind==="pawn"){if(proposeCandidate(sel.id)){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
   else if(id==="i-recruit"&&sel&&sel.kind==="pawn"){if(recruitWisp(sel)){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
   else if(id==="i-follow"&&sel&&sel.kind==="pawn"){

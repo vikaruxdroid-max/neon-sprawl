@@ -39,7 +39,49 @@ done yet.
 
 ## ⚡ LATEST STATE (read this first — reconciled from the live VM, June 2026) ⚡
 
-**HEALTH AUDIT + BALANCE FIXES + ELECTION VISUAL PRESENCE (most recent session):**
+**AVATAR OPERATIONS SYSTEM (most recent session — the big avatar-agency feature):**
+
+The player's avatar now has a full insurgent OPERATIONS toolkit — turning the avatar from a passive
+influencer (recruit/force/back-election) into an active protagonist. Design (Carlo): a toolkit of ops,
+HIGH-RISK (failure spikes exposure + can get you caught), WITH progression (stats grow with use + district
+reputation builds).
+
+- **The toolkit (`AVATAR_OPS`, 4 ops):**
+  - **Sabotage Infrastructure** (tradecraft, 10 intel, targets a power/water building): knocks the utility
+    offline for 1–1.5 days (`s.sabotaged=ST.tick+...`), triggers a blackout if power, +heat, +support,
+    −regime grip. The flagship insurgent strike. Reputation −6 (feared).
+  - **Gather Intel** (insight, free, no target): +6–12 intel. Rep +2.
+  - **Spread Dissent** (presence, 6 intel, no target): +support, nearby wisps warm to the cause. Rep +5
+    (championing people earns goodwill).
+  - **Frame a Regime Asset** (guile, 14 intel, targets a loyalist/enforcer/informant): plants evidence,
+    turns the block against them, −regime grip. Hardest/riskiest. Rep −4.
+- **The core runner (`runAvatarOp`):** spends intel, applies an EXPOSURE PENALTY to difficulty
+  (`Math.floor(exposure/25)` — the more suspected you are, the riskier everything is), rolls `opsCheck`,
+  branches to `opSuccess`/`opFailure`. Big-margin successes leave less trace.
+- **HIGH RISK (`opFailure`):** failure spikes exposure (+12, or +22 if botched) and regime awareness; a
+  botched op can draw an enforcer's grudge. Verified: spamming ops drove exposure to 64 over a day — the
+  tension is real, you can't just spam.
+- **PROGRESSION:** `trainOpStat` grows the used stat via `avatar.opXp` (need 4+stat*2 reps, harder as it
+  climbs, caps at 10) — "you get better at what you practice." District REPUTATION (`avatar.rep.district`,
+  −100 feared .. +100 beloved) shifts by op nature: sabotage/frame lower it (feared), dissent/intel raise
+  it. Shown as FEARED/RUTHLESS/UNKNOWN/RESPECTED/BELOVED.
+- **UI:** an OPERATIONS panel on the avatar's STATUS inspect tab — shows intel/exposure/reputation, the 4
+  op buttons (greyed if unaffordable), a LIE LOW button (reduce exposure), and a high-exposure warning.
+  Targeted ops (sabotage/frame) enter a TARGETING mode: the panel prompts you to click a building/asset on
+  the map, and `clickSelect` intercepts the click to run the op on that target (with validation — must be a
+  utility building / a regime asset). Non-target ops (intel/dissent) run on click.
+- **Sabotage hook:** the `hasPower`/`hasWater` utility computation (~line 4394) now also tests
+  `!(s.sabotaged>ST.tick)`, so a sabotaged building genuinely goes offline. NOTE the utility mood-effect
+  computation runs on a DAILY cadence (`ST.tick%TPD===0`), so sabotage duration was set to 1–1.5 days to
+  reliably span a daily check; the blackout effect (`ST.blackoutUntil`) is immediate regardless.
+- **Persistence:** `snapPawn`/`snapStruct` copy ALL fields (`Object.assign`), so `rep`/`opXp`/`framed` (on
+  pawns) and `sabotaged` (on structs) serialize automatically; `mov`/`regime` (intel/exposure/support) were
+  already saved. Targeting state (`ST.opTargeting`) resets on newGame. Validated: clean, no stuck-loops
+  (max 47t), all 4 ops work end-to-end, UI renders, progression + reputation + exposure all function.
+
+---
+
+## ⚡ HEALTH AUDIT + BALANCE (prior session) ⚡
 
 - **Broad health scan (economy / mood / population / disease over multi-day runs)** to find degenerate
   trends. Findings:
