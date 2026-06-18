@@ -10,6 +10,20 @@ sim (Shadows of Doubt meets a colony sim), NOT a single-protagonist detective ga
 build order still open: Espionage(DONE) → Influence → Generational/education → Resource-leverage →
 endgame; detective layer interleaves (Layer 1 DONE below).
 
+- **Furniture life-bar → inspect (UX)** — DONE. Removed the world-drawn HP bar for FURNITURE
+  (kept for structural/defensive pieces where damage is tactical). Furniture condition now shows in
+  the click/inspect panel as "QUALITY: <tier> · CONDITION: good/worn/failing (N%)" + owner. Cleaner
+  map.
+- **Storyteller events (ENGAGEMENT — the #1 fix)** — DONE. Beyond disasters, an insurrection-themed
+  decision-event system that interrupts the routine and forces a CHOICE (RimWorld's loop-breaker).
+  `STORY_EVENTS[]` (defector/cache/crackdown_warning/sympathizer_rally), each with `when()` gating +
+  `gen()` producing a 2-3 option dilemma that ripples through movement/regime/intel. `maybeStoryEvent`
+  (~18%/day, one at a time, early grace) rolled in disasterTick's 30-tick cadence. `activeEvent` +
+  `renderEventPanel` (centered modal w/ option buttons) + `resolveEvent`. Probe-verified: events fire,
+  resolve cleanly, all generators valid, no crash. NOTE: stubs.js gained document.addEventListener +
+  element.remove/setAttribute/dataset for the test harness; game listener is defensively guarded
+  (`typeof document!=="undefined"`). NEXT in this push: more visible job variety + the AVATAR
+  (embodied organizer the player directs).
 - **Audit (post-Layer-1)** — PASSED. Structural clean (no dead code/dupes, CSS+JS valid). 50-day
   organic run: cases fire from the homicide hook, 0 unsolvable (answer always in suspects), 0 clue
   overflow, no leak, no NaN, no crash. Save/load: 14-field round trip PERFECT incl. case clues +

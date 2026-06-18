@@ -3300,8 +3300,106 @@ function caravanTick(){
   }
 }
 /* ============================================================
-   DISASTERS — acute, telegraphed crises with systemic fallout
+   STORYTELLER — the engagement engine. Beyond disasters, the city throws INSURRECTION-THEMED
+   events at you that interrupt the routine and force a DECISION (RimWorld's proven loop-breaker).
+   Each event reads the sim state, presents 2-3 choices, and ripples through movement/regime/intel.
    ============================================================ */
+// active decision shown to the player; null when none. {id, title, body, opts:[{label,fn,hint}]}
+let activeEvent=null;
+const STORY_EVENTS=[
+  {
+    id:"defector", weight:1,
+    when:()=>ST.pawns.some(p=>!isChild(p)&&p.allegiance<-30&&!p.informant),
+    gen:()=>{const p=CH(ST.pawns.filter(q=>!isChild(q)&&q.allegiance<-30&&!q.informant));return{
+      title:"A Regime Loyalist Wavers",
+      body:p.name+" has been a regime loyalist — but word is they're disillusioned and might be turned. Approaching them is a risk: if they're not sincere, they could expose your interest.",
+      opts:[
+        {label:"Approach quietly (8 intel)",hint:"chance to flip them; risk exposure",fn:()=>{
+          if(M().intel<8){flashMsg("Not enough intel");return;}M().intel-=8;
+          if(Math.random()<0.55){p.allegiance=clamp(p.allegiance+50,-100,100);log(p.name+" was turned — a loyalist becomes a sympathizer.","good");}
+          else{M().exposure=clamp(M().exposure+10,0,100);log(p.name+" rebuffed the approach — and the regime may hear of it.","warn");}
+        }},
+        {label:"Leave them be",hint:"no risk, no gain",fn:()=>{log("You let the opportunity pass.","info");}},
+      ]};},
+  },
+  {
+    id:"cache", weight:1,
+    when:()=>true,
+    gen:()=>({
+      title:"An Anonymous Tip",
+      body:"A scrawled note names a location where the regime stashed supplies — credits, or intel on their operations. Acting on it means exposure if it's a trap.",
+      opts:[
+        {label:"Raid the cache",hint:"likely reward, small exposure risk",fn:()=>{
+          if(Math.random()<0.75){const gain=RI(12,25);M().intel+=gain;ST.income+=RI(20,50);log("The cache was real — +"+gain+" intel and credits seized.","good");}
+          else{M().exposure=clamp(M().exposure+12,0,100);log("It was bait — the regime was watching. Exposure spikes.","warn");}
+        }},
+        {label:"Ignore it",hint:"safe",fn:()=>{log("Too risky. You let it go.","info");}},
+      ]}),
+  },
+  {
+    id:"crackdown_warning", weight:1,
+    when:()=>M().exposure>40,
+    gen:()=>({
+      title:"Whispers of a Sweep",
+      body:"Your contacts warn the regime is preparing a surveillance sweep. You can spend resources to scatter the network now, or gamble that you'll weather it.",
+      opts:[
+        {label:"Scatter the network (15 intel)",hint:"cut exposure hard",fn:()=>{
+          if(M().intel<15){flashMsg("Not enough intel");return;}M().intel-=15;M().exposure=Math.max(0,M().exposure-30);REG().awareness=Math.max(0,REG().awareness-20);log("The network goes dark ahead of the sweep — exposure drops sharply.","good");
+        }},
+        {label:"Hold position",hint:"risk a sweep, but save resources",fn:()=>{log("You hold your nerve and keep the network in place.","info");}},
+      ]}),
+  },
+  {
+    id:"sympathizer_rally", weight:1,
+    when:()=>M().support>35,
+    gen:()=>({
+      title:"The Mood Shifts",
+      body:"Support for the cause is rising and people are restless. A show of defiance could swell your support — but it would draw the regime's eye.",
+      opts:[
+        {label:"Stage a quiet action",hint:"+support, +exposure",fn:()=>{M().support=clamp(M().support+8,0,100);M().exposure=clamp(M().exposure+6,0,100);log("A small act of defiance ripples through the block — support grows, but so does scrutiny.","good");}},
+        {label:"Keep heads down",hint:"steady, safe",fn:()=>{log("Now isn't the time. You keep the movement patient.","info");}},
+      ]}),
+  },
+];
+function maybeStoryEvent(){
+  if(activeEvent)return;                          // one at a time
+  if(ST.pawns.length<3||ST.tick<TPD*2)return;     // early grace
+  if(ST.tick%TPD>=30)return;                       // roll ~once/day
+  if(Math.random()>0.18)return;                    // ~18% daily
+  const elig=STORY_EVENTS.filter(e=>{try{return e.when();}catch(_){return false;}});
+  if(!elig.length)return;
+  // weighted pick
+  const total=elig.reduce((s,e)=>s+(e.weight||1),0);let r=Math.random()*total;
+  let pick=elig[0];for(const e of elig){r-=(e.weight||1);if(r<=0){pick=e;break;}}
+  const ev=pick.gen();ev.id=pick.id;
+  activeEvent=ev;
+  log("\u25C9 "+ev.title+" — a decision awaits (see the event panel).","warn");
+  banner&&banner(ev.title.toUpperCase(),"warn");
+  if(SFX&&SFX.alert)SFX.alert();
+  renderEventPanel();
+}
+function resolveEvent(optIdx){
+  if(!activeEvent)return;const opt=activeEvent.opts[optIdx];if(!opt)return;
+  try{opt.fn();}catch(e){console&&console.warn&&console.warn("event fn error",e);}
+  activeEvent=null;renderEventPanel();syncHUD();
+}
+function renderEventPanel(){
+  let el=document.getElementById("event-panel");
+  if(!activeEvent){if(el)el.remove();return;}
+  if(!el){el=document.createElement("div");el.id="event-panel";
+    el.style.cssText="position:fixed;left:50%;top:64px;transform:translateX(-50%);width:min(460px,92vw);background:rgba(8,14,28,.97);border:1px solid #ff5470;border-radius:8px;padding:14px 16px;z-index:60;box-shadow:0 6px 30px rgba(0,0,0,.7)";
+    document.body.appendChild(el);}
+  let h="<div style='color:#ff8da3;font-family:var(--disp);font-weight:700;font-size:15px;letter-spacing:.04em;margin-bottom:6px'>\u25C9 "+activeEvent.title+"</div>";
+  h+="<div style='color:var(--tx);font-size:12px;line-height:1.5;margin-bottom:10px'>"+activeEvent.body+"</div>";
+  h+="<div style='display:flex;flex-direction:column;gap:6px'>";
+  activeEvent.opts.forEach((o,i)=>{
+    h+="<button class='tb' data-event-opt='"+i+"' style='text-align:left;padding:8px 10px;font-size:12px'>"+o.label+(o.hint?"<span style='display:block;font-size:10px;opacity:.65;margin-top:1px'>"+o.hint+"</span>":"")+"</button>";});
+  h+="</div>";
+  el.innerHTML=h;
+}
+// delegated handler for event option clicks
+if(typeof document!=="undefined"&&document.addEventListener)document.addEventListener("click",e=>{const b=e.target.closest("[data-event-opt]");
+  if(b){SFX&&SFX.ui&&SFX.ui();resolveEvent(+b.dataset.eventOpt);}});
 // A disaster is announced (telegraph), then strikes after a delay unless mitigated.
 // ST.pendingDisaster = {kind, strikeAt, x, y, warned}
 function maybeScheduleDisaster(){
@@ -3512,7 +3610,7 @@ function tick(){ST.tick++;
   tickEmotes();
   tickTombstones();
   if(ST.tick>=ST.nextEv)fireEvent();
-  if(ST.tick%30===0)disasterTick();
+  if(ST.tick%30===0){disasterTick();maybeStoryEvent();}
   if(ST.tick%30===0)caravanTick();
   // passive crop growth — farm plots slowly yield food on their own (tended or not)
   if(ST.tick%200===0){
@@ -4424,7 +4522,7 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
       ctx.fillText(gi,X+T/2,Y+T/2+3);ctx.textAlign="left";ctx.globalAlpha=1;
       stampGlow("#7aa2ff",X+T/2,Y+T/2,T*.4,gg*.10);break;}
     }}
-  if(!s.bp&&s.hp<s.maxHp&&DEF[s.type].hp>1){
+  if(!s.bp&&s.hp<s.maxHp&&DEF[s.type].hp>1&&!isFurniture(s)){
     ctx.fillStyle="#08101e";ctx.fillRect(X+1,Y-4,T-2,3);
     const hpF=clamp(s.hp/s.maxHp,0,1);
     ctx.fillStyle=hpF>0.5?"#39ff88":hpF>0.25?"#ffc947":"#ff3d5a";
@@ -5989,6 +6087,13 @@ function renderInspectCore(){const el=$("inspect");
   else{const d=DEF[e.type];
     let h="<h3>"+d.name+"</h3>";
     if(e.bp)h+="<div class='sub'>BLUEPRINT — "+Math.floor(e.prog/e.need*100)+"% built</div>";
+    else if(isFurniture(e)){
+      // furniture: quality tier + condition as a detail line (no world life-bar)
+      const q=qualOf(e);const cond=clamp(e.hp/e.maxHp*100,0,100);
+      const condLbl=isBroken(e)?"<span style='color:#ff4757'>BROKEN</span>":cond>66?"good":cond>33?"worn":"<span style='color:#ffb454'>failing</span>";
+      h+="<div class='sub'>QUALITY: <span style='color:"+q.col+"'>"+q.name.toUpperCase()+"</span> · CONDITION: "+condLbl+" ("+Math.round(cond)+"%)</div>";
+      if(e.owner){const o=ST.pawns.find(p=>p.id===e.owner);if(o)h+="<div class='sub'>OWNER: "+o.name+"</div>";}
+    }
     else if(d.hp>1)h+=barHtml("INTEGRITY",e.hp/e.maxHp*100,"#39ff88");
     if(e.type==="pod"&&e.owner){const o=ST.pawns.find(p=>p.id===e.owner);
       h+="<div class='sub'>Assigned: "+(o?o.name:"—")+"</div>"}
