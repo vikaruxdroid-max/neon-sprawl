@@ -39,7 +39,58 @@ done yet.
 
 ## ⚡ LATEST STATE (read this first — reconciled from the live VM, June 2026) ⚡
 
-**AVATAR OPERATIONS SYSTEM (most recent session — the big avatar-agency feature):**
+**INFILTRATOR SYSTEMS — SPACING + DICE-AS-STORY + SECRETS + 5 NEW OPS (most recent, big session):**
+Carlo's vision: the avatar is the lone infiltrator who brings down the regime through subterfuge; make
+sessions organic via investigation + the dice as the engine of risk/consequence. Built in 4 validated
+stages:
+
+1. **WISP SPACING/SEPARATION (structural):** `separatePawns()` runs each tick after movement — a soft
+   boids-style push so wisps occupy personal space and don't stack (MIND=0.62 tiles). EXEMPTS sleepers (in
+   pods) and socializing pairs (`socWith` — they SHOULD stand close), and never pushes a wisp into a wall.
+   Kept subtle so it never fights A* pathing. VERIFIED: 0 overlapping pairs after a day, socializers stay
+   close (0.30), non-social get pushed to 0.62, no wall-clipping, no stuck-loops.
+2. **DICE-AS-STORY (the engine):** `opsCheck` now returns a BANDED outcome (`critfail`/`fail`/`partial`/
+   `success`/`critwin`) derived from margin + the raw d10 (natural 1 always ≥fumble, natural 10 always
+   ≥success — luck and skill each have a floor). Still returns `pass`/`margin`/`roll`/`die`/`stat` so old
+   callers are compatible. `runAvatarOp` branches on the band: crit = bonus + minimal trace; success =
+   clean; PARTIAL = it half-works but leaves a complication (the interesting new middle — e.g. a partial
+   sabotage = shorter outage + you were nearly seen); critfail = botched. Each band has its own exposure
+   cost. The roll SELECTS WHICH STORY you get, not just pass/fail.
+3. **SECRETS & INFORMATION (observe→leverage spine):** wisps carry discoverable dirt (`wispSecret()` —
+   informant/gang/affair/addiction/graft/framed). `surveil` op or a crit `intel` op reveals a wisp's secret
+   (`maybeSurfaceSecret`), marking it `secretKnown` + logging it to the avatar's `dossier`. A KNOWN secret
+   is leverage — it GATES the blackmail op. This is the two-act subterfuge loop: find the secret, then use
+   it. VERIFIED end-to-end: surveil → secret known → blackmail succeeds using it.
+4. **5 NEW OPS (the toolkit, now 9 total):** added `surveil` (insight, find a wisp's secret), `steal`
+   (tradecraft, skim regime funds → grip down + intel), `bribe` (guile, buy a wisp's loyalty/silence;
+   principled wisps may refuse + report), `blackmail` (presence, needs a known secret, coerce a wisp — turn
+   an informant, force compliance, they resent you), `assassinate` (nerve, diff 16, kills a regime figure
+   via `killPawn` → triggers the death/election cascade; partial = wounded + regime on full alert; the
+   ultimate feared act). Each has success/partial/fail branches. Target types: `utility` (buildings),
+   `regime` (loyalists/enforcers/informants), `anyPawn` (surveil/bribe/blackmail). The `clickSelect`
+   targeting flow handles all types + the blackmail secret-gate.
+
+- **UI:** the OPERATIONS panel (avatar status tab) now shows all 9 ops in a 2-col grid with short labels +
+  intel costs, a 🔒 lock on blackmail until you hold dirt on someone, the intel/exposure/reputation line, a
+  high-exposure warning, the LIE LOW button, and the targeting prompt. Verified: 9 buttons render, lock
+  shows correctly.
+- **Persistence:** all new state (`secretKnown`/`secret`/`bribed`/`coerced`/`dossier`/`opXp`/`rep`) lives on
+  pawns/avatar which `snapPawn` copies wholesale; `sabotaged` on structs via `snapStruct`. Fresh on newGame.
+- **Validation:** ALL TESTS PASS, no dead/dupe code, CSS balanced, render clean, spacing holds (0 overlaps),
+  no systemic stuck-loops (baseline 117t = a legit `learn` job; the game's own 140t stuck-detector handles
+  edge cases). All 9 ops tested end-to-end incl the observe→leverage chain and the assassination→election
+  cascade. NOTE on testing: a stale pawn reference after `killPawn` can confuse harness loops — re-fetch the
+  target each iteration (the kill path itself is correct).
+
+**DESIGN NOTE — where this goes next (Carlo's vision, still expanding):** the infiltrator loop is
+observe→leverage→act→reckon. Possible next: deepen the AI-narrated outcomes (each op result as a little
+story via the cheap model), make exposure/awareness feed back into what's AVAILABLE (high awareness =
+streets crawling, some ops locked), reputation gating which wisps will take a bribe, and a richer
+investigation layer feeding the secrets system. The bones are all in place.
+
+---
+
+## ⚡ AVATAR OPERATIONS (prior session — the original 4-op toolkit) ⚡
 
 The player's avatar now has a full insurgent OPERATIONS toolkit — turning the avatar from a passive
 influencer (recruit/force/back-election) into an active protagonist. Design (Carlo): a toolkit of ops,
