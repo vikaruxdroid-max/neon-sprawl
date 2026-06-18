@@ -2443,8 +2443,18 @@ function scoreJobs(p){
     {k:"burgle", mk:()=>burgleTgt?{t:"burgle",oid:burgleTgt.id,prog:0,phase:0}:null},
     {k:"homicide",mk:()=>killTgt?{t:"homicide",oid:killTgt.id,prog:0,phase:0}:null},
     {k:"idle",   mk:()=>{const w=randNear(p,5)||{x:p.px|0,y:p.py|0};return{t:"idle",until:ST.tick+RI(25,70),x:w.x,y:w.y}}}];
-  if(p.cmd){const a=acts.find(x=>x.k===p.cmd);p.cmd=null;
-    if(a){const cj=a.mk();
+  if(p.cmd){const wanted=p.cmd;const a=acts.find(x=>x.k===p.cmd);p.cmd=null;
+    // REFUSAL: a wisp with strong contrary pressure may refuse the order (the player can then FORCE).
+    // e.g. ordered to work while starving/exhausted, or a defiant low-allegiance wisp resisting.
+    let refuse=false;
+    if(wanted==="work"&&(p.needs.rest||100)<32&&(p.needs.rest||100)>=20&&(p.needs.food||100)>22&&Math.random()<0.5)refuse=true;  // too tired to want to work
+    else if((p.allegiance||0)<-25&&(p.pers.ind||50)>62&&Math.random()<0.4)refuse=true;        // defiant + independent
+    else if((p.stress||0)>78&&Math.random()<0.5)refuse=true;                                   // too frayed to comply
+    if(refuse&&!p.isAvatar){
+      p.refusedOrder=true;p.pendingForceCmd=wanted;
+      if(ST.sel&&ST.sel.includes(p))log(p.name+" refuses the order.","warn");
+      // fall through to normal autonomous behavior
+    }else if(a){const cj=a.mk();
       if(cj){if(cj.t==="build"&&cj.s)cj.s.res=p.id;return cj}}}
   let bestU=-1,bestMk=null;
   for(const a of acts){
@@ -3477,6 +3487,7 @@ const STORY_EVENTS=[
     id:"defector", weight:1,
     when:()=>ST.pawns.some(p=>!isChild(p)&&p.allegiance<-30&&!p.informant),
     gen:()=>{const p=CH(ST.pawns.filter(q=>!isChild(q)&&q.allegiance<-30&&!q.informant));return{
+      focusId:p.id,
       title:"A Regime Loyalist Wavers",
       body:p.name+" has been a regime loyalist — but word is they're disillusioned and might be turned. Approaching them is a risk: if they're not sincere, they could expose your interest.",
       opts:[
@@ -3562,14 +3573,22 @@ function renderEventPanel(){
     document.body.appendChild(el);}
   let h="<div style='color:#ff8da3;font-family:var(--disp);font-weight:700;font-size:15px;letter-spacing:.04em;margin-bottom:6px'>\u25C9 "+activeEvent.title+"</div>";
   h+="<div style='color:var(--tx);font-size:12px;line-height:1.5;margin-bottom:10px'>"+activeEvent.body+"</div>";
+  // VIEW button — jump the camera to the wisp this event is about (if any)
+  if(activeEvent.focusId){const fp=ST.pawns.find(p=>p.id===activeEvent.focusId);
+    if(fp)h+="<button class='tb' id='ev-view' style='margin-bottom:8px;font-size:11px;border-color:rgba(34,221,255,.5);color:#22ddff'>\u25C9 VIEW "+fp.name+"</button>";}
   h+="<div style='display:flex;flex-direction:column;gap:6px'>";
   activeEvent.opts.forEach((o,i)=>{
     h+="<button class='tb' data-event-opt='"+i+"' style='text-align:left;padding:8px 10px;font-size:12px'>"+o.label+(o.hint?"<span style='display:block;font-size:10px;opacity:.65;margin-top:1px'>"+o.hint+"</span>":"")+"</button>";});
   h+="</div>";
   el.innerHTML=h;
 }
-// delegated handler for event option clicks
-if(typeof document!=="undefined"&&document.addEventListener)document.addEventListener("click",e=>{const b=e.target.closest("[data-event-opt]");
+// delegated handler for event option clicks + the VIEW button
+if(typeof document!=="undefined"&&document.addEventListener)document.addEventListener("click",e=>{
+  const v=e.target.closest&&e.target.closest("#ev-view");
+  if(v&&activeEvent&&activeEvent.focusId){SFX&&SFX.ui&&SFX.ui();
+    const fp=ST.pawns.find(p=>p.id===activeEvent.focusId);
+    if(fp){ST.sel=[fp];if(typeof setFollow==="function")setFollow(fp);else{cam.x=fp.px*T-VW/cam.z/2;cam.y=fp.py*T-VH/cam.z/2;if(typeof clampCam==="function")clampCam();}renderInspect&&renderInspect();}return;}
+  const b=e.target.closest("[data-event-opt]");
   if(b){SFX&&SFX.ui&&SFX.ui();resolveEvent(+b.dataset.eventOpt);}});
 // A disaster is announced (telegraph), then strikes after a delay unless mitigated.
 // ST.pendingDisaster = {kind, strikeAt, x, y, warned}
@@ -5317,6 +5336,48 @@ function s2w(sx,sy){return{wx:sx/cam.z+cam.x,wy:sy/cam.z+cam.y}}
 function cellAt(sx,sy){const w=s2w(sx,sy);
   return{x:Math.floor(w.wx/T),y:Math.floor(w.wy/T),wx:w.wx,wy:w.wy}}
 function selPawns(){return ST.sel.filter(e=>e.kind==="pawn")}
+let INSPECT_TAB="status";   // which character-panel tab is active: status|person|ties|mind
+// wispThoughts — surfaces a wisp's inner state as short thoughts. Outliers + critical events + a
+// little mundane chatter. Each {txt, col}. Derived from the wisp's current state, no AI cost.
+function wispThoughts(p){
+  const out=[];const add=(txt,col)=>out.push({txt,col:col||"#9fb4d8"});
+  const mood=p.mood||50,stress=p.stress||0;
+  // EXTREMES (outliers) — strongest signals first
+  if(mood<18)add("Everything is falling apart. I can't keep doing this.","#ff6b6b");
+  else if(mood>82)add("Things are actually good right now. I could get used to this.","#5cff9e");
+  if(stress>80)add("My nerves are shot. One more thing and I'll snap.","#ff8da3");
+  if((p.needs.food||100)<15)add("I'm starving. I need to eat something, anything.","#ffb454");
+  if((p.needs.rest||100)<15)add("So tired. I can barely keep my eyes open.","#ffb454");
+  if(p.homeless)add("No bed tonight. Sleeping rough again — this isn't living.","#ff8c42");
+  if(p.sick)add("I feel awful. Burning up. I need a clinic.","#ff6b6b");
+  if((p.addiction||0)>50)add("I need a hit. I can't think about anything else.","#c98bff");
+  // CRITICAL EVENTS — recent strong memories
+  if(p.mem&&p.mem.length){const recent=p.mem.slice(-3);
+    for(const m of recent){const t=m.t||"";
+      if(/evicted/i.test(t)){add("Losing my place still stings. They threw me out like nothing.","#ff8c42");break;}
+      if(/robbed|lifting|pocket/i.test(t)&&/got|caught/i.test(t)){add("Someone took what was mine. I won't forget it.","#ff6b6b");break;}
+      if(/witnessed|attack|kill/i.test(t)){add("I saw something I can't unsee. It plays over and over.","#ff8da3");break;}
+    }}
+  // INSURRECTION state
+  if(p.recruited)add("I'm part of something now. The cause is bigger than any of us.","#5cff9e");
+  else if(p.informant)add("If they ever find out what I've told the regime... I can't think about it.","#ff5470");
+  else if((p.allegiance||0)>50)add("Something has to change in this city. Maybe I could help.","#5cff9e");
+  else if((p.allegiance||0)<-50)add("These agitators are going to get us all killed. Order matters.","#ff8da3");
+  // MUNDANE CHATTER — only if nothing pressing, and only sometimes (keeps it from being noise)
+  if(out.length===0){
+    const idx=(p.id+Math.floor(ST.tick/TPD))%6;   // stable-ish per day so it doesn't flicker
+    const chatter=[
+      "Another day on the block. Same as the last.",
+      "Wonder what's cooking at the market today.",
+      "Could use a drink and some quiet.",
+      "The neon never really lets you sleep, does it.",
+      "Keeping my head down. That's how you survive here.",
+      "One of these days I'll get out of this sprawl.",
+    ];
+    if(p.mood>40)add(chatter[idx],"rgba(159,180,216,.7)");
+  }
+  return out.slice(0,3);
+}
 function pawnAt(wx,wy){let best=null,bd=.8;
   for(const p of ST.pawns){const d=DIST(wx/T,wy/T,p.px,p.py);if(d<bd){bd=d;best=p}}return best}
 function setTool(t){TOOL=t;$("cancelTool").style.display=t?"block":"none";refreshToolBtns()}
@@ -5881,20 +5942,24 @@ function renderRequests(){
   const pending=ST.requests?ST.requests.filter(r=>r.status==="pending"):[];
   if(!pending.length){el.style.display="none";if(typeof refreshTaskBadge==="function")refreshTaskBadge();return}
   el.style.display="block";
-  let h='<div class="rq-hdr">AGENT REQUESTS</div>';
-  const now=ST.tick;
-  for(const r of pending){
-    const frac=(r.expires-now)/(r.expires-r.created);
-    const cls=frac<0.25?"rq-urgent":frac<0.5?"rq-warn":"";
-    const agent=ST.pawns.find(p=>p.id===r.agentId);
-    const col=agent?agent.accent:"var(--cy)";
-    h+="<div class='rq-card "+cls+"' data-rid='"+r.id+"'>";
-    h+="<div class='rq-name' style='color:"+col+"'>"+r.agentName+"</div>";
-    h+="<div class='rq-text'>"+r.text+"</div>";
-    h+="<div class='rq-opts'>";
-    r.options.forEach((opt,i)=>{
-      h+="<button class='tb' data-rid='"+r.id+"' data-oi='"+i+"'>"+opt.label+"</button>"});
-    h+="</div></div>"}
+  const collapsed=!!window.REQ_COLLAPSED;
+  let h='<div class="rq-hdr" id="rq-toggle" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">'
+    +'<span>AGENT REQUESTS ('+pending.length+')</span><span style="opacity:.6">'+(collapsed?"\u25B8":"\u25BE")+'</span></div>';
+  if(!collapsed){
+    const now=ST.tick;
+    for(const r of pending){
+      const frac=(r.expires-now)/(r.expires-r.created);
+      const cls=frac<0.25?"rq-urgent":frac<0.5?"rq-warn":"";
+      const agent=ST.pawns.find(p=>p.id===r.agentId);
+      const col=agent?agent.accent:"var(--cy)";
+      h+="<div class='rq-card "+cls+"' data-rid='"+r.id+"'>";
+      h+="<div class='rq-name' style='color:"+col+"'>"+r.agentName+"</div>";
+      h+="<div class='rq-text'>"+r.text+"</div>";
+      h+="<div class='rq-opts'>";
+      r.options.forEach((opt,i)=>{
+        h+="<button class='tb' data-rid='"+r.id+"' data-oi='"+i+"'>"+opt.label+"</button>"});
+      h+="</div></div>"}
+  }
   el.innerHTML=h;
   if(typeof refreshTaskBadge==="function")refreshTaskBadge();}
 
@@ -6077,6 +6142,7 @@ function applyRequest(rid,oi){
   renderRequests()}
 
 $("requests").addEventListener("click",e=>{
+  if(e.target.closest&&e.target.closest("#rq-toggle")){SFX.ui&&SFX.ui();window.REQ_COLLAPSED=!window.REQ_COLLAPSED;renderRequests();return;}
   const rid=e.target.dataset.rid;
   const oi=e.target.dataset.oi;
   if(rid&&oi!==undefined){SFX.ui();applyRequest(+rid,parseInt(oi))}});
@@ -6240,98 +6306,97 @@ function renderInspectCore(){const el=$("inspect");
     el.innerHTML="<h3>"+ST.sel.length+" RUNNERS</h3><div class='sub'>squad selected</div>";return}
   const e=ST.sel[0];
   if(e.kind==="pawn"){
+    const tab=INSPECT_TAB;
     let h="<h3 style='color:"+e.accent+"'>"+e.name+"</h3>";
-    h+="<div class='sub'>"+e.tr.map(t=>t.n).join(" · ")+"</div>";
-    h+=barHtml("HP",e.hp,"#39ff88");
-    h+=barHtml("FOOD",e.needs.food,"#b8ff5e");
-    h+=barHtml("REST",e.needs.rest,"#7aa2ff");
-    h+=barHtml("MOOD",e.mood,e.mood<25?"#ff4757":"#ffd84a");
-    // mood drivers — surface the biggest current contributors (the hidden math, made visible)
-    if(e.mods&&e.mods.length){
-      const active=e.mods.filter(md=>md.until>ST.tick&&md.l).slice().sort((a,b)=>Math.abs(b.v)-Math.abs(a.v)).slice(0,3);
-      if(active.length){h+="<div class='sub' style='font-size:10px;opacity:.85'>"+
-        active.map(md=>"<span style='color:"+(md.v>=0?"#39ff88":"#ff6b6b")+"'>"+(md.v>=0?"+":"")+Math.round(md.v)+" "+md.l+"</span>").join(" · ")+"</div>";}
-    }
-    h+="<div class='sub'>TASK: "+jobLabel(e)+"</div>";
-    // ROLE identity — show the named character's role + alignment prominently
-    if(e.role&&ROLES[e.role]){const R0=ROLES[e.role];
-      const alignCol=R0.align==="regime"?"#ff5470":R0.align==="insurgent"?"#5cff9e":"#ffd24a";
+    h+="<div class='sub'>"+e.tr.map(t=>t.n).join(" \u00b7 ")+"</div>";
+    if(e.isAvatar){h+="<div class='sub' style='border-left:2px solid #22ddff;padding-left:6px;margin:3px 0;color:#22ddff;font-weight:600'>YOUR OPERATIVE</div>";}
+    else if(e.role&&ROLES[e.role]){const R0=ROLES[e.role];
+      const alignCol=R0.align==="regime"?"#ff5470":R0.align==="insurgent"?"#5cff9e":"#ffd84a";
       const alignLbl=R0.align==="regime"?"REGIME":R0.align==="insurgent"?"INSURGENT LEVER":"CIVIC";
-      h+="<div class='sub' style='border-left:2px solid "+R0.accent+";padding-left:6px;margin:3px 0'>";
-      h+="<span style='color:"+R0.accent+";font-weight:600'>"+R0.title.toUpperCase()+"</span> · <span style='color:"+alignCol+";font-size:10px'>"+alignLbl+"</span>";
-      h+="<div style='font-size:10px;opacity:.7;margin-top:1px'>"+R0.desc+"</div></div>";}
-    // AVATAR: show your Operative Attributes
-    if(e.isAvatar){
-      const bg=OPS_BACKGROUNDS.find(b=>b.k===e.background);
-      h+="<div class='ordsec' style='margin-top:4px;color:#22ddff'>YOUR OPERATIVE"+(bg?" · "+bg.name:"")+"</div>";
-      h+="<div class='sub' style='display:flex;flex-wrap:wrap;gap:3px 10px'>";
-      for(const a of OPS_ATTRS){const v=ops(e,a.k);
-        const col=v>=8?"#5cff9e":v>=5?"#7aa2ff":"#8aa8c8";
-        h+="<span title='"+a.blurb+"'>"+a.name+" <span style='color:"+col+";font-weight:600'>"+v+"</span></span>";}
-      h+="</div>";
-    }
-    // job/assignment clarity: show where they're assigned + their vocation, with a quick unassign
-    if(!e.child){
-      const voc=vocationOf(e);
-      h+="<div class='sub'>VOCATION: <span style='color:#7aa2ff'>"+(voc&&voc.name?voc.name:"Laborer")+"</span></div>";
-      if(e.assigned){const as=ST.structs.get(e.assigned);
-        h+="<div class='sub'>ASSIGNED TO: <span style='color:#ffd84a'>"+(as?DEF[as.type].name:"—")+"</span>"
-          +" <button class='tb' id='i-unassign' style='font-size:9px;padding:2px 6px;margin-left:4px'>unassign</button></div>";}
-      else h+="<div class='sub' style='opacity:.7'>ASSIGNED TO: <span style='opacity:.6'>nothing (works where needed)</span></div>";
-    }
-    // home quality readout — surfaces the room mechanic
-    if(!e.child&&!e.homeless){const hr=homeRoom(e);
-      if(hr){const q=roomQuality(hr),qt=roomQTier(q);
-        h+="<div class='sub'>HOME: <span style='color:"+qt.c+"'>"+qt.name+"</span> <span style='opacity:.6'>(quality "+q+")</span></div>";}}
-    // child status — clear flag when inspecting a young wisp
-    if(e.child){const pn=(e.parents||[]).map(id=>{const pp=ST.pawns.find(x=>x.id===id);return pp?pp.name:null}).filter(Boolean);
-      h+="<div class='sub' style='color:#ffd84a'>CHILD"+(e.surname?" · "+e.surname:"")+(e.age!=null?" · age "+e.age:"")+(pn.length?" · child of "+pn.join(" & "):"")+"</div>";}
-    // glanceable identity: vocation · clique · gang (the deep systems at a glance)
-    {const bits=[];
-     if(e.career&&!e.child)bits.push("<span style='color:var(--cy)'>"+vocationOf(e).name+"</span>");
-     const c=cliqueOf(e);if(c)bits.push("<span style='color:#c98bff'>"+c.name+"</span>");
-     const g=pawnGang(e);if(g)bits.push("<span style='color:"+g.color+"'>"+g.name+"</span>");
-     if(bits.length)h+="<div class='sub'>"+bits.join(" · ")+"</div>";}
-    h+="<div class='sub'>CREDITS "+(e.credits|0)+(e.homeless?" · <span style='color:var(--rd)'>EVICTED</span>":"")+"</div>";
-    if(e.assigned){const as=ST.structs.get(e.assigned);h+="<div class='sub'>ASSIGNED: "+(as?DEF[as.type].name:"—")+"</div>";}
-    if(e.sick)h+="<div class='sub' style='color:var(--rd)'>INFECTED — needs a clinic</div>";
-    h+="<div class='sub'>STRESS "+(e.stress|0)+(e.addiction>0?" · ADDICTION "+(e.addiction|0):"")+(e.hasGear?" · <span style='color:#7aa2ff'>GEARED</span>":"")+"</div>";
-    if(e.rep&&(e.rep.city||e.rep.gang)){
-      const cR=e.rep.city|0,gR=e.rep.gang|0;
-      const cC=cR<-20?"var(--rd)":cR>20?"var(--gn)":"var(--dim)";
-      const gC=gR>20?"var(--mg)":gR<-10?"var(--rd)":"var(--dim)";
-      h+="<div class='sub'>CITY REP <span style='color:"+cC+"'>"+(cR>0?"+":"")+cR+"</span>"
-        +" · GANG <span style='color:"+gC+"'>"+(gR>0?"+":"")+gR+"</span></div>";}
-    h+="<div class='sub'>SAL "+e.sk.sal+" · BLD "+e.sk.bld+" · COOK "+e.sk.cook+" · SHT "+e.sk.sht+"</div>";
-    {const rels=relsOf(e);
-     if(rels.length){h+="<div class='ordsec'>TIES</div>";
-       for(const tie of rels.slice(0,5)){const v=tie.v,col=v>0?"#39ff88":"#ff4757";
-         const lbl=v>=50?"ally":v>=15?"warm":v<=-50?"hostile":v<=-15?"rival":"·";
-         h+="<div class='sub' style='display:flex;justify-content:space-between;gap:8px'><span style='color:"+tie.o.accent+"'>"+tie.o.name+"</span><span style='color:"+col+"'>"+lbl+" "+(v>0?"+":"")+(v|0)+"</span></div>"}}}
-    if(e.mem&&e.mem.length)h+="<div class='sub' style='font-style:italic;opacity:.78'>\u201c"+e.mem[e.mem.length-1].t+"\u201d</div>";
-    // INSURRECTION: allegiance + recruitment
-    if(!isChild(e)){
-      const al=e.allegiance||0;
-      const alC=al>30?"#5cff9e":al<-30?"#ff5470":"var(--dim)";
-      const alLbl=e.informant?"REGIME INFORMANT":e.recruited?("CELL "+(e.cellRole||"member").toUpperCase()):
-        al>30?"sympathetic":al<-30?"loyalist":"undecided";
-      h+="<div class='sub'>ALLEGIANCE <span style='color:"+alC+"'>"+alLbl+"</span> ("+(al>0?"+":"")+Math.round(al)+")</div>";
-      if(!e.recruited&&!e.informant){
-        const pot=radicalPotential(e);
-        const ch=Math.round(clamp(0.3+pot/120,0.05,0.92)*100);
-        h+="<button class='tb' id='i-recruit' style='border-color:rgba(92,255,158,.4);color:#5cff9e'>\u270A RECRUIT (8 intel · "+ch+"%)</button>";
+      h+="<div class='sub' style='border-left:2px solid "+R0.accent+";padding-left:6px;margin:3px 0'><span style='color:"+R0.accent+";font-weight:600'>"+R0.title.toUpperCase()+"</span> \u00b7 <span style='color:"+alignCol+";font-size:10px'>"+alignLbl+"</span></div>";}
+    const tabs=[["status","STATUS"],["person","PERSON"],["ties","TIES"],["mind","MIND"]];
+    h+="<div style='display:flex;gap:2px;margin:6px 0 8px;border-bottom:1px solid rgba(120,160,200,.2)'>";
+    for(const tt of tabs){const on=tab===tt[0];
+      h+="<button class='tb' data-itab='"+tt[0]+"' style='flex:1;padding:4px 2px;font-size:9px;letter-spacing:.08em;border:none;border-bottom:2px solid "+(on?e.accent:"transparent")+";background:"+(on?"rgba(120,160,200,.08)":"transparent")+";color:"+(on?e.accent:"var(--dim)")+";border-radius:0'>"+tt[1]+"</button>";}
+    h+="</div>";
+    if(tab==="status"){
+      h+=barHtml("HP",e.hp,"#39ff88");
+      h+=barHtml("FOOD",e.needs.food,"#b8ff5e");
+      h+=barHtml("REST",e.needs.rest,"#7aa2ff");
+      h+=barHtml("HYGIENE",e.needs.hyg!=null?e.needs.hyg:60,"#5cffd0");
+      h+=barHtml("MOOD",e.mood,e.mood<25?"#ff4757":"#ffd84a");
+      if(e.mods&&e.mods.length){
+        const active=e.mods.filter(md=>md.until>ST.tick&&md.l).slice().sort((a,b)=>Math.abs(b.v)-Math.abs(a.v)).slice(0,3);
+        if(active.length)h+="<div class='sub' style='font-size:10px;opacity:.85'>"+active.map(md=>"<span style='color:"+(md.v>=0?"#39ff88":"#ff6b6b")+"'>"+(md.v>=0?"+":"")+Math.round(md.v)+" "+md.l+"</span>").join(" \u00b7 ")+"</div>";
       }
+      h+="<div class='sub'>TASK: "+jobLabel(e)+"</div>";
+      h+="<div class='sub'>CREDITS "+(e.credits|0)+(e.homeless?" \u00b7 <span style='color:var(--rd)'>EVICTED</span>":"")+"</div>";
+      h+="<div class='sub'>STRESS "+(e.stress|0)+(e.addiction>0?" \u00b7 ADDICTION "+(e.addiction|0):"")+(e.hasGear?" \u00b7 <span style='color:#7aa2ff'>GEARED</span>":"")+"</div>";
+      if(e.sick)h+="<div class='sub' style='color:var(--rd)'>INFECTED \u2014 needs a clinic</div>";
+      if(!e.child&&!e.homeless){const hr=homeRoom(e);
+        if(hr){const q=roomQuality(hr),qt=roomQTier(q);
+          h+="<div class='sub'>HOME: <span style='color:"+qt.c+"'>"+qt.name+"</span> <span style='opacity:.6'>(quality "+q+")</span></div>";}}
+      else if(e.homeless)h+="<div class='sub' style='color:#ff8c42'>HOMELESS \u2014 sleeping rough</div>";
     }
-    h+="<div class='ordsec'>DIRECT ORDERS</div><div class='ordgrid'>"+
-      "<button class='ob' data-o='work'><span>⚒</span>Work</button>"+
-      "<button class='ob' data-o='sleep'><span>☾</span>Rest</button>"+
-      "<button class='ob' data-o='eat'><span>⊕</span>Feed</button>"+
-      "<button class='ob' data-o='hygiene'><span>≈</span>Cleanse</button>"+
-      "<button class='ob' data-o='recreate'><span>◈</span>Wander</button>"+
-      "<button class='ob' data-o='socialize'><span>⚇</span>Commune</button></div>";
-    if(aiReady())h+="<button class='tb i-talk' id='i-talk'>◆ TALK</button>";
-    h+="<button class='tb' id='i-follow'>"+(cam.follow===e.id?"◉ FOLLOWING":"◎ FOLLOW")+"</button>";
-    h+="<button class='tb' id='i-profile'>☰ FULL PROFILE</button>";
+    else if(tab==="person"){
+      if(e.child){const pn=(e.parents||[]).map(id=>{const pp=ST.pawns.find(x=>x.id===id);return pp?pp.name:null}).filter(Boolean);
+        h+="<div class='sub' style='color:#ffd84a'>CHILD"+(e.surname?" \u00b7 "+e.surname:"")+(e.age!=null?" \u00b7 age "+e.age:"")+(pn.length?" \u00b7 child of "+pn.join(" & "):"")+"</div>";}
+      if(e.isAvatar){
+        const bg=OPS_BACKGROUNDS.find(b=>b.k===e.background);
+        h+="<div class='ordsec' style='color:#22ddff'>OPERATIVE"+(bg?" \u00b7 "+bg.name:"")+"</div>";
+        h+="<div class='sub' style='display:flex;flex-wrap:wrap;gap:3px 10px'>";
+        for(const a of OPS_ATTRS){const v=ops(e,a.k);const col=v>=8?"#5cff9e":v>=5?"#7aa2ff":"#8aa8c8";
+          h+="<span title='"+a.blurb+"'>"+a.name+" <span style='color:"+col+";font-weight:600'>"+v+"</span></span>";}
+        h+="</div>";
+      }
+      if(e.role&&ROLES[e.role])h+="<div class='sub' style='opacity:.8;font-style:italic'>"+ROLES[e.role].desc+"</div>";
+      if(!e.child){const voc=vocationOf(e);
+        h+="<div class='sub'>VOCATION: <span style='color:#7aa2ff'>"+(voc&&voc.name?voc.name:"Laborer")+"</span></div>";
+        if(e.assigned){const as=ST.structs.get(e.assigned);
+          h+="<div class='sub'>ASSIGNED TO: <span style='color:#ffd84a'>"+(as?DEF[as.type].name:"\u2014")+"</span> <button class='tb' id='i-unassign' style='font-size:9px;padding:2px 6px;margin-left:4px'>unassign</button></div>";}
+        else h+="<div class='sub' style='opacity:.7'>ASSIGNED TO: <span style='opacity:.6'>nothing (works where needed)</span></div>";}
+      h+="<div class='sub'>SKILLS: SAL "+e.sk.sal+" \u00b7 BLD "+e.sk.bld+" \u00b7 COOK "+e.sk.cook+" \u00b7 SHT "+e.sk.sht+"</div>";
+      if(e.pers){const P=e.pers;const pBit=(lbl,v)=>lbl+" <span style='color:"+(v>60?"#5cff9e":v<40?"#ff8da3":"#8aa8c8")+"'>"+Math.round(v)+"</span>";
+        h+="<div class='ordsec'>TEMPERAMENT</div><div class='sub' style='display:flex;flex-wrap:wrap;gap:3px 10px;font-size:10px'>"+pBit("Empathy",P.emp||50)+" \u00b7 "+pBit("Integrity",P.intg||50)+" \u00b7 "+pBit("Ambition",P.amb||50)+" \u00b7 "+pBit("Caution",P.cau||50)+" \u00b7 "+pBit("Social",P.soc||50)+" \u00b7 "+pBit("Impulse",P.imp||50)+"</div>";}
+    }
+    else if(tab==="ties"){
+      if(!isChild(e)){const al=e.allegiance||0;
+        const alC=al>30?"#5cff9e":al<-30?"#ff5470":"var(--dim)";
+        const alLbl=e.informant?"REGIME INFORMANT":e.recruited?("CELL "+(e.cellRole||"member").toUpperCase()):al>30?"sympathetic":al<-30?"loyalist":"undecided";
+        h+="<div class='sub'>ALLEGIANCE <span style='color:"+alC+"'>"+alLbl+"</span> ("+(al>0?"+":"")+Math.round(al)+")</div>";}
+      {const bits=[];const c=cliqueOf(e);if(c)bits.push("<span style='color:#c98bff'>"+c.name+"</span>");
+       const g=pawnGang(e);if(g)bits.push("<span style='color:"+g.color+"'>"+g.name+"</span>");
+       if(bits.length)h+="<div class='sub'>"+bits.join(" \u00b7 ")+"</div>";}
+      if(e.rep&&(e.rep.city||e.rep.gang)){const cR=e.rep.city|0,gR=e.rep.gang|0;
+        const cC=cR<-20?"var(--rd)":cR>20?"var(--gn)":"var(--dim)";const gC=gR>20?"var(--mg)":gR<-10?"var(--rd)":"var(--dim)";
+        h+="<div class='sub'>CITY REP <span style='color:"+cC+"'>"+(cR>0?"+":"")+cR+"</span> \u00b7 GANG <span style='color:"+gC+"'>"+(gR>0?"+":"")+gR+"</span></div>";}
+      {const rels=relsOf(e);
+       if(rels.length){h+="<div class='ordsec'>TIES</div>";
+         for(const tie of rels.slice(0,7)){const v=tie.v,col=v>0?"#39ff88":"#ff4757";
+           const lbl=v>=50?"ally":v>=15?"warm":v<=-50?"hostile":v<=-15?"rival":"\u00b7";
+           h+="<div class='sub' style='display:flex;justify-content:space-between;gap:8px'><span style='color:"+tie.o.accent+"'>"+tie.o.name+"</span><span style='color:"+col+"'>"+lbl+" "+(v>0?"+":"")+(v|0)+"</span></div>";}}
+       else h+="<div class='sub' style='opacity:.6'>No notable relationships yet.</div>";}
+    }
+    else if(tab==="mind"){
+      const thoughts=wispThoughts(e);
+      if(thoughts.length){h+="<div class='ordsec'>ON THEIR MIND</div>";
+        for(const t of thoughts)h+="<div class='sub' style='color:"+t.col+";font-style:italic'>\u201c"+t.txt+"\u201d</div>";}
+      else h+="<div class='sub' style='opacity:.6'>Nothing pressing on their mind right now.</div>";
+      if(e.mem&&e.mem.length){h+="<div class='ordsec'>MEMORIES</div>";
+        for(const mm of e.mem.slice(-5).reverse())h+="<div class='sub' style='font-size:10px;opacity:.7'>\u00b7 "+mm.t+"</div>";}
+    }
+    if(!isChild(e)&&!e.recruited&&!e.informant){
+      const pot=radicalPotential(e);const ch=Math.round(clamp(0.3+pot/120,0.05,0.92)*100);
+      h+="<button class='tb' id='i-recruit' style='border-color:rgba(92,255,158,.4);color:#5cff9e;margin-top:6px'>\u270a RECRUIT (8 intel \u00b7 "+ch+"%)</button>";
+    }
+    if(e.refusedOrder){
+      h+="<button class='tb' id='i-force' style='border-color:rgba(255,84,112,.5);color:#ff8da3;margin-top:4px'>\u26a1 FORCE COMPLIANCE (10 intel)</button>";
+      h+="<div class='sub' style='font-size:9px;opacity:.6'>They refused. Forcing works but breeds resentment.</div>";
+    }
+    h+="<div class='ordsec'>DIRECT ORDERS</div><div class='ordgrid'><button class='ob' data-o='work'><span>\u2692</span>Work</button><button class='ob' data-o='sleep'><span>\u263e</span>Rest</button><button class='ob' data-o='eat'><span>\u2295</span>Feed</button><button class='ob' data-o='hygiene'><span>\u2248</span>Cleanse</button><button class='ob' data-o='recreate'><span>\u25c8</span>Wander</button><button class='ob' data-o='socialize'><span>\u2687</span>Commune</button></div>";
+    if(aiReady())h+="<button class='tb i-talk' id='i-talk'>\u25c6 TALK</button>";
+    h+="<button class='tb' id='i-follow'>"+(cam.follow===e.id?"\u25c9 FOLLOWING":"\u25ce FOLLOW")+"</button>";
+    h+="<button class='tb' id='i-profile'>\u2630 FULL PROFILE</button>";
     el.innerHTML=h}
   else if(e.kind==="foe"){
     el.innerHTML="<h3 style='color:"+e.col+"'>"+e.name+"</h3>"+
@@ -6384,10 +6449,24 @@ function renderInspectCore(){const el=$("inspect");
       h+="<button class='tb' id='i-decon'>"+(e.decon?"CANCEL DECON":"DECONSTRUCT")+"</button>";
     el.innerHTML=h}}
 $("inspect").addEventListener("click",e=>{
+  // character-panel tab switch
+  const tabBtn=e.target.closest&&e.target.closest("[data-itab]");
+  if(tabBtn){SFX.ui&&SFX.ui();INSPECT_TAB=tabBtn.dataset.itab;renderInspect();return;}
   const ob=e.target.closest&&e.target.closest(".ob");
-  if(ob){const s=ST.sel[0];if(s&&s.kind==="pawn"){SFX.ui();clearJob(s);s.job=null;s.cmd=ob.dataset.o;renderInspect()}return}
+  if(ob){const s=ST.sel[0];if(s&&s.kind==="pawn"){SFX.ui();clearJob(s);s.job=null;s.cmd=ob.dataset.o;s.refusedOrder=false;renderInspect()}return}
   const id=e.target.id;if(!id)return;
   const sel=ST.sel[0];SFX.ui();
+  if(id==="i-force"&&sel&&sel.kind==="pawn"){
+    // override a refused order at a cost: intel + resentment + allegiance pushback
+    if((M().intel||0)<10){flashMsg&&flashMsg("Need 10 intel to force compliance");return;}
+    M().intel-=10;sel.refusedOrder=false;
+    if(sel.pendingForceCmd){clearJob(sel);sel.job=null;sel.cmd=sel.pendingForceCmd;sel.pendingForceCmd=null;}
+    addMod(sel,"forced","Forced against my will",-12,TPD);
+    sel.allegiance=clamp((sel.allegiance||0)-8,-100,100);   // resentment hardens them against you
+    sel.stress=Math.min(100,(sel.stress||0)+10);
+    log("You forced "+sel.name+" to comply — they resent it.","warn");
+    renderInspect();syncHUD();return;
+  }
   if(id==="i-talk"&&sel&&sel.kind==="pawn")openChat(sel);
   else if(id==="i-recruit"&&sel&&sel.kind==="pawn"){if(recruitWisp(sel)){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
   else if(id==="i-follow"&&sel&&sel.kind==="pawn"){

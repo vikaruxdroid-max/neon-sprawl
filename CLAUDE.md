@@ -42,6 +42,31 @@ done yet.
   `ccStats/ccPointsUsed/ccRemaining/ccSyncName` helpers, wired in the #modal click handler
   (data-ccbg/ccinc/ccdec/cc-begin/cc-back). Default fallback intact if skipped. Probe-verified: base
   spreads, point math, 10-cap, bg-switch, full creation→spawn pipeline all correct.
+- **UI cluster + mechanics document** — DONE. (1) CHARACTER PANEL rebuilt into 4 TABS: STATUS (vital
+  bars + mood drivers + task/credits/stress), PERSON (operative attrs, role desc, vocation, skills,
+  TEMPERAMENT personality readout), TIES (allegiance, clique/gang, rep, relationships), MIND (thoughts
+  + memories). Tab state INSPECT_TAB; switch via data-itab buttons. Actions (recruit/orders/talk/follow)
+  always-visible below tabs. (2) wispThoughts(p) — surfaces inner state as thoughts: outliers (mood/
+  stress/needs extremes, homeless, sick, addiction), critical-event reactions (evicted/robbed/witnessed
+  violence from recent memories), insurrection stance, + some stable-per-day mundane chatter when calm.
+  Capped at 3, no AI cost. (3) FORCE COMPLIANCE button — appears when p.refusedOrder set; costs 10 intel
+  + adds resentment (mood -12, allegiance -8, stress +10). REFUSAL logic in scoreJobs: a wisp may refuse
+  a direct order if too tired (rest 20-32), defiant (allegiance<-25 + ind>62), or frayed (stress>78);
+  sets refusedOrder + pendingForceCmd. Avatar never refuses. Note: starving/exhausted intercepted by
+  chooseJob (eats/sleeps first) by design. (4) Event VIEW button — events with a focusId show a button
+  that jumps camera to the focal wisp (wired on the defector event; pattern reusable). (5) Collapsible
+  AGENT REQUESTS — header click toggles window.REQ_COLLAPSED, shows count + arrow. All validated: tabs
+  render 0-error for avatar/role/ordinary, thoughts never crash, refusal fires for stress/defiant,
+  requests collapse clean, stable 9-day run, bounds valid.
+  DOCUMENT: NEON_SPRAWL_Mechanics_Reference.docx — polished in-game reference (docx@9.6.1 at the global
+  path /home/claude/.npm-global/lib/node_modules/docx; npm registry BLOCKED so reference by abs path).
+  13 sections + TOC, 12 styled tables (US Letter, Arial, navy headings): overview, resources, vital
+  signs, temperament, operative (+attrs +backgrounds), insurrection (4 metrics + flow), investigation,
+  named roles (+regime-cast behavior), directing wisps (+tabs +force), buildings (production/civic/
+  utility), items/furniture, events/disasters/crime/housing, reading-the-game tips. Validated via
+  docx validate.py (340 paragraphs, all checks pass). gendoc.js is the generator. STILL PENDING from
+  the 25-item batch: emotion-clarity review, further music chill pass, utility-WORKER roles, camera
+  AUTO-pan (only the button was built), event-engages-avatar for ALL events (only cache wired so far).
 - **Fixes & balance batch (test-build hardening)** — DONE. (1) EVICTION SPIRAL fixed: rent lowered
   (28→11/day, crisis 42→16) + baseline SUBSISTENCE income (10/day employed-or-not, homeless 6) so the
   unemployed aren't doomed + 4-day debt grace with a warning at day 2 (was instant eviction). Result:
