@@ -679,7 +679,9 @@ const ST={
     awareness:0,      // regime's active investigation level (rises with exposure)
     lastSweep:0,      // last time the regime ran a crackdown sweep
     informants:[],    // pawn ids the regime has turned against you
-  }
+  },
+  cases:[],           // active investigations (murders, informant-hunts, conspiracies)
+  caseSeq:0           // monotonic id for cases
 };
 function dayN(){return Math.floor(ST.tick/TPD)+1}
 function hourN(){return ((ST.tick%TPD)/100+6)%24}   // day starts 06:00
@@ -863,11 +865,21 @@ function radicalPotential(p){
 function insurrectionTick(){
   const m=M(),reg=REG();
   const recruited=ST.pawns.filter(p=>p.recruited&&!isChild(p));
-  // INTEL: each recruited wisp quietly gathers a trickle; cells amplify it.
-  const intelGain=recruited.length*0.4+m.cells*0.6;
+  const adults=ST.pawns.filter(p=>!isChild(p));
+  // INTEL sources (layered so the loop can BOOTSTRAP from nothing):
+  //  · BASELINE: you're an operative — your own watching/listening yields a steady trickle even
+  //    with no network. This is what lets you afford your first recruit.
+  //  · SYMPATHIZERS: discontented, sympathetic wisps (not yet recruited) feed you scraps.
+  //  · NETWORK: recruited wisps and established cells are the real intel engine.
+  //  · staying "hidden" lets you gather more freely; going "open" trades intel for visible action.
+  const sympathizers=adults.filter(p=>!p.recruited&&!p.informant&&(p.allegiance||0)>15).length;
+  const baseline=1.2;                                  // ~1.2 intel/day from your own legwork
+  const fromSymp=sympathizers*0.15;                    // ambient scraps from sympathizers
+  const fromNet=recruited.length*0.5+m.cells*0.7;      // the network does the heavy lifting
+  const stanceMul=m.stance==="open"?0.6:1.0;           // open insurrection diverts effort from intel
+  const intelGain=(baseline+fromSymp+fromNet)*stanceMul;
   m.intel=Math.min(999,(m.intel||0)+intelGain);
   // SUPPORT drifts toward the share of the population that leans your way.
-  const adults=ST.pawns.filter(p=>!isChild(p));
   if(adults.length){
     const leanAvg=adults.reduce((s,p)=>s+(p.allegiance||0),0)/adults.length;
     const target=clamp(50+leanAvg*0.5+recruited.length*2,0,100);
@@ -882,7 +894,12 @@ function insurrectionTick(){
   reg.awareness=clamp(reg.awareness*0.96+m.exposure*0.05,0,100);
   if(reg.awareness>55&&ST.tick-reg.lastSweep>TPD*2){regimeSweep();reg.lastSweep=ST.tick;}
   // GRIP erodes as your support climbs and cells spread — the long game.
-  reg.grip=clamp(reg.grip+(40-m.support)*0.004-m.cells*0.02,0,100);
+  // GRIP erosion: the regime's hold weakens as your support and cell network grow. Tuned so a
+  // well-run movement (high support, several cells) can crack the regime in ~40-80 days, while a
+  // weak one barely dents it. Below 40% support the regime actually consolidates (grip rises).
+  const supPressure=(m.support-40)*0.03;     // +support above 40% erodes; below, regime regains
+  const cellPressure=m.cells*0.06;           // each established cell chips steadily
+  reg.grip=clamp(reg.grip-supPressure-cellPressure,0,100);
   // RECRUITMENT spread: recruited wisps slowly radicalize discontented neighbors.
   if(ST.tick%30===0&&recruited.length){
     for(const r of recruited){
@@ -944,6 +961,155 @@ function goToGround(){
   if((m.intel||0)<cost){flashMsg&&flashMsg("Need "+cost+" intel");return false;}
   m.intel-=cost;m.exposure=Math.max(0,m.exposure-25);REG().awareness=Math.max(0,REG().awareness-15);
   log("The network goes quiet — exposure drops.","good");return true;
+}
+/* ============================================================
+   INVESTIGATION / CASES — the city generates mysteries; you solve them to earn intel and weaken
+   the regime. Investigation IS espionage. Three case types:
+     · murder      — a wisp was killed; deduce the culprit (motive + proximity + witnesses)
+     · informant   — the regime turned someone; deduce which wisp is the mole
+     · conspiracy  — a regime operation is hidden in the district; deduce the agent/front
+   Clues are DERIVED from existing sim state (grudges, memory, allegiance, location), not invented.
+   ============================================================ */
+function caseById(id){return ST.cases.find(c=>c.id===id)||null;}
+function openCases(){return ST.cases.filter(c=>!c.resolved);}
+// open a MURDER case when a homicide occurs. culprit is known to the sim, hidden from the player.
+function openMurderCase(victim,culprit){
+  if(!victim||!culprit)return null;
+  // suspect pool: everyone with any plausible connection (a grudge, proximity, gang tie) + the culprit.
+  const pool=new Set([culprit.id]);
+  for(const p of ST.pawns){if(isChild(p)||p===victim||p.hp<=0)continue;
+    const hasGrudge=relGet(p.id,victim.id)<-30||p.grudgeTarget===victim.id;
+    const near=DIST(p.px,p.py,victim.px,victim.py)<18;
+    if(hasGrudge||near||pawnGang(p))pool.add(p.id);}
+  // cap the pool so it's solvable (3-6 suspects)
+  let suspects=[...pool].slice(0,6);
+  if(!suspects.includes(culprit.id)){suspects[suspects.length-1]=culprit.id;}
+  const c={
+    id:++ST.caseSeq, type:"murder", openedTick:ST.tick, openedDay:dayN(),
+    victimId:victim.id, victimName:victim.name,
+    answerId:culprit.id,                 // the hidden truth
+    suspects, clues:[], found:[],        // clues generated lazily; found = player-revealed
+    resolved:false, outcome:null, investedIntel:0,
+  };
+  // pre-generate the clue pool (revealed one at a time as the player investigates)
+  c.clues=genMurderClues(c,victim,culprit);
+  ST.cases.push(c);
+  log("\u2622 A body — "+victim.name+" was killed. A CASE is open (Investigations).","warn");
+  return c;
+}
+// build the clue set for a murder. Each clue points toward or away from suspects; the truth is
+// deducible by weighing them. Clues are tagged strength: a culprit accrues the most pointing clues.
+function genMurderClues(c,victim,culprit){
+  const clues=[];
+  const sus=c.suspects.map(id=>ST.pawns.find(p=>p.id===id)).filter(Boolean);
+  // MOTIVE clues — grudges toward the victim
+  for(const s of sus){const r=relGet(s.id,victim.id);
+    if(s.grudgeTarget===victim.id)clues.push({k:"motive",sid:s.id,w:3,t:s.name+" had a bitter, standing grudge against "+victim.name+"."});
+    else if(r<-50)clues.push({k:"motive",sid:s.id,w:2,t:s.name+" and "+victim.name+" were openly hostile."});
+    else if(r<-25)clues.push({k:"motive",sid:s.id,w:1,t:s.name+" had friction with "+victim.name+"."});}
+  // PROXIMITY clues — who was near the scene
+  for(const s of sus){const d=DIST(s.px,s.py,victim.px,victim.py);
+    if(d<6)clues.push({k:"proximity",sid:s.id,w:2,t:s.name+" was seen close to where "+victim.name+" fell."});
+    else if(d<14)clues.push({k:"proximity",sid:s.id,w:1,t:s.name+" was in the area around the time."});}
+  // GANG clue — vendetta context
+  const vg=pawnGang(victim);
+  for(const s of sus){const sg=pawnGang(s);
+    if(sg&&vg&&sg!==vg&&relGet(s.id,victim.id)<0)clues.push({k:"gang",sid:s.id,w:2,t:s.name+"'s crew had a vendetta with "+victim.name+"'s."});}
+  // WITNESS clue — someone may have actually seen it (strong, points right at the culprit)
+  const wit=ST.pawns.find(w=>w!==culprit&&w!==victim&&!isChild(w)&&(w.mem||[]).some(mm=>mm.t&&mm.t.includes(culprit.name)&&mm.t.includes("attack")));
+  if(wit)clues.push({k:"witness",sid:culprit.id,w:4,t:wit.name+" remembers seeing "+culprit.name+" attack "+victim.name+".",hard:true});
+  // a misleading clue: an innocent suspect with surface motive (red herring) — keeps it from being trivial
+  const herring=sus.find(s=>s.id!==culprit.id&&relGet(s.id,victim.id)<-25);
+  if(herring)clues.push({k:"redherring",sid:herring.id,w:1,t:herring.name+" was heard threatening "+victim.name+" recently — but talk is cheap."});
+  return clues;
+}
+// open an INFORMANT case: the regime has a mole; deduce who. answer = an actual informant.
+function openInformantCase(){
+  const moles=ST.pawns.filter(p=>p.informant&&!isChild(p));
+  if(!moles.length)return null;
+  const mole=CH(moles);
+  const pool=new Set([mole.id]);
+  // suspects: recruited wisps + low-allegiance wisps (plausible turncoats)
+  for(const p of ST.pawns){if(isChild(p)||p.hp<=0)continue;
+    if(p.recruited||(p.allegiance||0)<-10)pool.add(p.id);}
+  let suspects=[...pool].slice(0,6);
+  if(!suspects.includes(mole.id))suspects[suspects.length-1]=mole.id;
+  const c={id:++ST.caseSeq,type:"informant",openedTick:ST.tick,openedDay:dayN(),
+    answerId:mole.id,suspects,clues:[],found:[],resolved:false,outcome:null,investedIntel:0,
+    victimName:"the cause"};
+  c.clues=genInformantClues(c,mole);
+  ST.cases.push(c);
+  log("\u26A0 Intel suggests a regime INFORMANT in the network. Open a CASE to flush them out.","warn");
+  return c;
+}
+function genInformantClues(c,mole){
+  const clues=[];
+  const sus=c.suspects.map(id=>ST.pawns.find(p=>p.id===id)).filter(Boolean);
+  for(const s of sus){
+    if(s.id===mole.id){
+      clues.push({k:"behavior",sid:s.id,w:3,t:s.name+"'s movements don't match their stated loyalties."});
+      clues.push({k:"behavior",sid:s.id,w:2,t:s.name+" has been seen near regime checkpoints."});
+    }else if((s.allegiance||0)<-20){
+      clues.push({k:"redherring",sid:s.id,w:1,t:s.name+" is cold to the cause — but cold isn't the same as treacherous."});
+    }
+    if((s.allegiance||0)>40&&s.id!==mole.id)
+      clues.push({k:"loyalty",sid:s.id,w:-2,t:s.name+" is deeply committed — an unlikely traitor."});
+  }
+  return clues;
+}
+// PLAYER: spend intel to reveal the next clue in a case (canvass/surveil/investigate).
+function investigateCase(id){
+  const c=caseById(id);if(!c||c.resolved)return false;
+  const cost=6;
+  if((M().intel||0)<cost){flashMsg&&flashMsg("Need "+cost+" intel to investigate");return false;}
+  const remaining=c.clues.filter(cl=>!c.found.includes(cl));
+  if(!remaining.length){flashMsg&&flashMsg("No new leads — time to make an accusation.");return false;}
+  M().intel-=cost;c.investedIntel+=cost;
+  // reveal the strongest unrevealed clue first (investigation surfaces the clearest leads)
+  remaining.sort((a,b)=>Math.abs(b.w)-Math.abs(a.w));
+  const clue=remaining[0];c.found.push(clue);
+  log("Lead uncovered: "+clue.t,"info");
+  return clue;
+}
+// PLAYER: accuse a suspect. Correct → reward; wrong → consequence. Resolves the case.
+function accuseSuspect(caseId,suspectId){
+  const c=caseById(caseId);if(!c||c.resolved)return null;
+  const correct=suspectId===c.answerId;
+  c.resolved=true;c.outcome=correct?"solved":"wrong";
+  const accused=ST.pawns.find(p=>p.id===suspectId);
+  if(correct){
+    // solving a case is real intel + a support bump (the district sees you deliver justice / root out a mole)
+    M().intel=(M().intel||0)+15;M().support=clamp((M().support||0)+4,0,100);
+    if(c.type==="murder"){
+      log("\u2713 Case solved — "+(accused?accused.name:"the culprit")+" was the killer. The block trusts you more.","good");
+      chronicle&&chronicle((accused?accused.name:"A killer")+" exposed as "+c.victimName+"'s murderer","crime");
+      // the culprit faces justice — heavy rep hit + becomes a target
+      if(accused){relAdjAll(accused,-30);accused.exposed=true;}
+    }else if(c.type==="informant"){
+      log("\u2713 Mole flushed — "+(accused?accused.name:"the informant")+" was feeding the regime. Network secured.","good");
+      if(accused){accused.informant=false;accused.recruited=false;accused.allegiance=clamp((accused.allegiance||0)-40,-100,100);
+        const idx=REG().informants.indexOf(accused.id);if(idx>=0)REG().informants.splice(idx,1);}
+      M().exposure=Math.max(0,M().exposure-10);
+    }
+  }else{
+    // a wrong accusation costs you — the real culprit/mole is still loose, and you've burned credibility
+    M().support=clamp((M().support||0)-6,0,100);M().exposure=clamp((M().exposure||0)+8,0,100);
+    log("\u2717 Wrong call — "+(accused?accused.name:"they")+" wasn't guilty. The cause loses face, and the guilty stay free.","warn");
+    if(accused){relAdjAll(accused,-10);}  // you've wronged an innocent
+  }
+  return c.outcome;
+}
+// helper: adjust everyone's relationship toward a pawn (used for public disgrace)
+function relAdjAll(target,delta){for(const p of ST.pawns){if(p===target||isChild(p))continue;relAdj(p.id,target.id,delta);}}
+// daily: maybe surface an informant case if the regime has moles and none is being investigated.
+function caseTick(){
+  // auto-open an informant hunt occasionally when moles exist
+  if(ST.tick%TPD===0&&REG().informants.length>0&&!openCases().some(c=>c.type==="informant")&&Math.random()<0.25){
+    openInformantCase();
+  }
+  // expire very old unsolved cases (leads go cold) so the list doesn't bloat
+  for(const c of ST.cases){if(!c.resolved&&ST.tick-c.openedTick>TPD*12){c.resolved=true;c.outcome="cold";
+    log("A case went cold: "+(c.type==="murder"?c.victimName+"'s murder":"the informant hunt")+".","info");}}
 }
 // daily: clique loyalty effects + rivalry + group petitions
 function cliqueTick(){
@@ -1054,11 +1220,19 @@ function astar(sx,sy,gx,gy,opt){opt=opt||{};const adj=opt.adj?1:0;const cf=opt.f
   // heavy (but finite) cost to those tiles — they'll detour if any path exists, but won't get
   // stuck if the only route is through. The destination itself is exempt (going there on purpose).
   const tp=opt.pawn;
+  // PERF: precompute the few home rects this pawn may NOT enter, ONCE per path, instead of
+  // scanning every pawn's home on every neighbor expansion (was the A* hot-spot).
+  let forbidden=null;
+  if(tp){forbidden=[];
+    for(const q of ST.pawns){const h=q.home;if(!h||q===tp)continue;
+      if(!canEnterHome(tp,q))forbidden.push(h);}
+    if(!forbidden.length)forbidden=null;   // nothing off-limits → skip the check entirely
+  }
   const trespassCost=(X,Y)=>{
-    if(!tp)return 0;
+    if(!forbidden)return 0;
     if(X===gx&&Y===gy)return 0;            // the goal tile is an intended destination
-    const owner=homeOwnerAt(X,Y);
-    if(owner&&owner!==tp&&!canEnterHome(tp,owner))return 40;  // big detour incentive
+    for(let i=0;i<forbidden.length;i++){const h=forbidden[i];
+      if(X>=h.x0&&X<h.x0+h.w&&Y>=h.y0&&Y<h.y0+h.h)return 40;}
     return 0;
   };
   const open=new Heap();const gS=new Float32Array(MW*MH).fill(Infinity);
@@ -1387,9 +1561,13 @@ function mkChild(pa,pb,x,y){
     age:0,birthDay:dayN(),
     surname,
     parents:[pa.id,pb.id],child:true,
+    // INSURRECTION: colony-born children inherit a political lean from their parents — the seed of
+    // the generational long game (radicalized parents tend to raise radicalized kids).
+    allegiance:clamp(Math.round(((pa.allegiance||0)+(pb.allegiance||0))/2*0.6)+RI(-15,15),-100,100),
+    recruited:false, cellRole:null, informant:false, secret:null,
     mem:[{d:dayN(),h:hourN()|0,t:"born on this block — it's all I've ever known"}],
     homeless:false}}
-function isChild(p){return !!p.child;}
+function isChild(p){return !!(p&&p.child);}
 // count active (built, non-blueprint) structures of a given type
 function countBuilt(type){let n=0;for(const s of ST.structs.values())if(!s.bp&&s.type===type)n++;return n;}
 /* ============================================================
@@ -2894,6 +3072,7 @@ function pawnTick(p){
           if(lethal){
             log("⚠ "+p.name+" murdered "+v.name+".","warn");
             chronicle&&chronicle(p.name+" killed "+v.name,"crime");
+            openMurderCase(v,p);          // a mystery is born — investigate before the trail goes cold
             killPawn(v,"was murdered by "+p.name);
           }else{
             damagePawn(v,RI(30,55));
@@ -3430,6 +3609,7 @@ function tick(){ST.tick++;
     for(const p of ST.pawns)careerTick(p);
     cliqueTick();
     insurrectionTick();   // the movement vs. regime layer
+    caseTick();           // investigation/mystery layer
     ageTick();          // children grow toward adulthood
     tryConception();    // stable partnered pairs may have a child
     furnitureDecayTick(); // furniture slowly wears down, occasionally breaks
@@ -6101,6 +6281,37 @@ function renderCommandMenu(){
    h+="<button class='cmd-b' id='mv-stance'><span class='ci'>"+((m.stance==="open")?"⚑":"◑")+"</span>"+((m.stance==="open")?"Go Quiet":"Go Loud")+"<br><span style='font-size:8px;opacity:.7'>"+((m.stance==="open")?"hide the network":"open insurrection")+"</span></button>";
    h+="</div>";
   }
+  // ── INVESTIGATIONS — open cases, revealed clues, and actions ──
+  {const cases=openCases();
+   if(cases.length){
+     h+="<div class='ordsec' style='margin-top:6px'>INVESTIGATIONS</div>";
+     for(const c of cases){
+       const title=c.type==="murder"?("Murder of "+c.victimName):c.type==="informant"?"Regime informant hunt":"Conspiracy";
+       h+="<div class='cmd-sel' style='border-left:2px solid #ff5470;padding-left:6px;margin-bottom:4px'>";
+       h+="<div style='color:#ff8da3;font-weight:600'>\u2622 "+title+"</div>";
+       h+="<div style='opacity:.75;font-size:10px'>Opened day "+c.openedDay+" · "+c.found.length+"/"+c.clues.length+" leads · "+c.suspects.length+" suspects</div>";
+       // revealed clues
+       if(c.found.length){h+="<div style='margin-top:3px'>";
+         for(const cl of c.found){const col=cl.w<0?"#5cff9e":cl.k==="redherring"?"#ffd24a":"#cfe3ff";
+           h+="<div style='font-size:10px;color:"+col+";line-height:1.4'>• "+cl.t+"</div>";}
+         h+="</div>";}
+       else h+="<div style='font-size:10px;opacity:.6;font-style:italic'>No leads yet — investigate to uncover clues.</div>";
+       // actions: investigate (reveal next clue) + per-suspect accuse
+       const moreLeads=c.clues.length>c.found.length;
+       h+="<div style='display:flex;gap:4px;flex-wrap:wrap;margin-top:4px'>";
+       if(moreLeads)h+="<button class='tb' data-investigate='"+c.id+"' style='font-size:10px;padding:4px 8px;border-color:rgba(34,221,255,.4);color:#22ddff'>\u25C8 Investigate (6 intel)</button>";
+       h+="</div>";
+       // accuse — list suspects (only show once at least one lead is found)
+       if(c.found.length){
+         h+="<div style='margin-top:4px;font-size:9px;opacity:.7;letter-spacing:.1em'>ACCUSE:</div><div style='display:flex;gap:4px;flex-wrap:wrap;margin-top:2px'>";
+         for(const sid of c.suspects){const sp=ST.pawns.find(p=>p.id===sid);if(!sp)continue;
+           h+="<button class='tb' data-accuse='"+c.id+":"+sid+"' style='font-size:10px;padding:3px 7px;border-color:rgba(255,84,112,.35)'>"+sp.name+"</button>";}
+         h+="</div>";
+       }
+       h+="</div>";
+     }
+   }
+  }
   if(!sel.length){
     h+="<div class='cmd-sel'>No citizens selected. Tap a wisp on the map, marquee-drag to select several, or hit <b>SELECT ALL</b>.</div>";
     return h;}
@@ -6138,6 +6349,11 @@ $("submenu").addEventListener("click",e=>{
     renderInspect();return;}
   if(e.target.id==="cmd-all"){SFX.ui();ST.sel=ST.pawns.slice();renderInspect();syncHUD();renderSub();return;}
   if(e.target.closest("#mv-ground")){SFX.ui();goToGround();renderSub();syncHUD();return;}
+  {const inv=e.target.closest("[data-investigate]");
+   if(inv){SFX.ui();investigateCase(+inv.dataset.investigate);renderSub();syncHUD();return;}
+   const acc=e.target.closest("[data-accuse]");
+   if(acc){SFX.ui();const[cid,sid]=acc.dataset.accuse.split(":").map(Number);
+     accuseSuspect(cid,sid);renderSub();syncHUD();return;}}
   if(e.target.closest("#mv-stance")){SFX.ui();const m=ST.mov;m.stance=m.stance==="open"?"hidden":"open";
     log(m.stance==="open"?"The movement goes LOUD — open insurrection. Exposure will climb fast.":"The movement goes quiet — back to the shadows.",m.stance==="open"?"warn":"info");
     renderSub();syncHUD();return;}
@@ -6334,7 +6550,7 @@ function serializeState(){
     savedAt:Date.now(),
     gangs:(ST.gangs||[]).map(g=>({...g,turf:[...g.turf]})),
     stats:ST.stats,flags:ST.flags,milestones:ST.milestones||[],tierReached:ST.tierReached||1,contrabandPolicy:ST.contrabandPolicy||"crackdown",hintsSeen:ST.hintsSeen||{},pendingDisaster:ST.pendingDisaster||null,blackoutUntil:ST.blackoutUntil||0,caravan:ST.caravan||null,chronicle:CHRONICLE.slice(0,80),
-    mov:ST.mov,regime:ST.regime,
+    mov:ST.mov,regime:ST.regime,cases:ST.cases||[],caseSeq:ST.caseSeq||0,
     ter:Array.from(ST.ter),
     structs:[...ST.structs.values()].map(snapStruct),
     pawns:ST.pawns.map(snapPawn),
@@ -6347,11 +6563,19 @@ function applyState(d){
   ST.gangs=(d.gangs||[]).map(g=>({...g,turf:new Set(g.turf||[])}));
   ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];ST.tierReached=d.tierReached||1;ST.contrabandPolicy=d.contrabandPolicy||"crackdown";ST.hintsSeen=d.hintsSeen||{};ST.pendingDisaster=d.pendingDisaster||null;ST.blackoutUntil=d.blackoutUntil||0;ST.caravan=d.caravan||null;CHRONICLE.length=0;if(Array.isArray(d.chronicle))for(const e of d.chronicle)CHRONICLE.push(e);
   ST.mov=d.mov||{support:5,exposure:0,intel:0,cells:0,stance:"hidden",doctrine:null,foundedTick:0};
+  ST.cases=d.cases||[];ST.caseSeq=d.caseSeq||0;
   ST.regime=d.regime||{grip:60,awareness:0,lastSweep:0,informants:[]};
   ST.ter=new Uint8Array(d.ter||[]);
   ST.structs=new Map((d.structs||[]).map(s=>[K(s.x,s.y),s]));
   for(const s of ST.structs.values())if(DEF[s.type]&&DEF[s.type].furn&&s.qual===undefined)s.qual=1; // backfill furniture quality
   ST.pawns=(d.pawns||[]).map(p=>Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,unre:new Map()}));
+  // backfill insurrection fields for pawns from pre-insurrection saves
+  for(const p of ST.pawns){
+    if(typeof p.allegiance!=="number")p.allegiance=0;
+    if(p.recruited===undefined)p.recruited=false;
+    if(p.informant===undefined)p.informant=false;
+    if(p.cellRole===undefined)p.cellRole=null;
+  }
   for(const p of ST.pawns)if(!p.career)p.career=initCareer(p.sk||{},p.pers||{}); // backfill for pre-career saves
   for(const p of ST.pawns){ // backfill dynasty fields for pre-dynasty saves
     if(p.age===undefined)p.age=RI(19,46);
@@ -6452,6 +6676,7 @@ function newGame(){
   ST.stats={built:0,deaths:0};ST.milestones=[];ST.tierReached=1;
   ST.mov={support:5,exposure:0,intel:0,cells:0,stance:"hidden",doctrine:null,foundedTick:0};
   ST.regime={grip:60,awareness:0,lastSweep:0,informants:[]};
+  ST.cases=[];ST.caseSeq=0;
   setTimeout(showTutorialHints,500); // show after render
   ST.flags={};setTool(null);closeSub();
   genMap();drawTerrain();

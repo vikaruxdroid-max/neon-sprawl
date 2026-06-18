@@ -1,12 +1,62 @@
 # NEON SPRAWL — Colony Protocol · Developer Handoff
 
-## ⚡ DIRECTION SHIFT (current arc): becoming an INSURRECTION SIMULATOR
+## ⚡ DIRECTION SHIFT (current arc): INSURRECTION SIM + DETECTIVE MERGE
+The player is the hidden architect of an underground movement vs. an oligarch regime that controls
+the governments/AI/world. NEW MERGE: investigation/detective layer — espionage IS detective work.
+The city generates mysteries (murders, regime informants, conspiracies) and you SOLVE them to earn
+intel + weaken the regime. Clues are DERIVED from existing sim state (grudges=motive, position=
+proximity, memory/witnesses=testimony), not invented. Vibe: a god's-eye conspiracy-investigation
+sim (Shadows of Doubt meets a colony sim), NOT a single-protagonist detective game. Insurrection
+build order still open: Espionage(DONE) → Influence → Generational/education → Resource-leverage →
+endgame; detective layer interleaves (Layer 1 DONE below).
+
+- **Audit (post-Layer-1)** — PASSED. Structural clean (no dead code/dupes, CSS+JS valid). 50-day
+  organic run: cases fire from the homicide hook, 0 unsolvable (answer always in suspects), 0 clue
+  overflow, no leak, no NaN, no crash. Save/load: 14-field round trip PERFECT incl. case clues +
+  hidden answer; loaded case fully playable. Edge cases handled (dead suspect, resolved case, no-
+  mole, 0-intel all graceful). Perf: tick 0.54ms, render 1.19ms, caseTick 0.0002ms, A* short-path
+  ~0.09ms. Stability 6/6.
+- **Detective merge — Layer 1 (murder + informant cases)** — DONE. `ST.cases[]` + `ST.caseSeq`.
+  Case types: murder (`openMurderCase` — hooked into the lethal homicide branch; suspects = grudge-
+  holders + nearby + gang ties, capped 3-6; `genMurderClues` derives motive/proximity/gang/witness/
+  red-herring clues weighted toward the truth), informant (`openInformantCase` — deduce the regime
+  mole; auto-opens occasionally via caseTick when informants exist). Player loop: `investigateCase`
+  (spend 6 intel → reveal strongest unrevealed clue), `accuseSuspect` (correct → +15 intel +4
+  support, culprit exposed/mole cleared; wrong → −6 support +8 exposure). `caseTick` (daily) auto-
+  opens informant hunts + expires cold cases (>12 days). `relAdjAll` helper for public disgrace.
+  UI: INVESTIGATIONS panel in COMMAND menu (open cases, revealed clues color-coded, Investigate +
+  per-suspect Accuse buttons). Full serialize/restore + newGame reset. Probe-verified end-to-end +
+  stable. Intel now has a SINK (investigations) + SOURCE (solving) — closes the audit's "intel piles
+  up" gap. NEXT (Layer 2+): conspiracy cases, interrogation (AI dialogue → catch lies), evidence-
+  board UI, then finish insurrection phases (influence/generational/endgame).
+
 The player is the hidden architect of an underground movement vs. an oligarch regime that controls
 the governments/AI/world. Reframing the existing crime/gang conflict layer into intrigue/influence.
 Player fantasy: spymaster + revolutionary + generational long-game. Build order: Espionage(+regime
 skeleton, DONE) → Influence → Generational/education → Resource-leverage → full Goal/endgame.
 Regime pressure is the "cure"; player chooses to stay hidden or go loud.
 
+- **Full audit (pre-Phase-2)** — DONE. Structural sweep clean (no dead code, no dupes, 326 fns,
+  CSS balanced, JS compiles). Fixes from the audit:
+  1. **Intel bootstrap deadlock (critical)** — intel previously came ONLY from recruited wisps, but
+     you need intel to recruit → the loop couldn't start. Fixed: intel now layers a BASELINE (1.2/day
+     from your own legwork — bootstraps from nothing) + SYMPATHIZER scraps (sympathizers*0.15) +
+     NETWORK (recruited*0.5 + cells*0.7), ×0.6 if stance is "open". Verified: player makes first
+     recruit by ~day 10 now.
+  2. **Grip erosion too slow** — even a dominant movement took 148+ days to break the regime. Recalibrated:
+     `grip -= (support-40)*0.03 + cells*0.06`. Now solid play (70% support, 3 cells) cracks the regime
+     in ~51 days, strong (85%/5) in ~34, dominant (95%/7) in ~27; below 40% support the regime RECONSOLIDATES
+     (grip rises). Proper difficulty gradient.
+  3. **mkChild missing insurrection fields (bug)** — colony-born children had `allegiance:undefined`.
+     Fixed + made generational: children now INHERIT a political lean from parents
+     (avg*0.6 + jitter). Also backfill on load for pre-insurrection saves.
+  4. **isChild null-safety** — hardened `isChild(p)` to tolerate null/undefined (called in many hot paths).
+  5. **A* perf optimization** — A* called `homeOwnerAt` (loops all pawns) per tile examined. Now
+     precomputes the pawn's forbidden-home rects ONCE per path. Short paths (common case) ~0.075ms;
+     property-respect behavior unchanged (trespass still ~0%). tick() 0.27ms, render 1.2ms, daily
+     systems <0.02ms — all healthy.
+  Known non-issue: probe_final occasionally prints PROBLEM when an UNMANAGED colony collapses to 0
+  (crashed:false always) — seed variance, not a fault.
 - **Commerce auto-wrap** — DONE. `autoWrapStore(s)` (after placeRoom): when a player-placed
   vendor/refiner blueprint finishes, it auto-generates a 4×4 walled store around the counter
   (walls + south door + counter inside + a rug display fixture). DEFENSIVE: only builds on
