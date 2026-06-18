@@ -32,8 +32,29 @@ when we get there: (1) the offscreen-city model (making dormant cities feel aliv
 that runs ops against you. The world is the cathedral; the city is the foundation — and it isn't
 done yet.
 
-**IMMEDIATE city-first work queue:** character-CREATION SCREEN (backend done, UI pending) → stat-
-gated DIALOGUE (opsCheck/ops built to feed it) → job/farming VISUALS + litter → deep testing/tuning.
+**IMMEDIATE city-first work queue:** ~~character-CREATION SCREEN~~ (DONE) → stat-gated DIALOGUE
+(opsCheck/ops built to feed it) → job/farming VISUALS + litter → deep testing/tuning.
+
+- **Character-creation screen** — DONE. NEW DISTRICT now routes through `showCharCreate()` before
+  newGame: pick 1 of 5 backgrounds (live stat preview), distribute OPS_POINT_BUDGET(4) extra points
+  via +/- per attribute (capped 0-10, remaining counter), enter a codename. BEGIN sets
+  window.PENDING_AVATAR={name,bg,stats} → newGame spawns exactly that operative. `CC` working state,
+  `ccStats/ccPointsUsed/ccRemaining/ccSyncName` helpers, wired in the #modal click handler
+  (data-ccbg/ccinc/ccdec/cc-begin/cc-back). Default fallback intact if skipped. Probe-verified: base
+  spreads, point math, 10-cap, bg-switch, full creation→spawn pipeline all correct.
+- **Music → melancholy lofi + UI/GUI consistency pass** — DONE (this is the "proper test build").
+  MUSIC: the BGM is PROCEDURAL Web Audio synth (no audio file — can't generate/host one). Re-composed
+  the ambience engine from a dark sawtooth city-drone to melancholy lofi: soft TRIANGLE drone (was
+  sawtooth), Am9 warm sine pad as the soothing core, gentle vinyl-hiss (lowpass noise, was harsh
+  bandpass wind), the danger/intensity layer is now a LOW WARM SWELL (felt not heard, was a tense
+  sawtooth pulse), slower 2.2s glides. Dynamic layers kept but ALL chill — intensity adds warmth, never
+  harshness. UI: `.mbox` now `text-align:center` + `.big` buttons full-width block (modals/title/
+  creation now properly centered & consistent); creation BACK/BEGIN kept side-by-side with inline
+  styling. INFO (priority #1 = insurrection state): the COMMAND-menu MOVEMENT panel gained an ADAPTIVE
+  guidance line — reads the player's support/exposure/grip/intel/recruited state and tells them what it
+  means + what to do next (7 situational tips: high-exposure warning, recruit prompts, grip-cracking
+  encouragement, near-victory). Probe-verified: all panels render across all states, 0 errors, stable
+  5/5. NEXT: deeper info for cases/avatar/events (priorities 2-4), then job/farming visuals + litter.
 
 ---
 

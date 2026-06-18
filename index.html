@@ -37,8 +37,11 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 
 /* ── HUD (single unified bar) ── */
 #hud{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:0;
-  height:var(--hud-h);z-index:20;border-bottom:1px solid var(--bd);
+  height:var(--hud-h);z-index:20;border-bottom:1px solid var(--bd);overflow:visible;
   background:linear-gradient(180deg,rgba(2,8,22,.98) 0%,rgba(2,8,22,.82) 100%)}
+/* the right-hand controls must never get pushed off-screen; the middle content yields instead */
+#hud > .hud-seg:last-child{margin-left:auto;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;row-gap:2px}
+#hud .hud-goods{flex-shrink:1;min-width:0;overflow:hidden}
 .hud-seg{display:flex;align-items:center;gap:8px;padding:0 14px;height:100%;
   border-right:1px solid rgba(13,32,64,.8)}
 .hud-seg:last-child{border-right:none}
@@ -306,16 +309,16 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 .prosp-fill{display:block;height:100%;width:0%;border-radius:4px;
   background:linear-gradient(90deg,#ff3d5a,#ffc947 50%,#39ff88);transition:width .4s}
 .mbox{width:min(580px,92vw);max-height:88vh;overflow-y:auto;padding:26px 30px;
-  border:1px solid rgba(0,212,255,.25);background:rgba(4,10,22,.98);
+  border:1px solid rgba(0,212,255,.25);background:rgba(4,10,22,.98);text-align:center;
   box-shadow:0 0 60px rgba(0,212,255,.12);border-radius:10px}
 .mbox h1{margin:0;font-size:28px;letter-spacing:.3em;color:var(--cy);
   text-shadow:0 0 24px rgba(0,212,255,.7)}
 .mbox .mh-sub{color:var(--mg);letter-spacing:.45em;font-size:11px;margin:4px 0 16px}
 .mbox p{font-size:12px;line-height:1.65;color:#9fb4d8}
-.mbox table{font-size:11px;border-collapse:collapse;width:100%;margin:8px 0}
+.mbox table{font-size:11px;border-collapse:collapse;width:100%;margin:8px 0;text-align:left}
 .mbox td{padding:3px 6px;border-bottom:1px solid #0d1a30}
 .mbox td:first-child{color:var(--cy);white-space:nowrap}
-.mbox .big{padding:12px 24px;font-size:13px;letter-spacing:.2em;
+.mbox .big{display:block;width:100%;box-sizing:border-box;padding:12px 24px;font-size:13px;letter-spacing:.2em;
   border-color:var(--cy);color:var(--cy);margin-top:12px}
 .mbox .stat{color:#e8f6ff}
 
@@ -388,6 +391,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
     <span style="width:1px;background:var(--bd);height:20px;margin:0 4px"></span>
     <button class="tb" id="b-save" title="Save">💾</button>
     <button class="tb" id="b-load" title="Load">📂</button>
+    <button class="tb" id="b-fs" title="Fullscreen">⛶</button>
     <button class="tb" id="b-mute" title="Sound">🔊</button>
     <button class="tb" id="b-help" title="Help">?</button>
   </div>
@@ -504,56 +508,58 @@ const SFX=(()=>{let ac=null,mut=false;
       const a=ctx();if(!a)return;
       if(this._amb)return;
       const master=a.createGain();master.gain.value=mut?0:0.0;master.connect(a.destination);
-      // base drone: two detuned low oscillators through a gentle lowpass
-      const droneG=a.createGain();droneG.gain.value=0.5;
-      const lp=a.createBiquadFilter();lp.type="lowpass";lp.frequency.value=320;
-      const o1=a.createOscillator();o1.type="sawtooth";o1.frequency.value=55;
-      const o2=a.createOscillator();o2.type="sawtooth";o2.frequency.value=55*1.005;
+      // base drone: two softly-detuned LOW TRIANGLE oscillators (warm, rounded — no harsh sawtooth)
+      // tuned to A1 (~55Hz) as the tonal root for a melancholy A-minor feel
+      const droneG=a.createGain();droneG.gain.value=0.42;
+      const lp=a.createBiquadFilter();lp.type="lowpass";lp.frequency.value=420;
+      const o1=a.createOscillator();o1.type="triangle";o1.frequency.value=55;
+      const o2=a.createOscillator();o2.type="triangle";o2.frequency.value=55*1.004;
       o1.connect(droneG);o2.connect(droneG);droneG.connect(lp);lp.connect(master);
       o1.start();o2.start();
-      // a slow filtered-noise "wind/hiss" pad
+      // soft "vinyl hiss" — quiet lowpassed noise (lofi texture, not the old harsh bandpass wind)
       const nbuf=a.createBuffer(1,a.sampleRate*2,a.sampleRate);
-      const nd=nbuf.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
+      const nd=nbuf.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=(Math.random()*2-1)*0.5;
       const nsrc=a.createBufferSource();nsrc.buffer=nbuf;nsrc.loop=true;
-      const nfilt=a.createBiquadFilter();nfilt.type="bandpass";nfilt.frequency.value=600;nfilt.Q.value=0.7;
-      const nG=a.createGain();nG.gain.value=0.06;
+      const nfilt=a.createBiquadFilter();nfilt.type="lowpass";nfilt.frequency.value=2600;
+      const nG=a.createGain();nG.gain.value=0.025;
       nsrc.connect(nfilt);nfilt.connect(nG);nG.connect(master);nsrc.start();
-      // MUSIC LAYERS — each is a gated gain that fades in as intensity rises
+      // MUSIC LAYERS — each a gated gain that fades in as intensity rises. ALL warm/soft now.
       const mkLayer=(freqs,type,base,filtHz)=>{
         const lg=a.createGain();lg.gain.value=0;
         const f=a.createBiquadFilter();f.type="lowpass";f.frequency.value=filtHz||1200;
         f.connect(master);lg.connect(f);
         const oscs=freqs.map(fr=>{const o=a.createOscillator();o.type=type;o.frequency.value=fr;o.connect(lg);o.start();return o;});
         return{lg,base,oscs};};
-      // layer 1: warm pad chord (always comes in first)
-      const L1=mkLayer([110,164.81,220],"triangle",0.05,900);
-      // layer 2: a higher shimmer (mid intensity)
-      const L2=mkLayer([329.63,440,523.25],"sine",0.035,2200);
-      // layer 3: a tense pulse (high intensity / danger)
-      const L3=mkLayer([82.41,123.47],"sawtooth",0.05,500);
-      // slow LFO wobble on the drone filter for movement
-      const lfo=a.createOscillator();lfo.frequency.value=0.05;
-      const lfoG=a.createGain();lfoG.gain.value=80;lfo.connect(lfoG);lfoG.connect(lp.frequency);lfo.start();
+      // layer 1: Am9 warm pad (A-C-E-G-B feel) — the soothing core, comes in first. soft sine.
+      const L1=mkLayer([110,130.81,164.81,196],"sine",0.06,1100);
+      // layer 2: a gentle higher voicing (C-E-G, wistful shimmer) at mid intensity — triangle, soft
+      const L2=mkLayer([261.63,329.63,392],"triangle",0.03,1800);
+      // layer 3: a LOW WARM SWELL for "busy/danger" — adds depth & a touch of melancholy, never tension.
+      // (Dmin-ish low fifth: D-A) soft triangle, heavily filtered so it's felt more than heard.
+      const L3=mkLayer([73.42,110],"triangle",0.05,360);
+      // very slow LFO on the drone filter for gentle organic movement
+      const lfo=a.createOscillator();lfo.frequency.value=0.035;
+      const lfoG=a.createGain();lfoG.gain.value=55;lfo.connect(lfoG);lfoG.connect(lp.frequency);lfo.start();
       this._amb={master,lp,L1,L2,L3,o1,o2,intensity:0,night:0};
     },
     ambientSet(intensity,nightAmt){
       // intensity 0..1 (district activity+heat); nightAmt 0..1 (darkness)
       const A=this._amb;if(!A)return;const a=ac;if(!a)return;
-      const t=a.currentTime,glide=1.5;
+      const t=a.currentTime,glide=2.2;   // slower glides = calmer transitions
       A.intensity=intensity;A.night=nightAmt||0;
-      const overall=mut?0:0.16;
+      const overall=mut?0:0.15;
       A.master.gain.linearRampToValueAtTime(overall,t+glide);
-      // drone darkens at night
-      A.lp.frequency.linearRampToValueAtTime(260+ (1-(nightAmt||0))*220,t+glide);
-      // fade music layers in by threshold
+      // drone warms/mellows at night rather than darkening harshly
+      A.lp.frequency.linearRampToValueAtTime(360+(1-(nightAmt||0))*180,t+glide);
+      // fade music layers in by threshold (gentle warmth as things get busier — never harsh)
       const set=(L,on,target)=>L.lg.gain.linearRampToValueAtTime(mut?0:(on?target:0),t+glide);
-      set(A.L1,intensity>0.12,A.L1.base);
-      set(A.L2,intensity>0.42,A.L2.base);
-      set(A.L3,intensity>0.70,A.L3.base);
+      set(A.L1,intensity>0.10,A.L1.base);
+      set(A.L2,intensity>0.40,A.L2.base);
+      set(A.L3,intensity>0.68,A.L3.base);
     },
     ambientStop(){const A=this._amb;if(A&&A.master)try{A.master.gain.value=0}catch(e){}},
     toggleMute(){mut=!mut;
-      if(this._amb){try{this._amb.master.gain.value=mut?0:0.16}catch(e){}}
+      if(this._amb){try{this._amb.master.gain.value=mut?0:0.15}catch(e){}}
       return mut}
   }})();
 
@@ -873,7 +879,8 @@ function insurrectionTick(){
   //  · NETWORK: recruited wisps and established cells are the real intel engine.
   //  · staying "hidden" lets you gather more freely; going "open" trades intel for visible action.
   const sympathizers=adults.filter(p=>!p.recruited&&!p.informant&&(p.allegiance||0)>15).length;
-  const baseline=1.2;                                  // ~1.2 intel/day from your own legwork
+  const tradecraft=ops(theAvatar(),"tradecraft");
+  const baseline=1.2+(tradecraft-5)*0.12;             // your Tradecraft sharpens your own intel-gathering
   const fromSymp=sympathizers*0.15;                    // ambient scraps from sympathizers
   const fromNet=recruited.length*0.5+m.cells*0.7;      // the network does the heavy lifting
   const stanceMul=m.stance==="open"?0.6:1.0;           // open insurrection diverts effort from intel
@@ -887,7 +894,8 @@ function insurrectionTick(){
   }
   // EXPOSURE feeds regime awareness; staying "hidden" leaks slowly, "open" leaks fast.
   const leakRate=m.stance==="open"?1.4:0.3;
-  if(recruited.length)m.exposure=clamp((m.exposure||0)+recruited.length*0.04*leakRate,0,100);
+  const tcShield=clamp(1-(tradecraft-5)*0.06,0.5,1.3);   // high Tradecraft keeps the network quieter
+  if(recruited.length)m.exposure=clamp((m.exposure||0)+recruited.length*0.04*leakRate*tcShield,0,100);
   // natural cooldown if you lie low
   if(ST.tick%50===0&&m.stance==="hidden")m.exposure=Math.max(0,m.exposure-1.5);
   // REGIME awareness tracks exposure; high awareness → investigative sweeps.
@@ -913,10 +921,15 @@ function insurrectionTick(){
 function regimeSweep(){
   const reg=REG(),m=M();
   log("\u26A0 The regime is running a surveillance sweep — your network is exposed.","warn");
+  // YOUR NERVE under pressure: a successful composure check warns the cells in time, blunting the sweep.
+  const nerveCheck=opsCheck("nerve",12);
+  if(nerveCheck.pass){m.exposure=Math.max(0,m.exposure-8);
+    log("You kept your nerve and got word out — the network scatters ahead of the worst of it.","good");}
+  const sweepMul=nerveCheck.pass?0.6:1;   // composure reduces how many cells get burned
   const recruited=ST.pawns.filter(p=>p.recruited&&!isChild(p));
   // chance to burn each cell member scales with exposure
   for(const p of recruited){
-    const burnChance=clamp(m.exposure/180+(m.stance==="open"?0.12:0),0,0.5);
+    const burnChance=clamp((m.exposure/180+(m.stance==="open"?0.12:0))*sweepMul,0,0.5);
     if(Math.random()<burnChance){
       p.recruited=false;p.cellRole=null;
       p.allegiance=clamp((p.allegiance||0)-30,-100,100);
@@ -939,7 +952,8 @@ function recruitWisp(p){
   if((m.intel||0)<cost){flashMsg&&flashMsg("Need "+cost+" intel to attempt recruitment");return false;}
   m.intel-=cost;
   const pot=radicalPotential(p);
-  const chance=clamp(0.3+pot/120,0.05,0.92);
+  const guileBonus=(ops(theAvatar(),"guile")-5)*0.03;   // your Guile sways the pitch
+  const chance=clamp(0.3+pot/120+guileBonus,0.05,0.95);
   if(Math.random()<chance){
     p.recruited=true;p.allegiance=clamp((p.allegiance||0)+25,-100,100);
     p.cellRole=ST.pawns.filter(x=>x.recruited).length%4===0?"leader":"member";
@@ -1498,6 +1512,55 @@ function genMap(){
   genCity()}
 
 /* ---------- pawns ---------- */
+/* ============================================================
+   THE AVATAR — your embodied operative (a controllable pawn). Six OPERATIVE ATTRIBUTES gate
+   espionage/insurrection/investigation actions now, and will gate dialogue checks later.
+   ============================================================ */
+// the six attributes (0-10 scale). label + what they govern.
+const OPS_ATTRS=[
+  {k:"guile",     name:"Guile",     blurb:"deception, cover, misdirection"},
+  {k:"insight",   name:"Insight",   blurb:"reading people, spotting lies, deduction"},
+  {k:"nerve",     name:"Nerve",     blurb:"composure under pressure, courage"},
+  {k:"presence",  name:"Presence",  blurb:"charisma, command, inspiring loyalty"},
+  {k:"tradecraft",name:"Tradecraft",blurb:"surveillance, security, dead drops"},
+  {k:"resolve",   name:"Resolve",   blurb:"willpower, conviction, resistance"},
+];
+// backgrounds: a flavor origin + a base stat spread (sums to a fixed budget so they're balanced).
+const OPS_BACKGROUNDS=[
+  {k:"analyst",  name:"Ex-Intelligence Analyst", desc:"You read the regime from the inside before you turned. Sharp eyes, steady hands.",
+   stats:{guile:5,insight:8,nerve:4,presence:3,tradecraft:7,resolve:5}},
+  {k:"fixer",    name:"Street Fixer", desc:"You survived the sprawl by knowing everyone and owing no one. A natural operator.",
+   stats:{guile:8,insight:6,nerve:6,presence:6,tradecraft:4,resolve:3}},
+  {k:"defector", name:"Defected Official", desc:"You wore the regime's colors and walked away with its secrets. Commanding, but watched.",
+   stats:{guile:4,insight:5,nerve:5,presence:8,tradecraft:5,resolve:6}},
+  {k:"ideologue",name:"True-Believer Ideologue", desc:"You were radicalized young and never wavered. Unbreakable, if not subtle.",
+   stats:{guile:3,insight:4,nerve:7,presence:6,tradecraft:3,resolve:10}},
+  {k:"ghost",    name:"Deep-Cover Ghost", desc:"You've lived a dozen lives under a dozen names. No one really knows you — least of all the regime.",
+   stats:{guile:7,insight:5,nerve:6,presence:3,tradecraft:9,resolve:3}},
+];
+const OPS_POINT_BUDGET=4;   // extra points the player distributes after picking a background
+// create the avatar pawn from a creation spec {name, bg, stats}
+function mkAvatar(x,y,spec){
+  const p=mkPawn(x,y,"sal");
+  p.isAvatar=true;
+  p.name=(spec&&spec.name)||"The Operative";
+  p.ops=Object.assign({guile:5,insight:5,nerve:5,presence:5,tradecraft:5,resolve:5},(spec&&spec.stats)||{});
+  p.background=(spec&&spec.bg)||"fixer";
+  // the avatar is exempt from the regime's suspicion as an ordinary citizen; they're committed.
+  p.allegiance=100;p.recruited=true;p.cellRole="leader";
+  p.accent="#22ddff";          // distinct cyan — you on the map
+  p.mem=[{d:0,h:6,t:"this is where it begins — one block, one cell, the whole city to win"}];
+  return p;
+}
+// attribute accessor with a safe default for non-avatars (so checks never crash)
+function ops(p,k){return (p&&p.ops&&p.ops[k]!=null)?p.ops[k]:5;}
+function theAvatar(){return ST.pawns.find(p=>p.isAvatar)||null;}
+// a stat CHECK: roll against a difficulty, modified by the attribute. returns {pass, roll, margin}.
+function opsCheck(attr,difficulty){
+  const a=theAvatar();const stat=a?ops(a,attr):5;
+  const roll=RI(1,10)+stat;                 // d10 + attribute
+  return {pass:roll>=difficulty,roll,margin:roll-difficulty,stat};
+}
 function mkPawn(x,y,spec){const t1=CH(TRAITS);let t2=CH(TRAITS);while(t2===t1)t2=CH(TRAITS);
   const sk={sal:RI(0,5),bld:RI(0,5),cook:RI(0,5),sht:RI(1,6)};
   if(spec)sk[spec]=clamp(sk[spec]+4,0,10);
@@ -4837,7 +4900,14 @@ function drawPawn(p){
     ctx.fillStyle=hpCol;ctx.fillRect(X-8,Y+9,16*clamp(p.hp/100,0,1),3)}
   // name when selected
   if(sel){ctx.fillStyle=p.accent;ctx.font="bold 7px monospace";ctx.textAlign="center";
-    ctx.fillText(p.name.split(" ")[0],X,Y-20);ctx.textAlign="left"}}
+    ctx.fillText(p.name.split(" ")[0],X,Y-20);ctx.textAlign="left"}
+  // AVATAR marker — a pulsing cyan ring + a chevron above, so YOU are always findable
+  if(p.isAvatar){
+    const pul=0.5+0.35*Math.sin(ST.tick*0.1);
+    ctx.strokeStyle="#22ddff";ctx.globalAlpha=pul;ctx.lineWidth=1.6;
+    ctx.beginPath();ctx.arc(X,Y,11,0,7);ctx.stroke();ctx.globalAlpha=1;
+    ctx.fillStyle="#22ddff";ctx.beginPath();ctx.moveTo(X,Y-13);ctx.lineTo(X-4,Y-18);ctx.lineTo(X+4,Y-18);ctx.closePath();ctx.fill();
+  }}
 function toolColor(){if(!TOOL)return "#00e5ff";
   return TOOL.k==="salv"?"#ff9f2d":(TOOL.k==="decon"||TOOL.k==="cancel")?"#ff4757":"#00e5ff"}
 function drawToolOverlay(){
@@ -5943,7 +6013,21 @@ function showModal(html){$("modal").innerHTML="<div class='mbox'>"+html+"</div>"
   $("modal").classList.add("open")}
 function hideModal(){$("modal").classList.remove("open")}
 $("modal").addEventListener("click",e=>{const id=e.target.id;
-  if(id==="m-start"||id==="m-restart"){SFX.wake();SFX.ambientStart();SFX.ui();newGame()}
+  if(id==="m-start"){SFX.ui();CC={bg:"fixer",spent:{},name:""};showCharCreate();}
+  else if(id==="m-restart"){SFX.wake();SFX.ambientStart();SFX.ui();newGame()}
+  // ---- character creation ----
+  else if(e.target.closest("[data-ccbg]")){SFX&&SFX.ui&&SFX.ui();
+    CC.bg=e.target.closest("[data-ccbg]").dataset.ccbg;ccSyncName();showCharCreate();}
+  else if(e.target.closest("[data-ccinc]")){const k=e.target.closest("[data-ccinc]").dataset.ccinc;
+    if(ccRemaining()>0&&ccStats()[k]<10){SFX&&SFX.ui&&SFX.ui();CC.spent[k]=(CC.spent[k]||0)+1;ccSyncName();showCharCreate();}}
+  else if(e.target.closest("[data-ccdec]")){const k=e.target.closest("[data-ccdec]").dataset.ccdec;
+    if((CC.spent[k]||0)>0){SFX&&SFX.ui&&SFX.ui();CC.spent[k]--;ccSyncName();showCharCreate();}}
+  else if(id==="cc-back"){SFX&&SFX.ui&&SFX.ui();ccSyncName();showStart();}
+  else if(id==="cc-begin"){
+    if(ccRemaining()!==0){flashMsg&&flashMsg("Assign all "+OPS_POINT_BUDGET+" points first");return;}
+    ccSyncName();SFX.wake();SFX.ambientStart();SFX.ui();
+    window.PENDING_AVATAR={name:(CC.name||"").trim()||"The Operative",bg:CC.bg,stats:ccStats()};
+    newGame();}
   else if(id==="m-continue"){SFX.wake();SFX.ambientStart();SFX.ui();hideModal();openLoadSlots()}
   else if(id==="m-close"){SFX.ui();hideModal()}});
 
@@ -6027,6 +6111,25 @@ function renderInspectCore(){const el=$("inspect");
         active.map(md=>"<span style='color:"+(md.v>=0?"#39ff88":"#ff6b6b")+"'>"+(md.v>=0?"+":"")+md.v+" "+md.l+"</span>").join(" · ")+"</div>";}
     }
     h+="<div class='sub'>TASK: "+jobLabel(e)+"</div>";
+    // AVATAR: show your Operative Attributes
+    if(e.isAvatar){
+      const bg=OPS_BACKGROUNDS.find(b=>b.k===e.background);
+      h+="<div class='ordsec' style='margin-top:4px;color:#22ddff'>YOUR OPERATIVE"+(bg?" · "+bg.name:"")+"</div>";
+      h+="<div class='sub' style='display:flex;flex-wrap:wrap;gap:3px 10px'>";
+      for(const a of OPS_ATTRS){const v=ops(e,a.k);
+        const col=v>=8?"#5cff9e":v>=5?"#7aa2ff":"#8aa8c8";
+        h+="<span title='"+a.blurb+"'>"+a.name+" <span style='color:"+col+";font-weight:600'>"+v+"</span></span>";}
+      h+="</div>";
+    }
+    // job/assignment clarity: show where they're assigned + their vocation, with a quick unassign
+    if(!e.child){
+      const voc=vocationOf(e);
+      h+="<div class='sub'>VOCATION: <span style='color:#7aa2ff'>"+(voc&&voc.name?voc.name:"Laborer")+"</span></div>";
+      if(e.assigned){const as=ST.structs.get(e.assigned);
+        h+="<div class='sub'>ASSIGNED TO: <span style='color:#ffd84a'>"+(as?DEF[as.type].name:"—")+"</span>"
+          +" <button class='tb' id='i-unassign' style='font-size:9px;padding:2px 6px;margin-left:4px'>unassign</button></div>";}
+      else h+="<div class='sub' style='opacity:.7'>ASSIGNED TO: <span style='opacity:.6'>nothing (works where needed)</span></div>";
+    }
     // home quality readout (RimWorld-style) — surfaces the room mechanic
     if(!e.child&&!e.homeless){const hr=homeRoom(e);
       if(hr){const q=roomQuality(hr),qt=roomQTier(q);
@@ -6162,8 +6265,10 @@ $("inspect").addEventListener("click",e=>{
     const tgt=ST.sel.find(e=>e.kind!=="pawn");
     if(tgt){selPawns().forEach(p=>{p.assigned=K(tgt.x,tgt.y);clearJob(p)});renderInspect();syncHUD()}}
   else if(id==="i-unassign"){
-    const tgt=ST.sel.find(e=>e.kind!=="pawn");
-    if(tgt){ST.pawns.filter(p=>p.assigned===K(tgt.x,tgt.y)).forEach(p=>{p.assigned=null});renderInspect()}}
+    const selP=ST.sel.find(e=>e.kind==="pawn");
+    if(selP){selP.assigned=null;if(selP.contract)selP.contract=null;clearJob(selP);renderInspect();syncHUD();}
+    else{const tgt=ST.sel.find(e=>e.kind!=="pawn");
+      if(tgt){ST.pawns.filter(p=>p.assigned===K(tgt.x,tgt.y)).forEach(p=>{p.assigned=null});renderInspect()}}}
   else if(id==="i-automate"){
     const tgt=ST.sel.find(e=>e.kind!=="pawn");
     if(tgt&&automateStore(tgt)){renderInspect();syncHUD()}}
@@ -6381,6 +6486,17 @@ function renderCommandMenu(){
       "<span style='color:"+((m.exposure||0)>50?"#ff5470":"#ffd24a")+"'>◎ Exposure "+Math.round(m.exposure||0)+"%</span> · "+
       "<span style='color:var(--dim)'>⛓ Regime grip "+Math.round(reg.grip!=null?reg.grip:60)+"%</span><br>"+
       "<span style='opacity:.8'>Cells: "+(m.cells||0)+" · Recruited: "+recruited+" · Posture: "+(m.stance||"hidden")+"</span></div>";
+   // adaptive guidance — tells the player what their situation means + what to do next
+   {const sup=m.support||0,exp=m.exposure||0,grip=reg.grip!=null?reg.grip:60,intel=m.intel||0;
+    let tip="",tipCol="#8aa8c8";
+    if(exp>65){tip="⚠ Exposure is high — the regime is closing in. Go to Ground or lie low until it cools.";tipCol="#ff5470";}
+    else if(recruited===0&&intel<8){tip="Build intel (it accrues over time), then RECRUIT a sympathizer to grow the network.";}
+    else if(recruited===0){tip="You have intel — select a discontented wisp and RECRUIT them to start your first cell.";tipCol="#5cff9e";}
+    else if(sup<40){tip="Support is low — the regime holds. Recruit more and solve cases to win the district over.";}
+    else if(grip>50){tip="Support is growing. Keep recruiting and investigating — grip falls as your cause spreads.";tipCol="#5cff9e";}
+    else if(grip>25){tip="The regime is cracking. Press the advantage — more support and cells erode their grip faster.";tipCol="#5cff9e";}
+    else{tip="The regime's grip is failing. You're close to breaking their hold on the district.";tipCol="#ffd24a";}
+    h+="<div class='cmd-sel' style='font-size:10px;font-style:italic;color:"+tipCol+";opacity:.9;margin-top:-2px'>"+tip+"</div>";}
    h+="<div class='cmd-grid'>";
    h+="<button class='cmd-b' id='mv-ground'><span class='ci'>◎</span>Go to Ground<br><span style='font-size:8px;opacity:.7'>−exposure · 12 intel</span></button>";
    h+="<button class='cmd-b' id='mv-stance'><span class='ci'>"+((m.stance==="open")?"⚑":"◑")+"</span>"+((m.stance==="open")?"Go Quiet":"Go Loud")+"<br><span style='font-size:8px;opacity:.7'>"+((m.stance==="open")?"hide the network":"open insurrection")+"</span></button>";
@@ -6470,6 +6586,14 @@ $("t-build").onclick=()=>{SFX.ui();openSub("b")};
 $("t-zone").onclick=()=>{SFX.ui();openSub("z")};
 $("t-command").onclick=()=>{SFX.ui();openSub("c")};
 $("b-save").onclick=()=>{SFX.ui();openSaveSlots()};
+$("b-fs").onclick=()=>{SFX.ui();
+  const el=document.documentElement;
+  if(!document.fullscreenElement&&!document.webkitFullscreenElement){
+    (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||el.msRequestFullscreen||function(){}).call(el);
+  }else{
+    (document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen||document.msExitFullscreen||function(){}).call(document);
+  }
+};
 $("b-load").onclick=()=>{SFX.ui();openLoadSlots()};
 $("b-diary").onclick=()=>{SFX.ui();openOverlay("diary")};
 $("b-crew").onclick=()=>{SFX.ui();openOverlay("crew")};
@@ -6610,6 +6734,57 @@ function showHelp(){if(ST.phase==="run"){ST.paused=true;refreshSpd()}showModal(
   "<tr><td style='color:var(--cy)'>Saves</td><td>💾 SAVE / 📂 LOAD use three slots plus a daily autosave. Each slot shows day, population, tier, and income so you can manage multiple runs.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Diary</td><td>Day-grouped, timestamped event log. Filter tabs: ALL / CRIME / ECO / SOCIAL / HEALTH / DISTRICT.</td></tr>"+
   "</table><button class='tb big' id='m-close'>CLOSE</button>")}
+/* ---------- CHARACTER CREATION — build your operative before the city starts ---------- */
+let CC={bg:"fixer",spent:{},name:""};   // working state for the creation screen
+function ccStats(){
+  // base spread from the chosen background + any points the player has allocated
+  const base=Object.assign({},(OPS_BACKGROUNDS.find(b=>b.k===CC.bg)||OPS_BACKGROUNDS[1]).stats);
+  for(const k in CC.spent)base[k]=clamp((base[k]||0)+(CC.spent[k]||0),0,10);
+  return base;
+}
+function ccPointsUsed(){let n=0;for(const k in CC.spent)n+=CC.spent[k]||0;return n;}
+function ccRemaining(){return OPS_POINT_BUDGET-ccPointsUsed();}
+function ccSyncName(){const el=document.getElementById("cc-name");if(el)CC.name=el.value;}
+function showCharCreate(){
+  const stats=ccStats(),rem=ccRemaining();
+  const bg=OPS_BACKGROUNDS.find(b=>b.k===CC.bg)||OPS_BACKGROUNDS[1];
+  let h="<h1 style='font-size:22px;letter-spacing:.14em'>YOUR OPERATIVE</h1>";
+  h+="<div class='mh-sub'>the hidden architect of the coming insurrection</div>";
+  // BACKGROUND picker
+  h+="<div style='text-align:left;margin:10px 0 4px;font-size:10px;letter-spacing:.18em;color:var(--dim)'>BACKGROUND</div>";
+  h+="<div style='display:flex;flex-direction:column;gap:4px'>";
+  for(const b of OPS_BACKGROUNDS){const on=b.k===CC.bg;
+    h+="<button class='tb cc-bg' data-ccbg='"+b.k+"' style='text-align:left;padding:8px 10px;border-color:"+(on?"#22ddff":"rgba(120,160,200,.25)")+";background:"+(on?"rgba(34,221,255,.1)":"transparent")+"'>"
+      +"<div style='font-weight:700;color:"+(on?"#22ddff":"var(--tx)")+"'>"+b.name+"</div>"
+      +"<div style='font-size:10px;opacity:.7;margin-top:1px'>"+b.desc+"</div></button>";}
+  h+="</div>";
+  // STAT allocation
+  h+="<div style='display:flex;justify-content:space-between;align-items:baseline;margin:12px 0 4px'>";
+  h+="<span style='font-size:10px;letter-spacing:.18em;color:var(--dim)'>OPERATIVE ATTRIBUTES</span>";
+  h+="<span style='font-size:11px;color:"+(rem>0?"#ffd84a":"#5cff9e")+"'>"+rem+" points to assign</span></div>";
+  h+="<div style='display:flex;flex-direction:column;gap:5px'>";
+  for(const a of OPS_ATTRS){const v=stats[a.k],spent=CC.spent[a.k]||0;
+    const col=v>=8?"#5cff9e":v>=5?"#7aa2ff":"#8aa8c8";
+    h+="<div style='display:flex;align-items:center;gap:8px'>";
+    h+="<div style='width:84px;text-align:left;font-size:12px' title='"+a.blurb+"'>"+a.name+"</div>";
+    h+="<button class='tb cc-dec' data-ccdec='"+a.k+"' style='padding:1px 8px;"+(spent<=0?"opacity:.3":"")+"'>−</button>";
+    h+="<div style='width:22px;text-align:center;font-weight:700;color:"+col+"'>"+v+"</div>";
+    h+="<button class='tb cc-inc' data-ccinc='"+a.k+"' style='padding:1px 8px;"+((rem<=0||v>=10)?"opacity:.3":"")+"'>+</button>";
+    // a little bar
+    h+="<div style='flex:1;height:5px;background:rgba(120,160,200,.15);border-radius:3px;overflow:hidden'><div style='width:"+(v*10)+"%;height:100%;background:"+col+"'></div></div>";
+    h+="</div>";}
+  h+="</div>";
+  // NAME
+  h+="<div style='text-align:left;margin:12px 0 4px;font-size:10px;letter-spacing:.18em;color:var(--dim)'>CODENAME</div>";
+  h+="<input id='cc-name' type='text' maxlength='18' placeholder='The Operative' value='"+(CC.name||"").replace(/"/g,"&quot;")+"' style='width:100%;box-sizing:border-box;background:rgba(2,8,22,.8);border:1px solid rgba(120,160,200,.3);color:var(--tx);padding:8px 10px;border-radius:5px;font-family:var(--disp);font-size:14px;letter-spacing:.05em'>";
+  // ACTIONS
+  h+="<div style='display:flex;gap:8px;margin-top:14px'>";
+  h+="<button class='tb' id='cc-back' style='flex:0 0 auto;padding:12px 20px;font-size:13px;letter-spacing:.15em'>BACK</button>";
+  h+="<button class='tb' id='cc-begin' style='flex:1;padding:12px 20px;font-size:13px;letter-spacing:.2em;border-color:var(--cy);color:var(--cy);"+(rem!==0?"opacity:.55":"")+"' title='"+(rem>0?"assign all points first":"")+"'>BEGIN</button>";
+  h+="</div>";
+  h+="<p style='color:var(--dim);font-size:10px;margin-top:8px'>Your attributes shape recruitment, intel, composure under regime pressure — and the choices open to you.</p>";
+  showModal(h);
+}
 function showStart(){showModal(
   "<div id='hero-art' style='display:none;width:100%;max-width:420px;margin:0 auto 10px;border-radius:8px;overflow:hidden;border:1px solid rgba(168,89,255,.3)'></div>"+
   "<h1>NEON SPRAWL</h1><div class='mh-sub'>COLONY PROTOCOL</div>"+
@@ -6801,6 +6976,12 @@ function newGame(){
     if(ST.pawns.some(q=>(q.px|0)===x&&(q.py|0)===y))continue;
     ST.pawns.push(mkPawn(x,y))}}
   {let hi=0;for(const p of ST.pawns){const home=ST.cityHomes[hi%ST.cityHomes.length];hi++;claimHome(p,home);p.attach=RI(3,12);}}
+  // THE AVATAR — your operative, dropped into the core. Uses the creation spec if one was made.
+  {const av=mkAvatar(63,49,window.PENDING_AVATAR||null);
+   ST.pawns.push(av);
+   const ah=ST.cityHomes[0];if(ah){claimHome(av,ah);av.attach=8;}
+   ST.sel=[av];  // start with your operative selected
+  }
   cam.z=1.4;  // start zoomed into the core on the bigger map
   cam.x=64*T-VW/cam.z/2;cam.y=50*T-VH/cam.z/2;clampCam();
   ST.lastCrackdown=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.rel={};ST.relMeta={};ST.cliques=[];ST.contrabandPolicy="crackdown";ST.hintsSeen={};ST.pendingDisaster=null;ST.blackoutUntil=0;ST.caravan=null;relAdj(vex.id,sta.id,25);ST.heat=0;ST.heatWarn=false;
