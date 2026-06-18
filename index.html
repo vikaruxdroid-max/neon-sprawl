@@ -3058,8 +3058,14 @@ function pawnTick(p){
   if(p.sick){
     if(ST.tick%60===0)p.hp-=1;   // slower decay — bigger map means longer trips to care
     if(p.hp<=0){killPawn(p,"died of an untreated infection");return}
-    // easier natural recovery so a single distant clinic isn't a death sentence
-    if(p.needs.hyg>50&&p.hp>50&&ST.tick%80===0&&Math.random()<0.09){p.sick=false;p.quarantine=false;log(p.name+" shook off the infection.","good")}}
+    // recovery: better hygiene/health speeds it, but even a rough sleeper can eventually shake it off —
+    // so being sick isn't a near-permanent trap (sickness blocks work, which suppresses the hygiene that
+    // recovery used to strictly require — that was a chronic-illness spiral).
+    if(p.hp>35&&ST.tick%80===0){
+      const clean=(p.needs.hyg||50)>50, healthy=p.hp>55;
+      const recoverChance=clean&&healthy?0.14:(p.needs.hyg||50)>30?0.07:0.035;
+      if(Math.random()<recoverChance){p.sick=false;p.quarantine=false;log(p.name+" shook off the infection.","good");}
+    }}
   if(ST.tick%100===0){
     let sp=-3;
     if(p.sick)sp+=3;
@@ -4215,6 +4221,16 @@ function tick(){ST.tick++;
   if(ST.tick%40===0)tickNpcConvo(); // NPC-to-NPC dialogue when player is watching (self-gated, cheap)
   if(ST.election&&!ST.election.resolved&&ST.tick>=ST.election.voteAt)resolveElection(); // election day
   if(ST.election&&!ST.election.resolved&&ST.tick%30===0)tickElectionPitches(); // candidates campaign (AI, gated)
+  // ELECTION VISUAL PRESENCE: candidates "campaign" with little performative emotes (smug/scheme/cheer)
+  // so you can spot who's running on the map, without forcing them to path anywhere (no crowd-jam risk).
+  if(ST.election&&!ST.election.resolved&&ST.tick%55===0){
+    for(const cid of ST.election.candidates){const c=ST.pawns.find(p=>p.id===cid);
+      if(c&&c.hp>0&&!c.sleeping&&Math.random()<0.5){
+        const amb=c.pers.amb||50,intg=c.pers.intg||50;
+        const e=intg<40?(Math.random()<0.5?"scheme":"smug"):amb>65?"party":"happy";  // schemers smirk, idealists beam
+        tryEmote(c,e,90);
+      }}
+  }
   if(ST.tick%100===0)driveAmbience();
   if(ST.tick%50===0)checkContextualHints();
   if(ST.tick%200===0&&ST.gangs.length)gangTick();

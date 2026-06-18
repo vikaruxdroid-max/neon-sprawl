@@ -39,7 +39,34 @@ done yet.
 
 ## ⚡ LATEST STATE (read this first — reconciled from the live VM, June 2026) ⚡
 
-**AUDIT + CORE-FABRIC ENHANCEMENTS + CUTER EMOTES (most recent session):**
+**HEALTH AUDIT + BALANCE FIXES + ELECTION VISUAL PRESENCE (most recent session):**
+
+- **Broad health scan (economy / mood / population / disease over multi-day runs)** to find degenerate
+  trends. Findings:
+  - **Chronic sickness (REAL weak spot — FIXED):** infection recovery used to STRICTLY require `hyg>50 &&
+    hp>50`, but sickness blocks work (→ no income → hygiene hard to maintain), so sick pawns got trapped
+    below the hygiene gate and stayed chronically ill — the city trended toward everyone-sick. FIX:
+    recovery now works at ANY health above hp>35 with a tiered chance (clean+healthy 14%, ok-hygiene 7%,
+    rough 3.5% per 80 ticks) — better hygiene still speeds it, but being sick is no longer a near-permanent
+    trap. VERIFIED: sickness now OSCILLATES (peaks ~5/13, ebbs back via recoveries) instead of ratcheting to
+    everyone — a managed disease pressure, not a death spiral.
+  - **Income (FALSE alarm):** a 2-day snapshot showed income at 29 (looked like insolvency), but the real
+    trajectory is healthy — climbs 200→236, settles ~137; no crisis, no debt, pawns accumulate credits
+    (avg 62). Economy is stable and self-sustaining. No change needed.
+  - **Mood/social/feedback/onboarding — all SOLID:** mood drifts gently (60→49 over 2d, not collapse);
+    relationships richly drive behavior (47 `relGet` uses — socializing, partnerships, grudges, revenge,
+    rivalry); ~30 events get visible BANNERS; 15 contextual first-time HINTS onboard the player. The game
+    is in genuinely good shape — most systems are well-built, so this pass was honest auditing + targeted
+    fixes rather than manufacturing problems.
+- **Election visual presence (enhancement):** the election was mechanically clean but INVISIBLE (candidates
+  didn't gather or signal). Added performative CAMPAIGN EMOTES during a race — schemers (low intg) smirk
+  with scheme/smug, idealists (high amb) beam with party/happy — fired every ~55 ticks, NO forced pathing
+  (preserves the no-crowd-jam property). Now you can spot who's running on the map. Verified clean through
+  full election cycles, no loops.
+
+---
+
+## ⚡ AUDIT + CORE-FABRIC (prior session) ⚡
 
 - **Cafeteria death-spiral — VERIFIED end-to-end:** simulated an eviction wave (5 pawns forced homeless +
   broke + hungry) WITH vs WITHOUT a cafeteria. With it, hungry victims kept avg food 58 vs 37 without;
