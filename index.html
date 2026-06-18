@@ -72,8 +72,8 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 .dtag.health{color:#6bcfff}.dtag.district{color:var(--yl)}.dtag.info{color:var(--dim)}
 
 /* ── INSPECT ── */
-#inspect{position:fixed;left:8px;bottom:60px;width:320px;padding:14px 16px;
-  font-size:12px;display:none;line-height:1.55;z-index:30}
+#inspect{position:fixed;left:8px;bottom:60px;width:360px;height:560px;max-height:calc(100vh - 130px);padding:14px 16px;
+  font-size:12px;display:none;line-height:1.55;z-index:30;overflow-y:auto;overflow-x:hidden;box-sizing:border-box}
 #inspect h3{margin:0 0 3px;font-family:var(--disp);font-weight:700;font-size:18px;
   color:#eafff4;letter-spacing:.02em}
 #inspect .sub{color:var(--dim);font-size:11px;margin-bottom:5px;line-height:1.5}
@@ -328,7 +328,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   #hud{font-size:10px;gap:4px}
   .hud-seg{gap:4px;padding:0 7px}
   .hud-goods{gap:6px;padding:0 6px}
-  #inspect{width:260px;bottom:96px;font-size:11px}
+  #inspect{width:300px;height:auto;max-height:50vh;bottom:96px;font-size:11px}
   #requests{width:220px;top:calc(var(--hud-h) + 28vh + 14px)}
   #toolbar{bottom:6px;padding:4px}
   .tb{padding:5px 7px;font-size:10px}
@@ -362,8 +362,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   <!-- Center: goods inline -->
   <div class="hud-goods">
     <span class="hud-pip" title="Food"><span class="dot" style="background:#b8ff5e"></span><span id="g-food" style="color:var(--dim)">0</span></span>
-    <span class="hud-pip" title="Wood"><span class="dot" style="background:#a06a3a"></span><span id="g-wood" style="color:var(--dim)">0</span></span>
-    <span class="hud-pip" title="Materials"><span class="dot" style="background:#ffc947"></span><span id="g-materials" style="color:var(--dim)">0</span></span>
+    <span class="hud-pip" title="Scrap"><span class="dot" style="background:#a08a6a"></span><span id="g-scrap" style="color:var(--dim)">0</span></span>
     <span class="hud-pip" title="Data"><span class="dot" style="background:#47c8ff"></span><span id="g-data" style="color:var(--dim)">0</span></span>
     <span class="hud-pip" title="Chem"><span class="dot" style="background:#39ff88"></span><span id="g-chem" style="color:var(--dim)">0</span></span>
     <span class="hud-pip" title="Parts"><span class="dot" style="background:#ff8c42"></span><span id="g-parts" style="color:var(--dim)">0</span></span>
@@ -392,6 +391,8 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
     <button class="tb" id="b-save" title="Save">💾</button>
     <button class="tb" id="b-load" title="Load">📂</button>
     <button class="tb" id="b-fs" title="Fullscreen">⛶</button>
+    <button class="tb" id="b-atmo" title="Rain & fog"><span class="hud-icon">☂</span></button>
+    <button class="tb" id="b-storm" title="Lightning"><span class="hud-icon">⚡</span></button>
     <button class="tb" id="b-mute" title="Sound">🔊</button>
     <button class="tb" id="b-help" title="Help">?</button>
   </div>
@@ -430,26 +431,26 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 "use strict";
 /* ============================================================
    NEON SPRAWL — Colony Protocol  v0.1
-   Single-file cyberpunk colony sim (RimWorld-style vertical slice)
+   Single-file cyberpunk colony sim (emergent colony sim vertical slice)
    ============================================================ */
 
 /* ---------- helpers ---------- */
-const T=16, MW=140, MH=100, TPD=2400, TPS=10, POP=7;   // tile px, map w/h, ticks/day, ticks/sec, starting agents
+const T=16, MW=140, MH=100, TPD=2400, TPS=10, POP=12;   // tile px, map w/h, ticks/day, ticks/sec, starting agents
 // Road arterials (2-tile wide). h:[x0,x1,topY]  v:[leftX,y0,y1]
 // Frame the central built-up core (x~38-95, y~28-78) with a loop + cross streets.
 const ROADS={
   h:[
-    [10,130,26],   // north arterial (farm NW ↔ woods NE)
-    [30,110,48],   // mid arterial (between residential and production)
-    [10,130,64],   // south arterial (mine SW ↔ civic SE wide)
-    [30,110,80],   // far-south arterial (below crime corner)
+    [10,130,22],   // north arterial — reaches farm/woods corners
+    [28,112,46],   // mid lane — underclass housing | labor divide
+    [28,112,62],   // lower lane — labor | civic divide
+    [10,130,82],   // south arterial — reaches mine/civic corners
   ],
   v:[
-    [22,14,88],    // far-west arterial (serves farm + mine zones)
-    [34,26,82],    // west arterial
-    [68,26,82],    // central spine (through plaza)
-    [102,26,82],   // east arterial
-    [118,14,90],   // far-east arterial (serves woods + civic zones)
+    [20,14,88],    // far-west — serves farm + mine zones
+    [28,22,82],    // core west edge
+    [70,22,82],    // THE DIVIDE — underclass (west) | corporate sector (east)
+    [112,22,82],   // core east edge
+    [120,14,88],   // far-east — serves woods + civic zones
   ]
 };
 function R(a,b){return a+Math.random()*(b-a)}
@@ -507,55 +508,127 @@ const SFX=(()=>{let ac=null,mut=false;
     ambientStart(){
       const a=ctx();if(!a)return;
       if(this._amb)return;
+      // ── MASTER + REVERB BUS ─────────────────────────────────────────────────────────────────────
+      // Master gain feeds the speakers. A convolution reverb (long, soft tail) gives the "exploration /
+      // wide space" feel. EVERYTHING goes through a per-voice amplitude envelope — there are NO raw
+      // continuously-running oscillators, which is what removes the constant electrical "hum".
       const master=a.createGain();master.gain.value=mut?0:0.0;master.connect(a.destination);
-      // base drone: two softly-detuned LOW TRIANGLE oscillators (warm, rounded — no harsh sawtooth)
-      // tuned to A1 (~55Hz) as the tonal root for a melancholy A-minor feel
-      const droneG=a.createGain();droneG.gain.value=0.42;
-      const lp=a.createBiquadFilter();lp.type="lowpass";lp.frequency.value=420;
-      const o1=a.createOscillator();o1.type="triangle";o1.frequency.value=55;
-      const o2=a.createOscillator();o2.type="triangle";o2.frequency.value=55*1.004;
-      o1.connect(droneG);o2.connect(droneG);droneG.connect(lp);lp.connect(master);
-      o1.start();o2.start();
-      // soft "vinyl hiss" — quiet lowpassed noise (lofi texture, not the old harsh bandpass wind)
-      const nbuf=a.createBuffer(1,a.sampleRate*2,a.sampleRate);
-      const nd=nbuf.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=(Math.random()*2-1)*0.5;
-      const nsrc=a.createBufferSource();nsrc.buffer=nbuf;nsrc.loop=true;
-      const nfilt=a.createBiquadFilter();nfilt.type="lowpass";nfilt.frequency.value=2600;
-      const nG=a.createGain();nG.gain.value=0.025;
-      nsrc.connect(nfilt);nfilt.connect(nG);nG.connect(master);nsrc.start();
-      // MUSIC LAYERS — each a gated gain that fades in as intensity rises. ALL warm/soft now.
-      const mkLayer=(freqs,type,base,filtHz)=>{
-        const lg=a.createGain();lg.gain.value=0;
-        const f=a.createBiquadFilter();f.type="lowpass";f.frequency.value=filtHz||1200;
-        f.connect(master);lg.connect(f);
-        const oscs=freqs.map(fr=>{const o=a.createOscillator();o.type=type;o.frequency.value=fr;o.connect(lg);o.start();return o;});
-        return{lg,base,oscs};};
-      // layer 1: Am9 warm pad (A-C-E-G-B feel) — the soothing core, comes in first. soft sine.
-      const L1=mkLayer([110,130.81,164.81,196],"sine",0.06,1100);
-      // layer 2: a gentle higher voicing (C-E-G, wistful shimmer) at mid intensity — triangle, soft
-      const L2=mkLayer([261.63,329.63,392],"triangle",0.03,1800);
-      // layer 3: a LOW WARM SWELL for "busy/danger" — adds depth & a touch of melancholy, never tension.
-      // (Dmin-ish low fifth: D-A) soft triangle, heavily filtered so it's felt more than heard.
-      const L3=mkLayer([73.42,110],"triangle",0.05,360);
-      // very slow LFO on the drone filter for gentle organic movement
-      const lfo=a.createOscillator();lfo.frequency.value=0.035;
-      const lfoG=a.createGain();lfoG.gain.value=55;lfo.connect(lfoG);lfoG.connect(lp.frequency);lfo.start();
-      this._amb={master,lp,L1,L2,L3,o1,o2,intensity:0,night:0};
+      // build an impulse response procedurally (no audio file) — exponential-decay noise = a smooth hall
+      const irLen=Math.floor(a.sampleRate*3.2);                 // ~3.2s reverb tail
+      const ir=a.createBuffer(2,irLen,a.sampleRate);
+      for(let ch=0;ch<2;ch++){const d=ir.getChannelData(ch);
+        for(let i=0;i<irLen;i++){const t=i/irLen;d[i]=(Math.random()*2-1)*Math.pow(1-t,2.6);}}
+      const reverb=a.createConvolver();reverb.buffer=ir;
+      const revWet=a.createGain();revWet.gain.value=0.55;       // how much reverb in the mix
+      const revLp=a.createBiquadFilter();revLp.type="lowpass";revLp.frequency.value=2600; // soften the tail
+      reverb.connect(revLp);revLp.connect(revWet);revWet.connect(master);
+      // a "send" bus: voices connect here to be heard dry AND sent to reverb
+      const dry=a.createGain();dry.gain.value=0.9;dry.connect(master);
+      const sendIn=(node,wet)=>{node.connect(dry);const s=a.createGain();s.gain.value=wet==null?1:wet;node.connect(s);s.connect(reverb);};
+      // ── VOICE BUILDERS (each creates, envelopes, and AUTO-STOPS its oscillators — nothing lingers) ──
+      // soft piano-ish note: sine fundamental + faint bell harmonic, gentle attack, long decay.
+      const piano=(freq,vel,when)=>{ if(mut)return; const t0=(when||a.currentTime);
+        const o=a.createOscillator();o.type="sine";o.frequency.value=freq;
+        const oh=a.createOscillator();oh.type="triangle";oh.frequency.value=freq*2.001; // bell shimmer
+        const ohg=a.createGain();ohg.gain.value=0.18;oh.connect(ohg);
+        const g=a.createGain();g.gain.setValueAtTime(0.0001,t0);
+        g.gain.exponentialRampToValueAtTime(vel,t0+0.04);              // soft attack
+        g.gain.exponentialRampToValueAtTime(0.0001,t0+3.2);            // long decay
+        o.connect(g);ohg.connect(g);sendIn(g,0.8);
+        o.start(t0);oh.start(t0);o.stop(t0+3.3);oh.stop(t0+3.3); };    // AUTO-STOP — no lingering tone
+      // bell-like harmonic: a brief, pure, high shimmer (occasional sparkle).
+      const bell=(freq,vel,when)=>{ if(mut)return; const t0=(when||a.currentTime);
+        const o=a.createOscillator();o.type="sine";o.frequency.value=freq;
+        const g=a.createGain();g.gain.setValueAtTime(0.0001,t0);
+        g.gain.exponentialRampToValueAtTime(vel,t0+0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001,t0+2.4);
+        o.connect(g);sendIn(g,1.0);
+        o.start(t0);o.stop(t0+2.5); };
+      // PAD SWELL: a soft chord that FADES IN, holds briefly, and FADES OUT — then it's gone. Because it
+      // breathes instead of sustaining, there is no steady electrical tone. Retriggered by the scheduler.
+      const padSwell=(freqs,peak,dur,when)=>{ if(mut)return; const t0=(when||a.currentTime);
+        const g=a.createGain();g.gain.setValueAtTime(0.0001,t0);
+        const lp=a.createBiquadFilter();lp.type="lowpass";lp.frequency.value=900;
+        g.connect(lp);sendIn(lp,0.7);
+        const oscs=freqs.map((fr,i)=>{const o=a.createOscillator();
+          o.type=i===0?"triangle":"sine";o.frequency.value=fr;
+          // tiny per-osc detune for warmth WITHOUT the harsh beating that reads as a hum
+          o.detune.value=(i-1)*3;
+          o.connect(g);return o;});
+        const atk=dur*0.4, rel=dur*0.5;
+        g.gain.exponentialRampToValueAtTime(peak,t0+atk);             // slow swell in
+        g.gain.setValueAtTime(peak,t0+atk+dur*0.1);
+        g.gain.exponentialRampToValueAtTime(0.0001,t0+atk+dur*0.1+rel); // fade fully out
+        const stopAt=t0+atk+dur*0.1+rel+0.1;
+        oscs.forEach(o=>{o.start(t0);o.stop(stopAt);});               // AUTO-STOP
+      };
+      // sub bass PULSE: a low note that swells and releases under a chord (warmth, not a held drone).
+      const bassPulse=(freq,peak,dur,when)=>{ if(mut)return; const t0=(when||a.currentTime);
+        const o=a.createOscillator();o.type="sine";o.frequency.value=freq;
+        const g=a.createGain();g.gain.setValueAtTime(0.0001,t0);
+        const lp=a.createBiquadFilter();lp.type="lowpass";lp.frequency.value=180;
+        o.connect(g);g.connect(lp);sendIn(lp,0.25);
+        g.gain.exponentialRampToValueAtTime(peak,t0+dur*0.35);
+        g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+        o.start(t0);o.stop(t0+dur+0.1); };
+      // ── PROCEDURAL COMPOSITION ──────────────────────────────────────────────────────────────────
+      // Original, NOT Subwoofer Lullaby. C-Lydian-ish palette (calm, "wonder"): C D E F# G A B.
+      // Chords are simple triads built on scale degrees; the scheduler drifts between them slowly so the
+      // piece evolves and loops seamlessly (procedural — no fixed sequence to "end").
+      const PENT=[261.63,293.66,329.63,392.00,440.00,523.25,587.33,659.25]; // C pentatonic-ish, C4..E5
+      const BELLS=[1046.50,1174.66,1318.51,1567.98];                         // high sparkle octave
+      // chord pool: each = {bass, pad[3]} in Hz. Warm, consonant, slow-moving.
+      const PROG=[
+        {bass:65.41, pad:[261.63,329.63,392.00]},   // C
+        {bass:55.00, pad:[277.18,329.63,440.00]},   // Am-ish
+        {bass:49.00, pad:[293.66,369.99,440.00]},   // G-ish
+        {bass:43.65, pad:[261.63,349.23,440.00]},   // F-ish
+        {bass:58.27, pad:[293.66,349.23,440.00]},   // Bb-ish (gentle colour)
+      ];
+      let _bar=0, _pi=4, _on=true, _t1=null,_t2=null,_t3=null;
+      const intensity=()=>this._amb?this._amb.intensity:0.2;
+      // BAR scheduler: every ~5s lay down a chord (bass pulse + pad swell), drifting through the pool.
+      const _bars=()=>{ if(!_on)return; if(!mut){
+          const ch=PROG[_bar%PROG.length];
+          const lvl=0.5+intensity()*0.5;                  // a touch fuller when the district is busy
+          padSwell(ch.pad, 0.040*lvl, 5.4);               // breathing pad — fades fully, no sustain
+          bassPulse(ch.bass, 0.060*lvl, 5.0);             // warm low pulse under it
+          _bar++;
+        }
+        _t1=setTimeout(_bars, 5200);                       // ~one chord per 5.2s (slow, ~58 BPM feel)
+      };
+      // PIANO scheduler: sparse single notes with lots of space, gentle stepwise drift.
+      const _melody=()=>{ if(!_on)return; if(!mut){
+          const notes=1+(Math.random()<0.35?1:0);          // mostly 1 note, sometimes 2
+          for(let n=0;n<notes;n++){
+            _pi=Math.max(0,Math.min(PENT.length-1,_pi+(Math.floor(Math.random()*5)-2)));
+            piano(PENT[_pi], 0.05+Math.random()*0.03, a.currentTime + n*(0.5+Math.random()*0.4));
+          }
+        }
+        _t2=setTimeout(_melody, 3000+Math.random()*4500);   // 3.0–7.5s of space between notes
+      };
+      // BELL scheduler: rare high shimmer for "wonder".
+      const _bells=()=>{ if(!_on)return;
+        if(!mut && Math.random()<0.6) bell(BELLS[Math.floor(Math.random()*BELLS.length)], 0.025, a.currentTime);
+        _t3=setTimeout(_bells, 9000+Math.random()*11000);   // every 9–20s, sometimes skipped
+      };
+      _t1=setTimeout(_bars, 400);
+      _t2=setTimeout(_melody, 2600);
+      _t3=setTimeout(_bells, 7000);
+      const stopMelody=()=>{_on=false;[_t1,_t2,_t3].forEach(t=>t&&clearTimeout(t));};
+      this._amb={master,reverb,revWet,intensity:0.2,night:0,stopMelody};
     },
     ambientSet(intensity,nightAmt){
-      // intensity 0..1 (district activity+heat); nightAmt 0..1 (darkness)
+      // intensity 0..1 (district activity+heat); nightAmt 0..1 (darkness). The scheduler reads intensity
+      // for fullness; here we just set the overall level and warm the reverb at night. No sustained nodes
+      // to fade — the music is entirely event-scheduled, so there is nothing that can drone.
       const A=this._amb;if(!A)return;const a=ac;if(!a)return;
-      const t=a.currentTime,glide=2.2;   // slower glides = calmer transitions
+      const t=a.currentTime,glide=2.6;
       A.intensity=intensity;A.night=nightAmt||0;
-      const overall=mut?0:0.15;
+      const overall=mut?0:0.16;
       A.master.gain.linearRampToValueAtTime(overall,t+glide);
-      // drone warms/mellows at night rather than darkening harshly
-      A.lp.frequency.linearRampToValueAtTime(360+(1-(nightAmt||0))*180,t+glide);
-      // fade music layers in by threshold (gentle warmth as things get busier — never harsh)
-      const set=(L,on,target)=>L.lg.gain.linearRampToValueAtTime(mut?0:(on?target:0),t+glide);
-      set(A.L1,intensity>0.10,A.L1.base);
-      set(A.L2,intensity>0.40,A.L2.base);
-      set(A.L3,intensity>0.68,A.L3.base);
+      // a touch more reverb / softer at night for a calmer, wider feel
+      A.revWet.gain.linearRampToValueAtTime(0.45+(nightAmt||0)*0.18,t+glide);
     },
     ambientStop(){const A=this._amb;if(A&&A.master)try{A.master.gain.value=0}catch(e){}},
     toggleMute(){mut=!mut;
@@ -583,6 +656,7 @@ const DEF={
   rug:        {name:"Woven Rug",    cost:{income:25}, hp:40, blocks:0, work:70, cat:"b", desc:"Ambiance — a small steady comfort underfoot.", furn:true, furnEffect:"ambient"},
   workstation:{name:"Workstation",  cost:{}, hp:60, blocks:1, work:140, cat:"b", desc:"Corp terminal — produces Data.", prod:"data", prodRate:180, wage:9},
   counter:    {name:"Shop Counter", cost:{}, hp:80, blocks:1, work:120, cat:"b", desc:"Vendor — sells goods, earns district income.", vendor:true},
+  cafeteria:  {name:"Cafeteria", cost:{income:90}, hp:90, blocks:1, work:160, cat:"b", desc:"A communal canteen serving the food the block grows and processes. Anyone can eat here — keeps the hungry and the homeless fed, so people aren't driven to starve or steal.", canteen:true, wage:8},
   bar:        {name:"Bar Counter",  cost:{}, hp:80, blocks:1, work:120, cat:"b", desc:"Drinks, food, socializing, sells Stims.", vendor:true, sells:"stims"},
   medbed:     {name:"Med Bay",      cost:{}, hp:80, blocks:0, work:160, cat:"b", desc:"Treat injury and disease."},
   dealer:     {name:"Dealer Spot",  cost:{}, hp:40, blocks:0, work:100, cat:"b", desc:"Sells Stims off the books, earns district income.", vendor:true, sells:"stims", illegal:true, selfRun:true},
@@ -592,8 +666,9 @@ const DEF={
   gearshop:   {name:"Gear Shop",    cost:{income:100},hp:80, blocks:1, work:160, cat:"b", desc:"Refines Parts + Data → Gear. Steady, clean income.", refine:{in:["parts","data"],out:"gear"}, vendor:true, wage:10},
   // ── RESOURCE PRODUCTION (outer-ring economy) ──
   farmplot:   {name:"Farm Plot",    cost:{income:30}, hp:40, blocks:0, work:110, cat:"b", desc:"Grows Food. Feeds the block cheaply, cuts the credit drain.", prod:"food", prodRate:200, wage:7},
-  loggingcamp:{name:"Logging Camp", cost:{income:40}, hp:60, blocks:1, work:130, cat:"b", desc:"Harvests Wood from the outskirts — sold for income.", prod:"wood", prodRate:240, wage:8},
-  mineshaft:  {name:"Mine Shaft",   cost:{income:60}, hp:80, blocks:1, work:150, cat:"b", desc:"Extracts Materials — premium commodity, high margin.", prod:"materials", prodRate:300, wage:9},
+  sporevat:   {name:"Spore Vat",     cost:{income:40}, hp:50, blocks:0, work:120, cat:"b", desc:"Cultivates the glowing mushrooms for Food. Upgrade: Spore Vat \u2192 Algae Bloom \u2192 Bio-Reactor.", prod:"food", prodRate:200, wage:7, tiered:1},
+  loggingcamp:{name:"Salvage Yard",  cost:{income:40}, hp:60, blocks:1, work:130, cat:"b", desc:"Strip scrap from the dead sectors — low pay, no questions asked.", prod:"scrap", prodRate:240, wage:8},
+  mineshaft:  {name:"Data Den",      cost:{income:60}, hp:80, blocks:1, work:150, cat:"b", desc:"Grey-market terminals — run hacks and sell stolen data. High margin, draws heat.", prod:"data", prodRate:300, wage:9, illicit:true},
   // ── CIVIC BUILDINGS ──
   park:       {name:"Sprawl Park",  cost:{income:50}, hp:50, blocks:0, work:140, cat:"b", desc:"Green space — free recreation + stress relief.", civic:"park"},
   arcade:     {name:"Arcade",       cost:{income:80}, hp:60, blocks:1, work:150, cat:"b", desc:"Premium entertainment — strong fun, small fee earns income.", civic:"arcade", vendor:true},
@@ -605,6 +680,12 @@ const DEF={
   furnstore:  {name:"Furnishings Store",cost:{income:140},hp:80,blocks:1,work:170,cat:"b",desc:"Sells furniture to residents — they furnish their own homes, and the district earns a cut.", civic:"furnstore", vendor:true},
   housing:    {name:"Housing Unit", cost:{income:150},hp:60, blocks:0, work:180, cat:"b", desc:"Adds one home slot — allows the district to support one more citizen."},
   watchpost:  {name:"Watch Post",   cost:{income:110},hp:90, blocks:1, work:0,   cat:"b", desc:"Security outpost — suppresses crime and bleeds off district heat in range.", security:true, secRadius:18},
+  powerstation:{name:"Power Station",cost:{income:180},hp:120,blocks:1,work:200, cat:"b", desc:"Generates district power. Without it, buildings run on failing backup — mood and output suffer. Needs a worker to run.", utility:"power", wage:9},
+  waterfac:   {name:"Water Facility",cost:{income:160},hp:100,blocks:1,work:190, cat:"b", desc:"Supplies clean water. Without it, hygiene and health decline across the block. Needs a worker to run.", utility:"water", wage:8},
+  copstation: {name:"Precinct",     cost:{income:150},hp:110,blocks:1,work:160, cat:"b", desc:"Regime police post — the Enforcer's station. Suppresses crime and projects regime presence.", security:true, secRadius:16, wage:11, roleHome:"enforcer"},
+  streetvendor:{name:"Street Vendor",cost:{income:60}, hp:50, blocks:1,work:120, cat:"b", desc:"A noodle-and-stim cart on the strip — cheap food and goods, street-level commerce.", vendor:true, sells:"food", wage:7},
+  mayorhouse: {name:"Admin Villa",  cost:{income:200},hp:120,blocks:1,work:150, cat:"b", desc:"The Mayor's fortified residence and office — the regime's seat in the district.", civic:"mayor", wage:12, roleHome:"mayor"},
+  fixercorner:{name:"Fixer Corner", cost:{income:80}, hp:60, blocks:1,work:140, cat:"b", desc:"A back-alley node where the Fixer brokers data, gear, and favors off the books.", vendor:true, illicit:true, wage:10, roleHome:"fixer"},
   // ── DECOR (nat:1 = not buildable, placed by genCity) ──
   bench:      {name:"Bench",       nat:1, hp:40, blocks:0},
   streetlamp: {name:"Street Lamp", nat:1, hp:30, blocks:0},
@@ -613,21 +694,29 @@ const DEF={
   vendmachine:{name:"Vending Machine",nat:1,hp:50,blocks:1},
   planter:    {name:"Planter",     nat:1, hp:30, blocks:0}
 };
-const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","bar","medbed","dealer","farmplot","loggingcamp","mineshaft","park","arcade","hospital","school","nursery","market","hall","furnstore","housing"];
+const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","cafeteria","streetvendor","bar","medbed","dealer","farmplot","sporevat","loggingcamp","mineshaft","fixercorner","park","arcade","hospital","school","nursery","market","hall","mayorhouse","furnstore","housing","powerstation","waterfac","watchpost","copstation"];
 // Build menu: curated minimal categories (start small, expand later). Each entry: type.
 const BUILD_CATS=[
   {name:"Home",     items:["wall","door","pod","lamp","fridge","shower","toilet"]},
   {name:"Comfort",  items:["tv","gym","couch","bookshelf","art","rug"]},
-  {name:"Work",     items:["workstation","chemlab","workshop","stimlab","gearshop","farmplot","loggingcamp","mineshaft"]},
-  {name:"Commerce", items:["counter","bar","market","furnstore","dealer"]},
-  {name:"Civic",    items:["medbed","hospital","park","arcade","school","nursery","hall"]},
-  {name:"Order",    items:["watchpost"]},
+  {name:"Work",     items:["workstation","chemlab","workshop","stimlab","gearshop","farmplot","sporevat","loggingcamp","mineshaft","fixercorner"]},
+  {name:"Commerce", items:["counter","cafeteria","streetvendor","bar","market","furnstore","dealer"]},
+  {name:"Civic",    items:["medbed","hospital","park","arcade","school","nursery","hall","mayorhouse"]},
+  {name:"Order",    items:["watchpost","copstation"]},
+  {name:"Utility",  items:["powerstation","waterfac"]},
   {name:"Growth",   items:["housing"]},
 ];
 // glyph per fixture for the build cards
+// Spore Vat upgrade chain — start as mushrooms, upgrade up the bio-tech ladder
+const VAT_TIERS=[
+  {name:"Spore Vat",   food:1, glow:"#c084fc", core:"#a259ff", up:{income:60, scrap:6}},
+  {name:"Algae Bloom", food:2, glow:"#5cffd0", core:"#39ffd0", up:{income:120, data:6}},
+  {name:"Bio-Reactor", food:3, glow:"#39d4ff", core:"#7af7ff", up:null},
+];
+function vatTier(s){return VAT_TIERS[clamp((s.tier||1)-1,0,2)];}
 const BUILD_ICON={wall:"▦",door:"⌷",pod:"☖",lamp:"✦",fridge:"❄",shower:"♒",toilet:"⊡",tv:"▭",gym:"⛏",
   workstation:"⌨",chemlab:"⚗",workshop:"⚙",stimlab:"⚕",gearshop:"⛭",counter:"▤",bar:"♨",medbed:"✚",
-  dealer:"☠",farmplot:"❀",loggingcamp:"🪓",mineshaft:"⛏",park:"❦",arcade:"►",hospital:"✚",school:"✎",nursery:"⊙",market:"⇄",hall:"⌂",furnstore:"🛋",housing:"⌂",watchpost:"◈",couch:"⌗",bookshelf:"▤",art:"◳",rug:"▢"};
+  dealer:"☠",farmplot:"❀",sporevat:"🍄",loggingcamp:"♻",mineshaft:"⌬",park:"❦",arcade:"►",hospital:"✚",school:"✎",nursery:"⊙",market:"⇄",hall:"⌂",furnstore:"🛋",housing:"⌂",watchpost:"◈",powerstation:"⚡",waterfac:"💧",copstation:"⚖",streetvendor:"🍜",mayorhouse:"♔",fixercorner:"⟁",cafeteria:"🍽",couch:"⌗",bookshelf:"▤",art:"◳",rug:"▢"};
 
 
 // weapons removed — city sim mode
@@ -664,7 +753,7 @@ const ST={
   sel:[],
   stats:{built:0,deaths:0},
   flags:{},
-  goods:{data:0,chem:0,parts:0,stims:0,gear:0,food:0,wood:0,materials:0},
+  goods:{data:0,chem:0,parts:0,stims:0,gear:0,food:0,scrap:0},
   income:0,
   debtDays:0,
   crisis:false,
@@ -698,6 +787,9 @@ const AI_MODEL_TALK="claude-sonnet-4-6";    // quality dialogue for direct TALK
 const AI_MODEL_AMBIENT="claude-haiku-4-5";  // cheap/fast for background musings
 const AI_MODEL=AI_MODEL_TALK;               // back-compat default
 let AI_CAP_USD=1.00;          // session spend ceiling (0 = no cap); override via localStorage "neonSprawlAICap"
+// AGENT REQUESTS temporarily DISABLED — they were too intrusive; will re-enable once tied into the game
+// properly (e.g. via the planned weekly council / quest system). Flip to true to restore them.
+const REQUESTS_ENABLED=false;
 const AI_RATES={"claude-sonnet-4-6":{in:3.0,out:15.0},"claude-haiku-4-5":{in:1.0,out:5.0}};
 const AI_COST_IN=3.0, AI_COST_OUT=15.0;  // legacy fallback (Sonnet)
 try{const _o=localStorage.getItem("neonSprawlAIProxy");if(_o)AI_PROXY=_o}catch(e){}
@@ -868,8 +960,48 @@ function radicalPotential(p){
 }
 // daily: passive intel from recruited wisps (your network's eyes/ears), support drift,
 // the regime's surveillance response, and recruitment spread.
+// the named regime cast acts as ACTIVE forces against your insurrection (runs daily within insurrectionTick).
+function roleForcesTick(){
+  const m=M(),reg=REG();
+  // MAYOR — sets policy: a living, un-turned Mayor reinforces the regime's grip on the district.
+  const mayor=ST.pawns.find(p=>p.role==="mayor"&&p.hp>0);
+  if(mayor){
+    if((mayor.allegiance||0)<-10){
+      // loyal mayor props up grip (scaled by their ambition/competence)
+      const eff=0.10+(mayor.pers.amb||50)/100*0.10;
+      reg.grip=clamp(reg.grip+eff,0,100);
+    }else if((mayor.allegiance||0)>30){
+      // a TURNED mayor instead undermines the regime from within — a major coup for you
+      reg.grip=clamp(reg.grip-0.30,0,100);
+      m.support=clamp((m.support||0)+0.12,0,100);
+    }
+  }
+  // ENFORCER — hunts dissent: a loyal Enforcer raises your exposure and can burn a cell member.
+  const enforcer=ST.pawns.find(p=>p.role==="enforcer"&&p.hp>0);
+  if(enforcer&&(enforcer.allegiance||0)<-10){
+    m.exposure=clamp((m.exposure||0)+0.18,0,100);
+    // occasional active bust attempt when exposure is already high
+    if(m.exposure>50&&ST.tick%TPD===0&&Math.random()<0.15){
+      const cell=ST.pawns.filter(p=>p.recruited&&!isChild(p)&&p!==theAvatar());
+      if(cell.length){const victim=CH(cell);
+        // your operative's Nerve can foil the bust
+        const foil=opsCheck("nerve",13);
+        if(!foil.pass){victim.recruited=false;victim.allegiance=clamp((victim.allegiance||0)-20,-100,100);
+          m.exposure=clamp(m.exposure+5,0,100);
+          log("⚠ The Enforcer burned "+victim.name+" out of your network.","warn");}
+        else log("You spotted the Enforcer's move and pulled "+victim.name+" out in time.","good");}
+    }
+  }else if(enforcer&&(enforcer.allegiance||0)>30){
+    // a turned Enforcer shields your network instead — exposure leaks more slowly
+    m.exposure=clamp((m.exposure||0)-0.10,0,100);
+  }
+  // INFORMANT — leaks: an active, un-flipped informant steadily raises regime awareness.
+  const informants=ST.pawns.filter(p=>p.informant&&p.hp>0&&!isChild(p));
+  if(informants.length){reg.awareness=clamp((reg.awareness||0)+informants.length*0.15,0,100);}
+}
 function insurrectionTick(){
   const m=M(),reg=REG();
+  roleForcesTick();   // the named regime cast (Mayor/Enforcer/Informant) act as active forces
   const recruited=ST.pawns.filter(p=>p.recruited&&!isChild(p));
   const adults=ST.pawns.filter(p=>!isChild(p));
   // INTEL sources (layered so the loop can BOOTSTRAP from nothing):
@@ -897,7 +1029,12 @@ function insurrectionTick(){
   const tcShield=clamp(1-(tradecraft-5)*0.06,0.5,1.3);   // high Tradecraft keeps the network quieter
   if(recruited.length)m.exposure=clamp((m.exposure||0)+recruited.length*0.04*leakRate*tcShield,0,100);
   // natural cooldown if you lie low
-  if(ST.tick%50===0&&m.stance==="hidden")m.exposure=Math.max(0,m.exposure-1.5);
+  // lying low reduces exposure — but a hostile Enforcer's surveillance blunts how fast you can fade.
+  if(ST.tick%50===0&&m.stance==="hidden"){
+    const enf=ST.pawns.find(p=>p.role==="enforcer"&&p.hp>0&&(p.allegiance||0)<-10);
+    const fade=enf?0.7:1.5;   // enforcer presence halves your fade rate
+    m.exposure=Math.max(0,m.exposure-fade);
+  }
   // REGIME awareness tracks exposure; high awareness → investigative sweeps.
   reg.awareness=clamp(reg.awareness*0.96+m.exposure*0.05,0,100);
   if(reg.awareness>55&&ST.tick-reg.lastSweep>TPD*2){regimeSweep();reg.lastSweep=ST.tick;}
@@ -975,6 +1112,121 @@ function goToGround(){
   if((m.intel||0)<cost){flashMsg&&flashMsg("Need "+cost+" intel");return false;}
   m.intel-=cost;m.exposure=Math.max(0,m.exposure-25);REG().awareness=Math.max(0,REG().awareness-15);
   log("The network goes quiet — exposure drops.","good");return true;
+}
+
+/* ═══════════ AVATAR OPERATIONS — the player's insurgent toolkit. Each op spends intel, rolls an
+   ops-check against the relevant stat, and applies consequences. HIGH RISK: failure spikes exposure +
+   regime awareness and can blow back hard. Success advances the cause but still leaves a trace. Running
+   ops GROWS the relevant stat over time (you get better at what you practice) and builds your district
+   REPUTATION (feared/respected), which colors how wisps react to you. */
+// op definitions: stat = which ops attribute, diff = base difficulty, cost = intel, target = needs a target?
+const AVATAR_OPS={
+  sabotage:  {name:"Sabotage Infrastructure", stat:"tradecraft", diff:13, cost:10, target:"utility",
+    desc:"Knock out a power or water building — blackout, chaos, a blow to the regime's grip. Failure means you're spotted."},
+  intel:     {name:"Gather Intel", stat:"insight", diff:11, cost:0, target:null,
+    desc:"Work your contacts and surveil the block. Success feeds your network intel. Failure tips off the regime."},
+  dissent:   {name:"Spread Dissent", stat:"presence", diff:12, cost:6, target:null,
+    desc:"Stir the block against the regime — raise support. A rousing op moves people; a clumsy one exposes you."},
+  frame:     {name:"Frame a Regime Asset", stat:"guile", diff:14, cost:14, target:"regime",
+    desc:"Plant evidence on a regime loyalist — turn the district against them, weaken their grip. The hardest, riskiest op."},
+};
+// reputation: -100 (feared/ruthless) .. +100 (beloved/respected). Built by op outcomes + their nature.
+function avatarRep(){const a=theAvatar();return a?(a.rep&&a.rep.district||0):0;}
+function adjAvatarRep(delta){const a=theAvatar();if(!a)return;a.rep=a.rep||{};a.rep.district=clamp((a.rep.district||0)+delta,-100,100);}
+// running an op trains the stat used (diminishing as it climbs toward 10)
+function trainOpStat(stat){const a=theAvatar();if(!a||!a.ops)return;
+  a.opXp=a.opXp||{};a.opXp[stat]=(a.opXp[stat]||0)+1;
+  const need=4+a.ops[stat]*2;                         // higher stats take more reps
+  if(a.opXp[stat]>=need&&a.ops[stat]<10){a.opXp[stat]=0;a.ops[stat]++;
+    log("Your "+stat.toUpperCase()+" sharpened to "+a.ops[stat]+" — practice pays.","good");
+    float(a.px,a.py,stat.toUpperCase()+" \u2191","#22ddff");}
+}
+// the unified op runner. opKey ∈ AVATAR_OPS, target = optional pawn/struct depending on the op.
+function runAvatarOp(opKey,target){
+  const op=AVATAR_OPS[opKey];if(!op)return false;
+  const m=M(),a=theAvatar();
+  if(!a){flashMsg&&flashMsg("No operative");return false;}
+  if((m.intel||0)<op.cost){flashMsg&&flashMsg("Need "+op.cost+" intel for this op");return false;}
+  // exposure makes ops harder — the more the regime suspects you, the riskier everything is
+  const expPenalty=Math.floor((m.exposure||0)/25);     // +0..4 to difficulty
+  const check=opsCheck(op.stat,op.diff+expPenalty);
+  m.intel-=op.cost;
+  trainOpStat(op.stat);                                // practice regardless of outcome
+  if(check.pass){
+    opSuccess(opKey,target,check);
+    // big successes (high margin) leave less trace
+    const trace=check.margin>=4?2:5;
+    m.exposure=clamp((m.exposure||0)+trace,0,100);
+    return true;
+  } else {
+    opFailure(opKey,target,check);
+    return false;
+  }
+}
+function opSuccess(opKey,target,check){
+  const m=M();
+  switch(opKey){
+    case "sabotage":{
+      if(target&&target.kind==="s"){
+        target.sabotaged=ST.tick+Math.floor(TPD*R(1.0,1.5));   // building offline 1-1.5 days (spans daily checks)
+        const util=DEF[target.type]&&DEF[target.type].utility;
+        if(util==="power"){ST.blackoutUntil=ST.tick+Math.floor(TPD*R(0.4,0.7));}
+        ST.heat=Math.min(100,(ST.heat||0)+8);
+        m.support=clamp((m.support||0)+6,0,100);              // a visible blow rallies people
+        REG().grip=Math.max(0,(REG().grip||60)-5);
+        log("\u2715 You sabotaged the "+DEF[target.type].name+" — "+(util==="power"?"the grid's down.":"the block runs dry.")+" The regime reels.","good");
+        banner("SABOTAGE","good");if(SFX&&SFX.alert)SFX.alert();
+        chronicle("You struck the "+DEF[target.type].name+" — "+util+" sabotage.","\u2715");
+        adjAvatarRep(-6);                                      // sabotage is feared, not loved
+      }
+      break;}
+    case "intel":{
+      const gain=RI(6,12)+Math.floor(check.margin/2);
+      m.intel+=gain;
+      log("\u25c6 Your operative worked the block — +"+gain+" intel.","good");
+      adjAvatarRep(2);
+      break;}
+    case "dissent":{
+      const gain=RI(5,10)+Math.floor(check.margin/2);
+      m.support=clamp((m.support||0)+gain,0,100);
+      // nearby wisps warm to the cause
+      const av=theAvatar();
+      if(av)for(const q of ST.pawns){if(q.isAvatar||isChild(q))continue;if(DIST(av.px,av.py,q.px,q.py)<8){q.allegiance=clamp((q.allegiance||0)+4,-100,100);}}
+      log("\u2687 You stirred the block — support +"+gain+".","good");
+      adjAvatarRep(5);                                          // championing people earns goodwill
+      break;}
+    case "frame":{
+      if(target&&target.kind==="pawn"){
+        target.framed=true;target.allegiance=clamp((target.allegiance||0)+30,-100,100); // discredited toward regime's enemies
+        REG().grip=Math.max(0,(REG().grip||60)-8);
+        m.support=clamp((m.support||0)+5,0,100);
+        // turn the block against the framed asset
+        for(const q of ST.pawns){if(q.id===target.id||isChild(q))continue;if(Math.random()<0.4)relAdj(q.id,target.id,-15);}
+        log("\u2624 You framed "+target.name+" — the block turns on a regime asset.","good");
+        banner("ASSET FRAMED","good");
+        chronicle("You framed "+target.name+", a regime loyalist.","\u2624");
+        adjAvatarRep(-4);
+      }
+      break;}
+  }
+}
+function opFailure(opKey,target,check){
+  const m=M();
+  // HIGH RISK: failure spikes exposure + awareness; a bad miss can trigger immediate regime attention
+  const sev=check.margin<=-4?"botched":"slipped";
+  const expHit=sev==="botched"?22:12;
+  m.exposure=clamp((m.exposure||0)+expHit,0,100);
+  REG().awareness=clamp((REG().awareness||0)+(sev==="botched"?14:7),0,100);
+  const opName=AVATAR_OPS[opKey].name;
+  if(sev==="botched"){
+    log("\u26a0 Your "+opName+" was BOTCHED — the regime's onto you. Exposure spikes.","bad");
+    banner("OP BOTCHED","bad");if(SFX&&SFX.alert)SFX.alert();
+    // a botched op near regime forces can draw an enforcer
+    const enf=ST.pawns.find(p=>p.role==="enforcer"&&p.hp>0);
+    if(enf&&theAvatar()&&Math.random()<0.5){enf.grudgeTarget=theAvatar().id;log("An enforcer marks you after the botched op.","warn");}
+  } else {
+    log("\u26a0 Your "+opName+" slipped — you weren't caught, but exposure rose.","warn");
+  }
 }
 /* ============================================================
    INVESTIGATION / CASES — the city generates mysteries; you solve them to earn intel and weaken
@@ -1188,6 +1440,7 @@ function cliqueTick(){
   }
 }
 function maybeCliquePetition(){
+  if(!REQUESTS_ENABLED)return;
   if(ST.requests&&ST.requests.some(r=>r.status==="pending"&&r.kind==="clique"))return;
   const c=ST.cliques.find(c=>c.members.length>=4&&c.loyalty>=65);
   if(!c)return;
@@ -1287,7 +1540,7 @@ function placeBp(type,x,y){const d=DEF[type];
 function cancelBp(s){if(s.paid)ST.income+=s.paid;removeStruct(s);syncHUD()}
 function finishBuild(s){s.bp=false;s.hp=s.maxHp;s.prog=0;ST.stats.built++;
   if(DEF[s.type].furn&&s.qual===undefined)s.qual=1;
-  SFX.build();powerRecalc();
+  SFX.build();
   if(s.type==="housing"){
     // register a new home slot near the housing unit — uses struct location as virtual bed
     ST.cityHomes.push({x0:s.x-1,y0:s.y-1,w:3,h:3,bed:{x:s.x,y:s.y},door:{x:s.x,y:s.y+1},virtual:true});
@@ -1306,10 +1559,7 @@ function nudgeOff(x,y){const all=ST.pawns;
         if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;
         const X=x+dx,Y=y+dy;
         if(INB(X,Y)&&colCost(X,Y)>=0){e.px=X+.5;e.py=Y+.5;e.path=null;e.job=null;placed=true}}}}
-function deconFinish(s){removeStruct(s);powerRecalc();syncHUD();if(typeof drawTerrain==="function")drawTerrain()}
-
-/* ---------- power ---------- */
-function powerRecalc(){}  // city is always powered — no generator system
+function deconFinish(s){removeStruct(s);syncHUD();if(typeof drawTerrain==="function")drawTerrain()}
 
 /* ---------- map generation ---------- */
 function addBuilt(type,x,y,owner){if(!INB(x,y))return;
@@ -1414,24 +1664,40 @@ function genCity(){
     ST.cityHomes.push({x0,y0,w:6,h:5,bed:{x:x0+(pod?pod.x:1),y:y0+(pod?pod.y:1)},door:{x:x0+2,y:y0+4}});}
   function decor(t,x,y){if(INB(x,y)&&!structAt(x,y))addBuilt(t,x,y);}
 
-  // ── RESIDENTIAL QUARTER (upper-center) — two rows of homes with a lane between ──
-  const resY1=30, resY2=40, resX0=46;
-  for(let i=0;i<4;i++)home(resX0+i*9, resY1);
-  for(let i=0;i<3;i++)home(resX0+5+i*9, resY2);
+  // ── UNDERCLASS HOUSING (west of the divide) — dense, uniform, aligned rows ──
+  const resY1=25, resY2=33, resX0=31;
+  for(let i=0;i<4;i++)home(resX0+i*9, resY1);   // row 1: x 31,40,49,58
+  for(let i=0;i<3;i++)home(resX0+i*9, resY2);   // row 2: aligned under row 1 (no stagger)
 
-  // ── PRODUCTION CLUSTER (center-left) ──
-  placeRoom(40,52,10,6,{x:44,y:57},[{t:"workstation",x:1,y:1},{t:"workstation",x:3,y:1},{t:"workstation",x:5,y:1},{t:"workstation",x:7,y:1},{t:"gym",x:1,y:4},{t:"fridge",x:8,y:4}]);   // corp office
-  placeRoom(53,52,8,6,{x:56,y:57},[{t:"counter",x:1,y:1},{t:"counter",x:2,y:1},{t:"counter",x:3,y:1},{t:"fridge",x:6,y:1},{t:"fridge",x:6,y:3}]);   // shop
+  // ── LABOR TIER (west of divide, below housing) — where the masses work ──
+  placeRoom(31,50,10,6,{x:35,y:55},[{t:"workstation",x:1,y:1},{t:"workstation",x:3,y:1},{t:"workstation",x:5,y:1},{t:"workstation",x:7,y:1},{t:"gym",x:1,y:4},{t:"fridge",x:8,y:4}]);   // corp labor office
+  placeRoom(44,50,8,6,{x:47,y:55},[{t:"counter",x:1,y:1},{t:"counter",x:2,y:1},{t:"counter",x:3,y:1},{t:"fridge",x:6,y:1},{t:"fridge",x:6,y:3}]);   // bodega
 
-  // ── COMMERCIAL / SOCIAL STRIP (center-right) ──
-  placeRoom(72,52,8,6,{x:75,y:57},[{t:"bar",x:1,y:1},{t:"bar",x:2,y:1},{t:"bar",x:3,y:1},{t:"tv",x:6,y:1},{t:"tv",x:6,y:4}]);   // bar
-  placeRoom(84,52,9,6,{x:88,y:57},[{t:"medbed",x:1,y:1},{t:"medbed",x:3,y:1},{t:"medbed",x:5,y:1},{t:"medbed",x:7,y:1}]);   // clinic
+  // ── CORPORATE SECTOR (east of divide) — leisure + private medical for the haves ──
+  placeRoom(74,26,8,6,{x:77,y:31},[{t:"bar",x:1,y:1},{t:"bar",x:2,y:1},{t:"bar",x:3,y:1},{t:"tv",x:6,y:1},{t:"tv",x:6,y:4}]);   // chrome bar
+  placeRoom(86,26,9,6,{x:90,y:31},[{t:"medbed",x:1,y:1},{t:"medbed",x:3,y:1},{t:"medbed",x:5,y:1},{t:"medbed",x:7,y:1}]);   // med center
 
-  // ── CENTRAL PLAZA (open space between residential and production) ──
-  // left intentionally empty around x58-70, y44-50 as a gathering plaza
+  // ── CRIME CORNER (west, below the labor tier, set apart) ──
+  placeRoom(40,68,7,5,{x:43,y:72},[{t:"dealer",x:1,y:1},{t:"dealer",x:5,y:1},{t:"counter",x:3,y:1},{t:"pod",x:1,y:3},{t:"pod",x:5,y:3}]);
 
-  // ── CRIME CORNER (lower-center, set apart) ──
-  placeRoom(60,70,7,5,{x:63,y:74},[{t:"dealer",x:1,y:1},{t:"dealer",x:5,y:1},{t:"counter",x:3,y:1},{t:"pod",x:1,y:3},{t:"pod",x:5,y:3}]);
+  // ── SURVEILLANCE: a watch post on the divide, overlooking the housing ──
+  addBuilt("watchpost",68,34);
+
+  // ── HYDRO FARM (west labor tier) — furnished farm building: spore vats + cold storage ──
+  placeRoom(56,49,12,8,{x:62,y:56},[{t:"sporevat",x:1,y:1},{t:"sporevat",x:3,y:1},{t:"sporevat",x:5,y:1},{t:"sporevat",x:7,y:1},{t:"fridge",x:10,y:1},{t:"fridge",x:10,y:4},{t:"workstation",x:1,y:5}]);
+
+  // ── FIXER ROW (west underbelly) — the broker's rough joint beside the den ──
+  placeRoom(50,67,11,6,{x:55,y:72},[{t:"fixercorner",x:1,y:1},{t:"dealer",x:3,y:1},{t:"counter",x:5,y:1},{t:"streetvendor",x:8,y:1},{t:"pod",x:1,y:4},{t:"pod",x:9,y:4}]);
+  // THE FIXER'S BACK ROOM — the avatar starts here, crashing in the fixer's quarters (pod at world 51,71)
+  // while they build up. Registered as a home so the operative has a real base to return to & sleep in.
+  ST.fixerHome={x0:50,y0:67,w:11,h:6,bed:{x:51,y:71},door:{x:55,y:72},fixerRoom:true};
+  ST.cityHomes.push(ST.fixerHome);
+
+  // ── CITY HALL (corporate sector) — the seat of district power ──
+  placeRoom(76,49,11,7,{x:81,y:55},[{t:"counter",x:1,y:1},{t:"counter",x:2,y:1},{t:"workstation",x:4,y:1},{t:"workstation",x:6,y:1},{t:"workstation",x:8,y:1},{t:"lamp",x:5,y:1},{t:"bookshelf",x:1,y:4},{t:"couch",x:3,y:4},{t:"rug",x:4,y:4},{t:"art",x:9,y:4}]);
+
+  // ── POLICE PRECINCT (east of the divide, overlooking the housing) ──
+  placeRoom(72,37,9,6,{x:76,y:42},[{t:"counter",x:1,y:1},{t:"workstation",x:3,y:1},{t:"workstation",x:5,y:1},{t:"pod",x:7,y:1},{t:"pod",x:7,y:3},{t:"gym",x:1,y:3},{t:"lamp",x:4,y:1}]);
 
   // ── RESERVED OUTER-RING ZONES (markers only for now; filled next pass) ──
   // farms NW, woods NE, mines SW, civic SE — left as open ground intentionally
@@ -1458,15 +1724,27 @@ function genCity(){
   [[4,3],[11,5],[17,4],[6,11],[14,12]].forEach(([dx,dy])=>
     addBuilt("mineshaft", mz.x+dx, mz.y+dy));
 
-  // Civic Zone (SE): park, arcade, hospital, school as standalone civic structures
+  // ── CIVIC DISTRICT (SE) — a furnished regime authority quarter laid into the cells carved by
+  //    the x112 / x120 vertical arterials and the y82 horizontal. Every room is road-clean. ──
   const cz=ST.zones.civic;
-  // park is a cluster of green tiles
-  for(let py=0;py<3;py++)for(let px=0;px<4;px++)
-    decor("park", cz.x+2+px*2, cz.y+2+py*2);
-  addBuilt("arcade",   cz.x+12, cz.y+3);
-  addBuilt("hospital", cz.x+18, cz.y+3);
-  addBuilt("school",   cz.x+12, cz.y+10);
-  addBuilt("arcade",   cz.x+18, cz.y+10); // second entertainment node
+  // small green frontage on the open ground just west of the district
+  for(let py=0;py<3;py++)for(let px=0;px<2;px++)decor("park", 100+px, 73+py*2);
+
+  // NW cell — LEARNING HUB (skills training; school fixture keeps the civic function)
+  placeRoom(104,71,7,9,{x:110,y:75},[{t:"school",x:3,y:1},{t:"workstation",x:1,y:1},{t:"workstation",x:5,y:1},{t:"bookshelf",x:1,y:3},{t:"bookshelf",x:1,y:5},{t:"bookshelf",x:5,y:3},{t:"rug",x:3,y:4},{t:"art",x:5,y:6}]);
+
+  // NMID cell — ADMIN VILLA (Mayor's fortified seat; mayorhouse keeps the roleHome)
+  placeRoom(114,71,6,9,{x:116,y:79},[{t:"mayorhouse",x:2,y:1},{t:"art",x:4,y:1},{t:"workstation",x:1,y:3},{t:"counter",x:4,y:3},{t:"rug",x:2,y:4},{t:"couch",x:2,y:5},{t:"pod",x:1,y:6},{t:"fridge",x:4,y:6}]);
+
+  // NE cell — HOSPITAL (north) over PRECINCT (south); copstation keeps the Enforcer's roleHome
+  placeRoom(122,71,9,5,{x:122,y:73},[{t:"hospital",x:4,y:1},{t:"medbed",x:1,y:1},{t:"medbed",x:7,y:1},{t:"counter",x:1,y:3},{t:"medbed",x:7,y:3},{t:"pod",x:3,y:3}]);
+  placeRoom(122,77,9,4,{x:122,y:78},[{t:"copstation",x:4,y:1},{t:"counter",x:1,y:1},{t:"workstation",x:7,y:1},{t:"pod",x:1,y:2},{t:"gym",x:7,y:2}]);
+
+  // SW cell — ENTERTAINMENT COMPLEX (recreation; vendors earn the regime a cut)
+  placeRoom(104,84,15,6,{x:111,y:84},[{t:"arcade",x:2,y:1},{t:"arcade",x:5,y:1},{t:"tv",x:8,y:1},{t:"tv",x:11,y:1},{t:"counter",x:13,y:1},{t:"couch",x:2,y:3},{t:"couch",x:5,y:3},{t:"streetvendor",x:9,y:3},{t:"rug",x:7,y:2}]);
+
+  // SE cell — MARKET HALL (Shopkeeper's counters + the Fixer's back-alley node)
+  placeRoom(122,84,9,6,{x:126,y:84},[{t:"counter",x:1,y:1},{t:"counter",x:2,y:1},{t:"streetvendor",x:4,y:1},{t:"counter",x:6,y:1},{t:"workstation",x:7,y:1},{t:"fixercorner",x:1,y:3},{t:"art",x:7,y:3},{t:"rug",x:4,y:3}]);
 
   // ── STREET FURNITURE — computed relative to rooms, not hardcoded ──
   // street lamps around the core perimeter and plaza
@@ -1555,6 +1833,155 @@ function mkAvatar(x,y,spec){
 // attribute accessor with a safe default for non-avatars (so checks never crash)
 function ops(p,k){return (p&&p.ops&&p.ops[k]!=null)?p.ops[k]:5;}
 function theAvatar(){return ST.pawns.find(p=>p.isAvatar)||null;}
+/* ============================================================
+   NAMED ROLE-WISPS — the city's power structure & civic pillars, spawned from turn one. Each has a
+   fixed identity + job + an insurrection ALIGNMENT (regime asset / civic / insurgent lever). Their
+   PERSONALITY stats (intg, emp, amb, etc.) drive behavior: a low-integrity Mayor can be bought; a
+   high-empathy Doctor shelters your cells. They are gameplay TARGETS — turn, bribe, expose, protect.
+   ============================================================ */
+const ROLES={
+  doctor:   {title:"Doctor",    fname:"Doc",   align:"civic",   workType:"medbed", accent:"#5cffd0",
+    desc:"runs the clinic — heals the block, sees who comes in bleeding",
+    persLean:{emp:80,intg:65,cau:55}, allegianceLean:10},
+  shopkeeper:{title:"Shopkeeper",fname:"Merchant",align:"civic",workType:"counter", accent:"#ffd24a",
+    desc:"runs the store — the block's commerce flows through their counter",
+    persLean:{amb:65,soc:60,intg:50}, allegianceLean:0},
+  enforcer: {title:"Enforcer",  fname:"Sergeant",align:"regime", workType:"copstation", accent:"#ff5470",
+    desc:"the regime's muscle — patrols the block, hunts dissent",
+    persLean:{intg:40,imp:55,cau:35,emp:30}, allegianceLean:-60, regimeForce:true},
+  mayor:    {title:"Mayor",     fname:"Administrator",align:"regime",workType:"mayorhouse", accent:"#c77dff",
+    desc:"the regime's face — sets policy, keeps the district in line",
+    persLean:{amb:80,intg:35,soc:65,cau:60}, allegianceLean:-45, regimeForce:true},
+  informant:{title:"Informant", fname:"Citizen",align:"regime", workType:null,        accent:"#9aa7bd",
+    desc:"a hidden snitch — feeds the regime in exchange for safety",
+    persLean:{cau:75,intg:30,soc:45,imp:30}, allegianceLean:-20, secretInformant:true},
+  fixer:    {title:"Fixer",     fname:"Broker", align:"insurgent",workType:"fixercorner", accent:"#ff9f2d",
+    desc:"the black-market broker — knows everyone, owes no one, a natural ally",
+    persLean:{amb:70,soc:75,intg:40,cur:65}, allegianceLean:35, insurgentLever:true},
+};
+// a named role-wisp at (x,y). role = key in ROLES.
+function mkRoleWisp(x,y,roleKey){
+  const R0=ROLES[roleKey];if(!R0)return mkPawn(x,y);
+  const p=mkPawn(x,y);
+  p.role=roleKey;
+  // distinctive name: a title-flavored handle
+  p.name=R0.fname+' "'+CH(NH)+'"';
+  p.accent=R0.accent;
+  // ingrain the role's personality lean into their stats (keeps individual variation though)
+  for(const k in R0.persLean)p.pers[k]=clamp(Math.round((p.pers[k]+R0.persLean[k]*2)/3),0,100);
+  // their starting allegiance leans per role (regime assets start hostile to your cause)
+  p.allegiance=clamp((p.allegiance||0)+(R0.allegianceLean||0),-100,100);
+  // regime roles + the informant carry their function flags
+  if(R0.secretInformant){p.informant=true;}
+  if(R0.regimeForce){p.regimeForce=true;}
+  if(R0.insurgentLever){p.insurgentLever=true;}
+  p.mem=[{d:0,h:6,t:"I'm the "+R0.title.toLowerCase()+" around here — everyone knows it"}];
+  return p;
+}
+/* ═══════════ ELECTIONS — when a role-holder dies, the seat opens and the block elects a replacement.
+   Candidates self-nominate by ambition (+ the player may propose one); voters weigh role-fit +
+   relationship + the candidate's pitch. The role sits EMPTY during the campaign, so the loss is felt. */
+function electableRole(rk){return !!ROLES[rk]&&!ROLES[rk].secretInformant;}
+// how well a wisp FITS a role by personality (0..1) — closeness of their pers to the role's persLean.
+function roleFit(p,rk){
+  const lean=ROLES[rk]&&ROLES[rk].persLean;if(!lean)return 0.5;
+  let tot=0,n=0;for(const k in lean){const diff=Math.abs((p.pers[k]||50)-lean[k]);tot+=1-diff/100;n++;}
+  return n?clamp(tot/n,0,1):0.5;
+}
+// open an election for a vacated role. Gathers self-nominated candidates (ambitious or well-suited wisps).
+function openElection(rk,deadName){
+  if(!electableRole(rk))return;
+  if(ST.election&&ST.election.role===rk)return;   // already electing this role
+  if(ST.election&&!ST.election.resolved){          // an election is in progress — QUEUE this vacancy
+    ST.electionQueue=ST.electionQueue||[];
+    if(!ST.electionQueue.some(q=>q.role===rk)){ST.electionQueue.push({role:rk,deadName:deadName||null});
+      log("\u2696 The "+ROLES[rk].title+" seat is also empty — that election will follow the current one.","info");}
+    return;
+  }
+  const pool=ST.pawns.filter(p=>p.hp>0&&!isChild(p)&&!p.role&&!p.isAvatar);
+  let field=pool.filter(p=>{const amb=p.pers.amb||50,fit=roleFit(p,rk);return amb>58||fit>0.62;}).map(p=>p.id);
+  field.sort((a,b)=>{const pa=ST.pawns.find(p=>p.id===a),pb=ST.pawns.find(p=>p.id===b);
+    return ((pb.pers.amb||50)/100+roleFit(pb,rk))-((pa.pers.amb||50)/100+roleFit(pa,rk));});
+  field=field.slice(0,4);
+  if(field.length<1){
+    const best=pool.sort((a,b)=>roleFit(b,rk)-roleFit(a,rk))[0];
+    if(best){installRole(best,rk);log("No one ran for "+ROLES[rk].title+" — "+best.name+" was pressed into the role.","warn");}
+    return;
+  }
+  ST.election={role:rk,openedT:ST.tick,voteAt:ST.tick+Math.floor(TPD*0.6),
+    candidates:field,pitches:{},playerPick:null,votes:{},resolved:false,deadName:deadName||null};
+  log("\u2696 The "+ROLES[rk].title+" seat is empty. "+field.length+" candidate"+(field.length>1?"s have":" has")+" stepped forward — the block will vote.","info");
+  banner("ELECTION: "+ROLES[rk].title.toUpperCase(),"info");
+}
+// the player proposes/backs a candidate (adds them to the field if eligible).
+function proposeCandidate(pid){
+  const e=ST.election;if(!e||e.resolved)return false;
+  const p=ST.pawns.find(q=>q.id===pid);
+  if(!p||p.hp<=0||isChild(p)||p.role)return false;
+  if(!e.candidates.includes(pid))e.candidates.push(pid);
+  e.playerPick=pid;
+  log("You're backing "+p.name+" for "+ROLES[e.role].title+".","good");
+  return true;
+}
+// each voter scores candidates (fit + relationship + pitch + your endorsement) and votes for their top.
+function tallyElection(){
+  const e=ST.election;if(!e)return null;const rk=e.role;
+  const tally={};e.candidates.forEach(id=>tally[id]=0);
+  for(const v of ST.pawns){
+    if(v.hp<=0||isChild(v)||e.candidates.includes(v.id))continue;
+    let bestId=null,bestScore=-1e9;
+    for(const cid of e.candidates){
+      const c=ST.pawns.find(p=>p.id===cid);if(!c)continue;
+      const fit=roleFit(c,rk),rel=relGet(v.id,cid)/100;
+      const pitchSway=e.pitches[cid]?0.12:0;
+      const endorse=(e.playerPick===cid)?(0.10*(1+(v.allegiance||0)/200)):0;  // your backing sways, but the block can still reject a poor candidate
+      const emp=(v.pers.emp||50)/100;
+      const score=fit*(1.1-emp*0.4)+rel*(0.6+emp*0.5)+pitchSway+endorse+(Math.random()*0.12);
+      if(score>bestScore){bestScore=score;bestId=cid;}
+    }
+    if(bestId){tally[bestId]++;e.votes[v.id]=bestId;}
+  }
+  let winId=e.candidates[0],winV=-1;
+  for(const cid of e.candidates){const c=ST.pawns.find(p=>p.id===cid);
+    const v=(tally[cid]||0)+(c?roleFit(c,rk)*0.01:0);if(v>winV){winV=v;winId=cid;}}
+  e.tally=tally;return winId;
+}
+// give a wisp a role (election win or auto-fill).
+function installRole(p,rk){
+  if(!p||!ROLES[rk])return;
+  p.role=rk;p.accent=ROLES[rk].accent;const R0=ROLES[rk];
+  if(R0.regimeForce)p.regimeForce=true;
+  if(R0.insurgentLever)p.insurgentLever=true;
+  if(R0.workType){for(const s of ST.structs.values()){if(s.type===R0.workType&&!s.bp){p.assigned=K(s.x,s.y);break;}}}
+  remember(p,"took office as "+R0.title+" — the block chose me");
+}
+// resolve the active election: install the winner, salt the losers, surface the result.
+function resolveElection(){
+  const e=ST.election;if(!e||e.resolved)return;
+  const winId=tallyElection();const winner=ST.pawns.find(p=>p.id===winId);
+  if(winner){
+    installRole(winner,e.role);
+    const wasPlayerPick=(e.playerPick===winId);
+    log("\u2696 "+winner.name+" wins the "+ROLES[e.role].title+" seat"+(wasPlayerPick?" — your candidate took it.":".")+" ("+(e.tally[winId]||0)+" votes)","good");
+    banner((winner.name.split(" ")[0])+" ELECTED","good");
+    addMod(winner,"elected","Won the people's mandate",10,TPD*2);
+    for(const cid of e.candidates){
+      if(cid===winId)continue;const c=ST.pawns.find(p=>p.id===cid);if(!c)continue;
+      if((c.pers.amb||50)>62){addMod(c,"lostrace","Lost the election I wanted",-12,TPD*1.5);applyDrift(c,{amb:3});
+        if(relGet(c.id,winId)>-40)relAdj(c.id,winId,-15);
+        remember(c,"lost the "+ROLES[e.role].title+" race to "+winner.name+". next time.");}
+    }
+    if(e.playerPick){const av=theAvatar();
+      if(e.playerPick===winId){if(av)addMod(av,"kingmaker","Backed the winning candidate",6,TPD);}
+      else{if(av)addMod(av,"backedloser","My candidate lost the race",-4,TPD);}}
+  }
+  e.resolved=true;ST.lastElection=ST.tick;ST.election=null;
+  // if other seats opened during this campaign, kick off the next queued election now
+  if(ST.electionQueue&&ST.electionQueue.length){
+    const next=ST.electionQueue.shift();
+    if(next&&!ST.pawns.some(p=>p.role===next.role))openElection(next.role,next.deadName);
+  }
+}
 // a stat CHECK: roll against a difficulty, modified by the attribute. returns {pass, roll, margin}.
 function opsCheck(attr,difficulty){
   const a=theAvatar();const stat=a?ops(a,attr):5;
@@ -1882,7 +2309,7 @@ const VOCATIONS={
   fabricator:{name:"Fabricator", sk:"bld",  fix:["workshop","gearshop"],         blurb:"builds and machines"},
   techie:    {name:"Techie",     sk:"sal",  fix:["workstation","chemlab","stimlab"],blurb:"runs terminals and labs"},
   grower:    {name:"Grower",     sk:"cook", fix:["farmplot"],                     blurb:"works the farms"},
-  laborer:   {name:"Laborer",    sk:"sht",  fix:["loggingcamp","mineshaft"],      blurb:"hauls wood and ore"},
+  laborer:   {name:"Scavenger",   sk:"sht",  fix:["loggingcamp","mineshaft"],      blurb:"strips scrap and runs data"},
   trader:    {name:"Trader",     sk:"sal",  fix:["counter","bar","gearshop"],     blurb:"works the counters"},
 };
 function initCareer(sk,pers){
@@ -2029,6 +2456,7 @@ function careerTick(p){
   else if(c.sat<18)addMod(p,"badwork","Hates the grind",-3,TPD);
 }
 function genWorkPetitions(){
+  if(!REQUESTS_ENABLED)return;
   // at most one work petition per day, from the most aggrieved ambitious pawn
   if(ST.requests&&ST.requests.some(r=>r.status==="pending"&&r.kind==="work"))return;
   let worst=null;
@@ -2063,6 +2491,7 @@ function genWorkPetitions(){
 // a wealthy resident whose home is packed (no free tiles) petitions for more space.
 // the player approves (district funds an expansion) or denies. NPC then furnishes the new room.
 function genExpansionPetition(){
+  if(!REQUESTS_ENABLED)return;
   if(ST.requests&&ST.requests.some(r=>r.status==="pending"&&r.kind==="expand"))return;
   for(const p of ST.pawns){
     if(isChild(p)||p.homeless||!p.home)continue;
@@ -2115,8 +2544,13 @@ function mkSched(P,tr){
   const sleepAt=clamp(22.5+(owl?2.6:0)+(P.soc-50)/45+(P.imp-50)/40-(P.cau-50)/40-(P.ind-50)/55,20,27);
   const workLen=clamp(6+(P.amb-50)/14+(P.ind-50)/22,3.5,11);
   const workStart=clamp(wake+1.8+(P.cau-50)/70,wake+1,13.5);
+  const workEnd=clamp(workStart+workLen,workStart+3,25.5);
+  // LEISURE WINDOW: after work, before bed — when sociable/curious folk go out (bar, arcade, park, friends).
+  // Social pawns start earlier and stay out later; homebodies have a short window.
+  const leisureStart=r2(clamp(workEnd+0.3,16,22));
+  const leisureEnd=r2(clamp(sleepAt-0.4+(P.soc-50)/60,leisureStart+0.5,26.5));
   return{wake:r2(wake),sleepAt:r2(sleepAt),workStart:r2(workStart),
-    workEnd:r2(clamp(workStart+workLen,workStart+3,25.5)),
+    workEnd:r2(workEnd),leisureStart,leisureEnd,
     bf:r2(wake+0.4),lunch:r2(clamp(12.5+(P.imp-50)/55,11.5,14.5)),dinner:r2(clamp(18.5+(P.soc-50)/45,17,21))}}
 function workSpd(p,sk){return (0.6+sk*0.09)*trMul(p,"work")}
 function moveSpd(p){let s=0.32*trMul(p,"move");if(p.dazed>ST.tick)s*=.55;return s}
@@ -2131,7 +2565,7 @@ function gainXp(p,k){p.xp[k]=(p.xp[k]||0)+1;
 /* mood */
 function addMod(p,id,label,val,dur){
   for(let i=p.mods.length-1;i>=0;i--)if(p.mods[i].id===id)p.mods.splice(i,1);
-  p.mods.push({id,l:label,v:val,until:ST.tick+dur})}
+  p.mods.push({id,l:label,v:Math.round(val),until:ST.tick+dur})}
 function moodCalc(p){
   p.mods=p.mods.filter(m=>m.until>ST.tick);
   let m=42+trAdd(p,"mood");
@@ -2214,7 +2648,7 @@ function nearestStruct(p,fn){let best=null,bd=1e9;
   return best}
 function mkEat(p){
   const home=(!p.homeless)&&homeFixture(p,"fridge");
-  const src=home||nearestStruct(p,s=>(s.type==="fridge"||s.type==="counter"||s.type==="bar")&&!s.bp&&!isBroken(s));
+  const src=home||nearestStruct(p,s=>(s.type==="fridge"||s.type==="counter"||s.type==="bar"||s.type==="cafeteria")&&!s.bp&&!isBroken(s));
   if(!src)return null;
   return{t:"eat",x:src.x,y:src.y,adj:1,prog:0,home:!!home};}
 function mkSleep(p){let pod=null;
@@ -2233,8 +2667,12 @@ function scoreJobs(p){
   const hyg=p.needs.hyg??80,fun=p.needs.fun??70,socN=p.needs.socN??70,soc=p.pers.soc;
   const showStr=(!p.homeless&&(homeFixture(p,"shower")||homeFixture(p,"toilet")))||nearestStruct(p,s=>(s.type==="shower"||s.type==="toilet")&&!s.bp&&!isBroken(s));
   const funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar"||s.type==="park"||s.type==="arcade"||s.type==="couch")&&!s.bp&&!isBroken(s));
-  let mate=null,_md=1e9;for(const q of ST.pawns){if(q.id===p.id)continue;
+  let mate=null,_md=1e9;
+  // after a conversation, a pawn won't immediately start another (prevents endless re-socialize loops)
+  if(!(p.socCd&&ST.tick<p.socCd))
+  for(const q of ST.pawns){if(q.id===p.id)continue;
     if(relGet(p.id,q.id)<-40)continue;  // don't socialize toward rivals/enemies
+    if(p.lastSocPartner===q.id&&ST.tick<(p.lastSocT||0)+400)continue; // not the same person just-talked-to
     // don't chase someone into a home you're not welcome in (no barging to socialize)
     {const ho=homeOwnerAt(q.px|0,q.py|0);if(ho&&ho!==p&&!canEnterHome(p,ho))continue;}
     let dd=DIST(p.px,p.py,q.px,q.py);
@@ -2255,8 +2693,8 @@ function scoreJobs(p){
   const robTgt=nearestStruct(p,s=>s.type==="counter"&&!s.bp);
   const gearStr=!p.hasGear&&(p.credits||0)>=15&&(ST.goods.gear||0)>0?
     nearestStruct(p,s=>s.type==="gearshop"&&!s.bp):null;
-  const stealTgt=p.pers.intg<35&&(p.credits||0)<15&&(p.addiction||0)>20?
-    ST.pawns.find(q=>q.id!==p.id&&(q.credits||0)>20&&DIST(p.px,p.py,q.px,q.py)<10&&relGet(p.id,q.id)>-60):null;
+  const stealTgt=p.pers.intg<28&&(p.credits||0)<8&&(p.addiction||0)>30&&ST.tick>(p.crimeCd||0)?
+    ST.pawns.find(q=>q.id!==p.id&&(q.credits||0)>25&&DIST(p.px,p.py,q.px,q.py)<10&&relGet(p.id,q.id)>-60):null;
   // VISIT: when social, a wisp may visit a friend/partner's HOME to hang out (consensual).
   // pick the closest person whose home they may enter and who they like.
   let visitTgt=null;
@@ -2268,7 +2706,7 @@ function scoreJobs(p){
       if(d<bd&&d<28){bd=d;visitTgt=q;}}}
   // BURGLE: a desperate, low-integrity wisp may break into a stranger's home to rob it.
   let burgleTgt=null;
-  if(!isChild(p)&&p.pers.intg<32&&(p.credits||0)<18&&ST.tick>(p.crimeCd||0)){let bd=1e9;
+  if(!isChild(p)&&p.pers.intg<26&&(p.credits||0)<10&&ST.tick>(p.crimeCd||0)){let bd=1e9;
     for(const q of ST.pawns){if(q.id===p.id||!q.home||areFamily(p,q))continue;
       if((q.credits||0)<25)continue;             // worth robbing
       if(relGet(p.id,q.id)>20)continue;          // won't rob people they like
@@ -2302,6 +2740,7 @@ function scoreJobs(p){
       *(fitsVocation(p,workStr.type)?1.15:0.9)   // do what they're good at
       *ethicMul(p)                                 // hard workers push, slackers ease off
       *(p.career?(0.7+p.career.sat/100*0.5):1)     // satisfied pawns show up
+      *(p.role?1.6:1)                              // named roles hold their post — citizens rely on them
       ,0,100):0,treat:p.sick&&medStr?95:0,
     substance:dlrStr?clamp((p.addiction||0)*0.6+((p.stress||0)>40?((p.stress||0)-40)*0.4:0),0,100):0,
     crime:(robTgt&&cred<20)?clamp(30-cred*1.1+turfBonus+nightBonus,0,100):0,
@@ -2310,19 +2749,22 @@ function scoreJobs(p){
     visit:visitTgt?clamp(58-socN*0.5+(relGet(p.id,visitTgt.id)>60?12:0),0,75):0,
     burgle:burgleTgt?clamp(40-cred*1.0+turfBonus+nightBonus,0,100):0,
     homicide:killTgt?clamp(55+nightBonus+turfBonus,0,100):0,
-    learn:(schoolStr&&food>40&&rest>35&&!p.sick)?clamp(18+cur*0.15+ind*0.1,0,45):0};
+    learn:(schoolStr&&food>40&&rest>35&&!p.sick)?clamp(14+cur*0.28+ind*0.1,0,55):0};  // curious wisps learn eagerly (but a pressing need still wins)
   const pw={
     eat:0.5+cau/100,sleep:0.5+cau/100,build:0.5+ind/100,
-    idle:0.5+(100-ind)/100,
-    hygiene:1,recreate:0.5+cur/100,socialize:0.5+soc/100,work:0.5+ind/100,treat:0.5+cau/100,
+    idle:0.5+(100-ind)/100-cur/200,                          // the curious idle less (they'd rather DO something)
+    hygiene:1,recreate:0.5+cur/100,socialize:0.5+soc/100,work:0.5+ind/100,
+    // empathetic wisps prioritize TENDING the sick — a high-empathy citizen practically rushes to help
+    treat:0.5+cau/100+(p.pers.emp||50)/120,
     substance:0.3+p.pers.imp/150+(100-p.pers.intg)/200,
     crime:(100-p.pers.intg)/100*(0.4+p.pers.imp/150),
     steal:(100-p.pers.intg)/100*(0.3+p.pers.imp/120),
     buygear:0.5+p.pers.ind/150,
-    visit:0.5+soc/100,
+    visit:0.5+soc/100+(p.pers.emp||50)/200,                  // warm wisps check in on friends more
     burgle:(100-p.pers.intg)/100*(0.35+p.pers.imp/120),
     homicide:(100-p.pers.intg)/100*(0.25+p.pers.imp/110),
-    learn:0.4+p.pers.amb/150+cur/200};
+    // curiosity drives learning, but EASES when fun is critically low (a bored wisp wants fun, not a textbook)
+    learn:(0.4+p.pers.amb/150+cur/150)*(fun<25?0.55:1)};                       // curiosity drives learning harder
   const sm={eat:1,sleep:1,build:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1,treat:1,substance:1,crime:1,steal:1,buygear:1,learn:1,visit:1,burgle:1,homicide:1};
   if(p.sched){const S=p.sched,hr=hourN();
     sm.sleep*=inWin(hr,S.sleepAt,S.wake)?1.9:(rest<18?0.7:0.12);
@@ -2330,6 +2772,19 @@ function scoreJobs(p){
     sm.eat*=(nearWin(hr,S.bf,0.9)||nearWin(hr,S.lunch,0.8)||nearWin(hr,S.dinner,1.0))?1.7:0.7;
     if(nearWin(hr,S.wake+0.6,1.0))sm.hygiene*=1.7;
     sm.learn*=inWin(hr,S.workStart,S.workEnd)?0.8:1.3; // study off-shift
+    // LEISURE RHYTHM: in the evening leisure window, wisps want to go OUT and be together — unwind at a
+    // venue, socialize, visit friends. Outside it they're less inclined — but a genuine NEED still pulls
+    // them (a very bored or very lonely wisp will still go, just less eagerly), so the window biases
+    // TIMING without hard-suppressing real needs.
+    if(S.leisureStart!=null){
+      const inLeisure=inWin(hr,S.leisureStart,S.leisureEnd);
+      // out-of-window penalty eases as the need grows: mild when bored, near-none when desperate.
+      const recPen=Math.max(0.78,1-fun/220);    // funlow → closer to 1
+      const socPen=Math.max(0.78,1-socN/220);
+      sm.recreate*=inLeisure?1.9:recPen;
+      sm.socialize*=inLeisure?1.8:socPen;
+      sm.visit*=inLeisure?1.7:Math.max(0.75,socPen);
+    }
   }else if(night){sm.sleep*=1.4}
   if(inj){sm.eat*=1.3;sm.sleep*=1.3}
   const bias=p.bias;
@@ -2351,8 +2806,18 @@ function scoreJobs(p){
     {k:"burgle", mk:()=>burgleTgt?{t:"burgle",oid:burgleTgt.id,prog:0,phase:0}:null},
     {k:"homicide",mk:()=>killTgt?{t:"homicide",oid:killTgt.id,prog:0,phase:0}:null},
     {k:"idle",   mk:()=>{const w=randNear(p,5)||{x:p.px|0,y:p.py|0};return{t:"idle",until:ST.tick+RI(25,70),x:w.x,y:w.y}}}];
-  if(p.cmd){const a=acts.find(x=>x.k===p.cmd);p.cmd=null;
-    if(a){const cj=a.mk();
+  if(p.cmd){const wanted=p.cmd;const a=acts.find(x=>x.k===p.cmd);p.cmd=null;
+    // REFUSAL: a wisp with strong contrary pressure may refuse the order (the player can then FORCE).
+    // e.g. ordered to work while starving/exhausted, or a defiant low-allegiance wisp resisting.
+    let refuse=false;
+    if(wanted==="work"&&(p.needs.rest||100)<32&&(p.needs.rest||100)>=20&&(p.needs.food||100)>22&&Math.random()<0.5)refuse=true;  // too tired to want to work
+    else if((p.allegiance||0)<-25&&(p.pers.ind||50)>62&&Math.random()<0.4)refuse=true;        // defiant + independent
+    else if((p.stress||0)>78&&Math.random()<0.5)refuse=true;                                   // too frayed to comply
+    if(refuse&&!p.isAvatar){
+      p.refusedOrder=true;p.pendingForceCmd=wanted;
+      if(ST.sel&&ST.sel.includes(p))log(p.name+" refuses the order.","warn");
+      // fall through to normal autonomous behavior
+    }else if(a){const cj=a.mk();
       if(cj){if(cj.t==="build"&&cj.s)cj.s.res=p.id;return cj}}}
   let bestU=-1,bestMk=null;
   for(const a of acts){
@@ -2365,6 +2830,16 @@ function scoreJobs(p){
 function chooseJob(p){
   if(p.needs.food<=22){const j=mkEat(p);if(j)return j}
   if(p.needs.rest<=18)return mkSleep(p);
+  // ROLE ANCHOR: a named role-wisp with a post reports to work during work hours (08:00-19:00),
+  // unless a need is pressing. Keeps the Doctor at the clinic, the Shopkeeper at the store, etc.,
+  // so citizens can reliably find and interact with them.
+  if(p.role&&p.assigned&&!p.sick&&ST.tick>(p.workCd||0)){
+    const hr=hourN();
+    if(hr>=8&&hr<19&&p.needs.food>30&&p.needs.rest>28){
+      const ws=ST.structs.get(p.assigned);
+      if(ws&&!ws.bp&&!isBroken(ws))return{t:"work",s:ws,prog:0};
+    }
+  }
   return scoreJobs(p)}
 function clearJob(p){const j=p.job;
   if(j&&j.s&&j.s.res===p.id)j.s.res=0;
@@ -2418,6 +2893,8 @@ function killPawn(p,why){const i=ST.pawns.indexOf(p);if(i<0)return;
     const o=ST.pawns.find(q=>q.id===id);if(o)addMod(o,"cliqueloss","We lost one of ours",-12,TPD*2.5);}
     c.loyalty=clamp(c.loyalty-8,0,100);}}
   ST.sel=ST.sel.filter(e=>e!==p);renderInspect();
+  // a vacated public role triggers an election — the block votes for a replacement (seat sits empty meanwhile)
+  if(p.role&&electableRole(p.role)){openElection(p.role,p.name);}
   if(ST.pawns.length===0&&ST.phase==="run")gameOver()}
 // comedic mini-tombstone that lingers then fades
 function spawnTombstone(x,y){
@@ -2601,6 +3078,15 @@ function crimeTick(){
 }
 // SNITCHING: a witness to a crime may report the perp, spiking heat on them
 function witnessCrime(perp,x,y){
+  // THE ENFORCER — if a loyal enforcer is near the crime, they reliably report it (it's their job).
+  const enf=ST.pawns.find(p=>p.role==="enforcer"&&p.hp>0&&!p.sleeping&&(p.allegiance||0)<10&&DIST(p.px,p.py,x,y)<14);
+  if(enf&&enf.id!==perp.id){
+    ST.heat=Math.min(100,(ST.heat||0)+14);
+    relAdj(perp.id,enf.id,-25);perp.snitchedBy=enf.id;
+    tryEmote(enf,"excl",120);
+    log("⚖ The Enforcer caught "+perp.name+" in the act — heat spikes.","warn");
+    return;
+  }
   for(const q of ST.pawns){
     if(q.id===perp.id||q.hp<=0||q.sleeping)continue;
     if(DIST(q.px,q.py,x,y)>6)continue;
@@ -2633,8 +3119,17 @@ function pawnTick(p){
     else if(p.dazed>ST.tick){tryEmote(p,"dizzy",100);}
     else if((p.stress||0)>65){tryEmote(p,"sweat",100);}
     else if(p.sick){if(Math.random()<0.5)tryEmote(p,"gross",140);}
-    else if((p.mood||50)>72){tryEmote(p,Math.random()<0.4?"music":"happy",110);}
+    else if((p.mood||50)>72){
+      // a content wisp who's also up to no good shows a cute-evil tell instead of plain cheer
+      const crooked=(p.pers.intg||50)<35||pawnGang(p)||(p.addiction||0)>40;
+      const greedy=(p.pers.amb||50)>70&&(p.credits||0)>40;
+      if(crooked&&Math.random()<0.5)tryEmote(p,Math.random()<0.5?"scheme":"evil",120);
+      else if(greedy&&Math.random()<0.4)tryEmote(p,"greed",120);
+      else tryEmote(p,Math.random()<0.4?"music":"happy",110);
+    }
     else if((p.mood||50)<28){tryEmote(p,"cry",140);}
+    // a smug, satisfied schemer occasionally preens even in a neutral mood
+    else if((p.pers.intg||50)<32&&(p.pers.amb||50)>60&&Math.random()<0.18){tryEmote(p,"smug",120);}
     // gossip: two friendly wisps near each other trade ! and ? bubbles
     else if(Math.random()<0.3){
       for(const q of ST.pawns){if(q===p||q.hp<=0||q.sleeping)continue;
@@ -2678,8 +3173,14 @@ function pawnTick(p){
   if(p.sick){
     if(ST.tick%60===0)p.hp-=1;   // slower decay — bigger map means longer trips to care
     if(p.hp<=0){killPawn(p,"died of an untreated infection");return}
-    // easier natural recovery so a single distant clinic isn't a death sentence
-    if(p.needs.hyg>50&&p.hp>50&&ST.tick%80===0&&Math.random()<0.09){p.sick=false;p.quarantine=false;log(p.name+" shook off the infection.","good")}}
+    // recovery: better hygiene/health speeds it, but even a rough sleeper can eventually shake it off —
+    // so being sick isn't a near-permanent trap (sickness blocks work, which suppresses the hygiene that
+    // recovery used to strictly require — that was a chronic-illness spiral).
+    if(p.hp>35&&ST.tick%80===0){
+      const clean=(p.needs.hyg||50)>50, healthy=p.hp>55;
+      const recoverChance=clean&&healthy?0.14:(p.needs.hyg||50)>30?0.07:0.035;
+      if(Math.random()<recoverChance){p.sick=false;p.quarantine=false;log(p.name+" shook off the infection.","good");}
+    }}
   if(ST.tick%100===0){
     let sp=-3;
     if(p.sick)sp+=3;
@@ -2759,6 +3260,37 @@ function pawnTick(p){
   // sleeping wake conditions
   if(p.sleeping&&ST.tick%20===0&&foeNear(p,7)){
     p.sleeping=false;clearJob(p);addMod(p,"rude","Combat woke me",-4,TPD*.3)}
+  // SOCIAL HOLD: if someone is socializing WITH this pawn, the pawn pauses to "chat back" instead of
+  // wandering off. BUT only if this pawn isn't itself running a socialize job (otherwise the hold's
+  // job=null would kill its own conversation progress — that was an infinite re-init loop). A hard
+  // elapsed cap also guarantees release if the initiator's job ends abnormally.
+  if(p.socWith&&ST.tick<(p.socUntil||0)&&!(p.job&&p.job.t==="socialize")){
+    const partner=ST.pawns.find(q=>q.id===p.socWith);
+    if(p.socHoldStart==null)p.socHoldStart=ST.tick;
+    if(partner&&DIST(p.px,p.py,partner.px,partner.py)<3&&(ST.tick-p.socHoldStart)<80){
+      p.path=null;p.job=null;                                  // stay put for the conversation
+      if(ST.tick%18===0)tryEmote(p,Math.random()<0.5?"chat":"happy",60);
+      return;
+    } else { p.socWith=null;p.socUntil=0;p.socHoldStart=null; } // partner left or cap hit — release
+  } else if(p.socWith&&!(p.job&&p.job.t==="socialize")&&ST.tick>=(p.socUntil||0)){ p.socWith=null;p.socUntil=0;p.socHoldStart=null; }
+
+  // STUCK DETECTOR (safety net): if a pawn has a job but isn't moving AND isn't making progress, its path
+  // is dead-ended (e.g. can't squeeze to a work tile). Drop the job, mark the target unreachable, pick
+  // something else — prevents pawns freezing. (A pawn working/learning in place advances prog, so it's
+  // NOT counted as stuck — only genuinely stalled jobs are.)
+  if(p.job&&!p.sleeping&&!p.socWith){
+    const here=(p.px*4|0)+","+(p.py*4|0);
+    const prog=p.job.prog||0;
+    if(p._lastCell===here&&prog===(p._lastProg||0)){p._stuckT=(p._stuckT||0)+1;}
+    else{p._stuckT=0;p._lastCell=here;p._lastProg=prog;}
+    if(p._stuckT>140){                                  // ~14s frozen with no movement AND no progress
+      const j=p.job;
+      if(j.s){markUnre(p,j.s.x,j.s.y);}                  // don't keep retrying the same dead-end target
+      else if(j.oid){const o=ST.pawns.find(q=>q.id===j.oid);if(o){p.lastSocPartner=o.id;p.lastSocT=ST.tick;p.socCd=ST.tick+300;}}
+      clearJob(p);p._stuckT=0;
+    }
+  } else { p._stuckT=0; }
+
   if(!p.job)p.job=chooseJob(p);
   const j=p.job;if(!j)return;
   switch(j.t){
@@ -2868,10 +3400,25 @@ function pawnTick(p){
       {const ho=homeOwnerAt(o.px|0,o.py|0);if(ho&&ho!==p&&!canEnterHome(p,ho)){p.job=null;break}}
       const r=gotoCell(p,o.px|0,o.py|0,1);
       if(r==="fail"){p.job=null;break}
-      if(r==="arr"){j.prog++;if(j.prog>=40){p.needs.socN=100;relAdj(p.id,o.id,3.5);
-        // close, compatible pairs may pair up
-        if(relGet(p.id,o.id)>=48&&Math.random()<0.06)tryFormPartnership(p,o);
-        p.job=null}}
+      if(r==="arr"){
+        // SIDE-BY-SIDE: lock the pair together so the partner pauses, faces, and both show emotes —
+        // making the interaction legible. The lock is bounded by a HARD elapsed-time cap (not job prog,
+        // which can stall if pathing re-evaluates) so it always releases cleanly — no stuck pairs.
+        if(j.startT==null)j.startT=ST.tick;             // remember when the chat began
+        const elapsed=ST.tick-j.startT;
+        p.socWith=o.id;p.socUntil=ST.tick+8;            // short rolling lock, refreshed only while adjacent
+        if(!o.socWith||o.socWith===p.id){o.socWith=p.id;o.socUntil=ST.tick+8;o.path=null;}
+        if(j.prog%14===0)tryEmote(p,Math.random()<0.5?"happy":"chat",60);
+        if(j.prog%14===7)tryEmote(o,Math.random()<0.5?"happy":"chat",60);
+        j.prog++;
+        // complete on job progress OR the hard time cap (whichever first) — guarantees release
+        if(j.prog>=40||elapsed>=70){p.needs.socN=100;o.needs.socN=Math.min(100,(o.needs.socN||70)+25);relAdj(p.id,o.id,3.5);
+          p.socWith=null;o.socWith=null;p.socUntil=0;o.socUntil=0;p.socHoldStart=null;o.socHoldStart=null;
+          // cooldowns so they don't immediately re-initiate with each other (was an endless-loop bug)
+          p.socCd=ST.tick+300;o.socCd=ST.tick+300;
+          p.lastSocPartner=o.id;p.lastSocT=ST.tick;o.lastSocPartner=p.id;o.lastSocT=ST.tick;
+          if(relGet(p.id,o.id)>=48&&Math.random()<0.06)tryFormPartnership(p,o);
+          p.job=null;}}
       break}
     case "work":{const s=j.s;
       if(structAt(s.x,s.y)!==s||s.bp||(s.surgeT&&ST.tick<s.surgeT)){p.job=null;break}
@@ -3057,6 +3604,8 @@ function pawnTick(p){
           else{
             float(p.px,p.py,"+"+take+"c","#c98bff");
             remember(p,"skimmed "+take+"c off "+v.name+" — clean")}
+          witnessCrime(p,p.px,p.py);          // the Enforcer or a bystander may report it
+          p.crimeCd=ST.tick+RI(TPD,TPD*2);    // cooldown — no serial pickpocketing
           p.job=null;syncHUD()}}
       break}
     case "visit":{const o=ST.pawns.find(q=>q.id===j.oid);
@@ -3312,13 +3861,23 @@ function checkContextualHints(){
 
 /* ---------- events ---------- */
 function scheduleEv(){ST.nextEv=ST.tick+Math.floor(R(.75,1.35)*TPD)}
-const PRICES={stims:22,gear:16,data:8,chem:6,parts:6,wood:7,materials:14,food:5};
+const PRICES={stims:22,gear:16,data:8,chem:6,parts:6,scrap:7,food:5};
 /* ============================================================
    TRADE CARAVANS — periodic external traders; demand spikes & deals
    ============================================================ */
 // A caravan arrives wanting to BUY a commodity at a premium (sell opportunity)
 // or SELL one cheap (stock-up opportunity). Telegraphed, time-limited.
-const CARAVAN_GOODS=["materials","gear","stims","wood","data","parts"];
+const CARAVAN_GOODS=["scrap","gear","stims","data","chem","parts"];
+// pick where the caravan physically sets up: next to a Market if one exists, else near the main road edge.
+function caravanSpot(){
+  for(const s of ST.structs.values()){if(!s.bp&&s.type==="market"){
+    // an open tile just outside the market
+    for(const [dx,dy] of [[0,-1],[1,0],[-1,0],[0,1]]){const X=s.x+dx,Y=s.y+dy;if(INB(X,Y)&&colCost(X,Y)>=0)return{x:X,y:Y};}
+    return{x:s.x,y:s.y-1};}}
+  // fallback: a spot on the main horizontal arterial toward the east edge
+  if(typeof ROADS!=="undefined"&&ROADS.h&&ROADS.h.length){const r=ROADS.h[0];return{x:Math.min(r[1]-2,r[0]+Math.floor((r[1]-r[0])*0.8)),y:r[2]};}
+  return{x:Math.floor(MW*0.8),y:Math.floor(MH*0.5)};
+}
 function maybeCaravan(){
   if(ST.caravan)return;
   if(ST.pawns.length<3||ST.tick<TPD*2)return;
@@ -3330,11 +3889,11 @@ function maybeCaravan(){
   const mkBonus=1+markets*0.12;                  // markets pay better / sell cheaper
   if(buying){
     // pays a premium per unit of `good` you have in stock when they leave
-    ST.caravan={mode:"buy",good,rate:Math.round(base*R(1.6,2.4)*mkBonus),leaveAt:ST.tick+Math.floor(TPD*R(0.5,0.9)),done:false};
+    ST.caravan={mode:"buy",good,rate:Math.round(base*R(1.6,2.4)*mkBonus),leaveAt:ST.tick+Math.floor(TPD*R(0.5,0.9)),done:false,x:caravanSpot().x,y:caravanSpot().y};
     log("◈ A trade caravan is buying "+good.toUpperCase()+" at a premium — sell your surplus before they move on.","good");
   }else{
     const qty=RI(6,14);
-    ST.caravan={mode:"sell",good,qty,price:Math.max(2,Math.round(base*R(0.4,0.7)/mkBonus)),leaveAt:ST.tick+Math.floor(TPD*R(0.5,0.9)),done:false};
+    ST.caravan={mode:"sell",good,qty,price:Math.max(2,Math.round(base*R(0.4,0.7)/mkBonus)),leaveAt:ST.tick+Math.floor(TPD*R(0.5,0.9)),done:false,x:caravanSpot().x,y:caravanSpot().y};
     log("◈ A trade caravan is selling cheap "+good.toUpperCase()+" — stock up while it's here.","good");
   }
   banner("CARAVAN ARRIVES","good");if(SFX&&SFX.good)SFX.good();
@@ -3364,7 +3923,7 @@ function caravanTick(){
 }
 /* ============================================================
    STORYTELLER — the engagement engine. Beyond disasters, the city throws INSURRECTION-THEMED
-   events at you that interrupt the routine and force a DECISION (RimWorld's proven loop-breaker).
+   events at you that interrupt the routine and force a DECISION (a proven engagement loop-breaker).
    Each event reads the sim state, presents 2-3 choices, and ripples through movement/regime/intel.
    ============================================================ */
 // active decision shown to the player; null when none. {id, title, body, opts:[{label,fn,hint}]}
@@ -3374,6 +3933,7 @@ const STORY_EVENTS=[
     id:"defector", weight:1,
     when:()=>ST.pawns.some(p=>!isChild(p)&&p.allegiance<-30&&!p.informant),
     gen:()=>{const p=CH(ST.pawns.filter(q=>!isChild(q)&&q.allegiance<-30&&!q.informant));return{
+      focusId:p.id,
       title:"A Regime Loyalist Wavers",
       body:p.name+" has been a regime loyalist — but word is they're disillusioned and might be turned. Approaching them is a risk: if they're not sincere, they could expose your interest.",
       opts:[
@@ -3392,9 +3952,14 @@ const STORY_EVENTS=[
       title:"An Anonymous Tip",
       body:"A scrawled note names a location where the regime stashed supplies — credits, or intel on their operations. Acting on it means exposure if it's a trap.",
       opts:[
-        {label:"Raid the cache",hint:"likely reward, small exposure risk",fn:()=>{
-          if(Math.random()<0.75){const gain=RI(12,25);M().intel+=gain;ST.income+=RI(20,50);log("The cache was real — +"+gain+" intel and credits seized.","good");}
-          else{M().exposure=clamp(M().exposure+12,0,100);log("It was bait — the regime was watching. Exposure spikes.","warn");}
+        {label:"Raid the cache",hint:"your operative goes in — Tradecraft improves the odds",fn:()=>{
+          const av=theAvatar();const nm=av?av.name:"You";
+          // your operative's Tradecraft shifts the success odds (skilled spies avoid traps)
+          const check=opsCheck("tradecraft",11);
+          if(check.pass){const gain=RI(12,25);M().intel+=gain;ST.income+=RI(20,50);
+            log(nm+" worked the cache clean — +"+gain+" intel and credits seized.","good");}
+          else{M().exposure=clamp(M().exposure+12,0,100);
+            log(nm+" walked into a trap — the regime was watching. Exposure spikes.","warn");}
         }},
         {label:"Ignore it",hint:"safe",fn:()=>{log("Too risky. You let it go.","info");}},
       ]}),
@@ -3454,14 +4019,22 @@ function renderEventPanel(){
     document.body.appendChild(el);}
   let h="<div style='color:#ff8da3;font-family:var(--disp);font-weight:700;font-size:15px;letter-spacing:.04em;margin-bottom:6px'>\u25C9 "+activeEvent.title+"</div>";
   h+="<div style='color:var(--tx);font-size:12px;line-height:1.5;margin-bottom:10px'>"+activeEvent.body+"</div>";
+  // VIEW button — jump the camera to the wisp this event is about (if any)
+  if(activeEvent.focusId){const fp=ST.pawns.find(p=>p.id===activeEvent.focusId);
+    if(fp)h+="<button class='tb' id='ev-view' style='margin-bottom:8px;font-size:11px;border-color:rgba(34,221,255,.5);color:#22ddff'>\u25C9 VIEW "+fp.name+"</button>";}
   h+="<div style='display:flex;flex-direction:column;gap:6px'>";
   activeEvent.opts.forEach((o,i)=>{
     h+="<button class='tb' data-event-opt='"+i+"' style='text-align:left;padding:8px 10px;font-size:12px'>"+o.label+(o.hint?"<span style='display:block;font-size:10px;opacity:.65;margin-top:1px'>"+o.hint+"</span>":"")+"</button>";});
   h+="</div>";
   el.innerHTML=h;
 }
-// delegated handler for event option clicks
-if(typeof document!=="undefined"&&document.addEventListener)document.addEventListener("click",e=>{const b=e.target.closest("[data-event-opt]");
+// delegated handler for event option clicks + the VIEW button
+if(typeof document!=="undefined"&&document.addEventListener)document.addEventListener("click",e=>{
+  const v=e.target.closest&&e.target.closest("#ev-view");
+  if(v&&activeEvent&&activeEvent.focusId){SFX&&SFX.ui&&SFX.ui();
+    const fp=ST.pawns.find(p=>p.id===activeEvent.focusId);
+    if(fp){ST.sel=[fp];if(typeof setFollow==="function")setFollow(fp);else{cam.x=fp.px*T-VW/cam.z/2;cam.y=fp.py*T-VH/cam.z/2;if(typeof clampCam==="function")clampCam();}renderInspect&&renderInspect();}return;}
+  const b=e.target.closest("[data-event-opt]");
   if(b){SFX&&SFX.ui&&SFX.ui();resolveEvent(+b.dataset.eventOpt);}});
 // A disaster is announced (telegraph), then strikes after a delay unless mitigated.
 // ST.pendingDisaster = {kind, strikeAt, x, y, warned}
@@ -3662,14 +4235,13 @@ function gameOver(){ST.phase="over";
     statRows()+(hasSave()?"<button class='tb big' id='m-continue'>LOAD LAST SAVE</button>":"")+
     "<button class='tb big' id='m-restart'>REINITIALIZE</button>")}
 /* ---------- master tick ---------- */
-function updateFlags(){}  // survival checklist retired — sandbox city has no win-objectives
 function tick(){ST.tick++;
-  if(ST.tick%10===0)powerRecalc();
   if(ST.tick%5===0){const P=ST.pawns;for(let i=0;i<P.length;i++)for(let j=i+1;j<P.length;j++)
     if(DIST(P[i].px,P[i].py,P[j].px,P[j].py)<5)relAdj(P[i].id,P[j].id,0.02)}
   // (roguelike vat-protein production + beacon-extraction win removed — the city has neither)
   for(let i=ST.pawns.length-1;i>=0;i--)pawnTick(ST.pawns[i]);
   for(let i=ST.floats.length-1;i>=0;i--)if(--ST.floats[i].ttl<=0)ST.floats.splice(i,1);
+  if(ST.says)for(let i=ST.says.length-1;i>=0;i--)if(--ST.says[i].ttl<=0)ST.says.splice(i,1);
   tickEmotes();
   tickTombstones();
   if(ST.tick>=ST.nextEv)fireEvent();
@@ -3677,17 +4249,21 @@ function tick(){ST.tick++;
   if(ST.tick%30===0)caravanTick();
   // passive crop growth — farm plots slowly yield food on their own (tended or not)
   if(ST.tick%200===0){
-    let farms=0,logs=0,mines=0;
+    let farms=0,logs=0,mines=0,vatFood=0,vat3=0;
     for(const s of ST.structs.values()){if(s.bp)continue;
       if(s.type==="farmplot")farms++;
+      else if(s.type==="sporevat"){vatFood+=vatTier(s).food;if((s.tier||1)>=3)vat3++;}
       else if(s.type==="loggingcamp")logs++;
       else if(s.type==="mineshaft")mines++;}
-    // food: farms yield, but stop piling up past a sensible reserve (~3 days of meals)
-    if(farms>0&&(ST.goods.food||0)<ST.pawns.length*12)
-      ST.goods.food=(ST.goods.food||0)+Math.max(1,Math.round(farms/5));
+    // food: farms + spore vats yield (vats scale with tier), capped at a sensible reserve
+    const foodUnits=Math.round(farms/5)+vatFood;
+    if(foodUnits>0&&(ST.goods.food||0)<ST.pawns.length*14)
+      ST.goods.food=(ST.goods.food||0)+Math.max(1,foodUnits);
+    // tier-3 Bio-Reactors also trickle a little chem
+    if(vat3>0&&ST.tick%600===0)ST.goods.chem=(ST.goods.chem||0)+vat3;
     // logging + mining trickle slowly when idle; dedicated workers (via assign/hire) produce faster through the work job
-    if(logs>0&&ST.tick%400===0)ST.goods.wood=(ST.goods.wood||0)+Math.max(1,Math.round(logs/3));
-    if(mines>0&&ST.tick%600===0)ST.goods.materials=(ST.goods.materials||0)+Math.max(1,Math.round(mines/3));}
+    if(logs>0&&ST.tick%400===0)ST.goods.scrap=(ST.goods.scrap||0)+Math.max(1,Math.round(logs/3));
+    if(mines>0&&ST.tick%600===0)ST.goods.data=(ST.goods.data||0)+Math.max(1,Math.round(mines/3));}
   if(ST.tick%160===0){  // vendor sales cycle — auto-sell goods, district takes 40% cut
     const ILLEGAL={stims:true};
     // dynamic pricing: abundant goods fetch less, scarce goods fetch a premium.
@@ -3715,9 +4291,8 @@ function tick(){ST.tick++;
       else if(!sells){
         // generic vendors move the premium commodities first, then raw goods
         if((ST.goods.gear||0)>0)good="gear";
-        else if((ST.goods.materials||0)>0)good="materials";
-        else if((ST.goods.wood||0)>0)good="wood";
-        else if((ST.goods.data||0)>0)good="data";}
+        else if((ST.goods.data||0)>0)good="data";
+        else if((ST.goods.scrap||0)>0)good="scrap";}
       if(!good)continue;
       ST.goods[good]--;
       const price=marketPrice(good);
@@ -3753,11 +4328,24 @@ function tick(){ST.tick++;
           addMod(best,"gear","Got kitted out",3,TPD*.5);
           float(s.x+.5,s.y+.5,"GEARED","#7aa2ff")}}
       else float(s.x+.5,s.y+.5,"SOLD +"+cut+"c","#39ff88")}}
-  if(ST.tick%30===0){updateFlags();genRequests();expireRequests()}
+  if(ST.tick%30===0){genRequests();expireRequests()}
   if(ST.tick%TPD===0&&ST.tick>0)checkMilestones(); // daily milestone check
   if(ST.tick%TPD===0&&ST.tick>0&&typeof autosave==="function")autosave(); // daily autosave
   if(ST.tick%120===0)checkTier(); // district tier progression
   if(ST.tick%100===0)tickAmbient(); // background AI musings (rate-limited internally)
+  if(ST.tick%40===0)tickNpcConvo(); // NPC-to-NPC dialogue when player is watching (self-gated, cheap)
+  if(ST.election&&!ST.election.resolved&&ST.tick>=ST.election.voteAt)resolveElection(); // election day
+  if(ST.election&&!ST.election.resolved&&ST.tick%30===0)tickElectionPitches(); // candidates campaign (AI, gated)
+  // ELECTION VISUAL PRESENCE: candidates "campaign" with little performative emotes (smug/scheme/cheer)
+  // so you can spot who's running on the map, without forcing them to path anywhere (no crowd-jam risk).
+  if(ST.election&&!ST.election.resolved&&ST.tick%55===0){
+    for(const cid of ST.election.candidates){const c=ST.pawns.find(p=>p.id===cid);
+      if(c&&c.hp>0&&!c.sleeping&&Math.random()<0.5){
+        const amb=c.pers.amb||50,intg=c.pers.intg||50;
+        const e=intg<40?(Math.random()<0.5?"scheme":"smug"):amb>65?"party":"happy";  // schemers smirk, idealists beam
+        tryEmote(c,e,90);
+      }}
+  }
   if(ST.tick%100===0)driveAmbience();
   if(ST.tick%50===0)checkContextualHints();
   if(ST.tick%200===0&&ST.gangs.length)gangTick();
@@ -3800,10 +4388,27 @@ function tick(){ST.tick++;
       if(def.work>=140||def.civic||def.security||def.vendor)upkeepBuildings++;}
      const upkeep=Math.round(upkeepBuildings*1.5);   // ~1.5c per major building/day
      if(upkeep>0){ST.income=(ST.income||0)-upkeep;ST.lastUpkeep=upkeep;}}
-    // rent + eviction (children are dependents — they don't pay rent or get evicted alone)
-    for(const q of ST.pawns){if(isChild(q))continue;q.credits=(q.credits||0)-(ST.crisis?42:28);
-      if(q.credits<0&&!q.homeless){q.homeless=true;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad");loseProperty(q,"couldn't make rent — got evicted, sleeping rough now and it stings to lose my place");q.home=null;}
-      else if(q.credits>=0&&q.homeless){q.homeless=false;log(q.name+" cleared their back rent.","good")}}
+    // UTILITIES — power & water. When a staffed facility exists, the block runs clean. Without one,
+    // residents suffer: no power drags mood, no water drags hygiene/health. Gives "unpowered" meaning.
+    {const struts=[...ST.structs.values()];
+     const hasPower=struts.some(s=>!s.bp&&!(s.sabotaged>ST.tick)&&DEF[s.type]&&DEF[s.type].utility==="power"&&ST.pawns.some(p=>p.assigned===K(s.x,s.y)));
+     const hasWater=struts.some(s=>!s.bp&&!(s.sabotaged>ST.tick)&&DEF[s.type]&&DEF[s.type].utility==="water"&&ST.pawns.some(p=>p.assigned===K(s.x,s.y)));
+     ST.utilPower=hasPower;ST.utilWater=hasWater;
+     for(const q of ST.pawns){if(isChild(q))continue;
+       if(!hasPower)addMod(q,"nopower","No power on the block",-4,TPD+50);
+       if(!hasWater){addMod(q,"nowater","No clean water",-3,TPD+50);if(ST.tick%TPD===0)q.needs.hyg=Math.max(8,(q.needs.hyg||50)-4);}}}
+    for(const q of ST.pawns){if(isChild(q))continue;
+      // SUBSISTENCE: everyone scrapes a little from odd jobs/scavenging/hustling, so the unemployed
+      // aren't doomed to a death spiral. Employed wisps still earn more from their shifts on top.
+      const subsist=q.homeless?6:10;
+      q.credits=(q.credits||0)+subsist-(ST.crisis?16:11);
+      if(q.credits<0&&!q.homeless){
+        q.rentDebt=(q.rentDebt||0)+1;
+        if(q.rentDebt===2)log(q.name+" is falling behind on rent.","warn");
+        if(q.rentDebt>=4){q.homeless=true;q.rentDebt=0;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad");loseProperty(q,"couldn't make rent — got evicted, sleeping rough now and it stings to lose my place");q.home=null;}
+      }
+      else if(q.credits>=0){if(q.rentDebt)q.rentDebt=0;
+        if(q.homeless){q.homeless=false;log(q.name+" cleared their back rent.","good");}}}
     // soft collapse: track debt days
     if(ST.income<0){ST.debtDays=(ST.debtDays||0)+1;
       if(ST.debtDays===4&&!ST.crisis){ST.crisis=true;
@@ -3890,8 +4495,11 @@ function glowSprite(hex){
 }
 // stamp a cached glow centered at world (wx,wy) with given radius + alpha
 function stampGlow(hex,wx,wy,radius,alpha){
-  ctx.globalAlpha=alpha;
-  ctx.drawImage(glowSprite(hex),wx-radius,wy-radius,radius*2,radius*2);
+  // during a lightning strike, every glow gets a brief boost so the whole map's neon "pops" on the flash
+  const sg=STORM.on?STORM.flash:0;
+  ctx.globalAlpha=Math.min(1,alpha*(1+sg*1.8)+sg*0.12);
+  const r2=radius*(1+sg*0.25);
+  ctx.drawImage(glowSprite(hex),wx-r2,wy-r2,r2*2,r2*2);
   ctx.globalAlpha=1;
 }
 let VW=0,VH=0,dpr=1;
@@ -3948,7 +4556,18 @@ function driveAmbience(){
 }
 
 function drawTerrain(){const g=tctx;
-  g.fillStyle="#010408";g.fillRect(0,0,MW*T,MH*T);
+  // deep-ocean abyss backdrop — teal gradient + depth fog + edge vignette
+  {const og=g.createLinearGradient(0,0,0,MH*T);
+   og.addColorStop(0,"#0c2226");og.addColorStop(.45,"#07141c");og.addColorStop(1,"#02080e");
+   g.fillStyle=og;g.fillRect(0,0,MW*T,MH*T);
+   // soft radial fog — sense of immense downward depth
+   const fg=g.createRadialGradient(MW*T*.5,MH*T*.42,0,MW*T*.5,MH*T*.42,MW*T*.62);
+   fg.addColorStop(0,"rgba(24,72,78,.12)");fg.addColorStop(1,"rgba(0,0,0,0)");
+   g.fillStyle=fg;g.fillRect(0,0,MW*T,MH*T);
+   // vignette — darken the far edges, pull the eye inward
+   const vg=g.createRadialGradient(MW*T*.5,MH*T*.5,MH*T*.32,MW*T*.5,MH*T*.5,MW*T*.6);
+   vg.addColorStop(0,"rgba(0,0,0,0)");vg.addColorStop(1,"rgba(0,4,8,.55)");
+   g.fillStyle=vg;g.fillRect(0,0,MW*T,MH*T);}
   // bioluminescent palette for surreal nature elements
   const SPORE=["#a259ff","#6b3fa8","#ff47c8","#5c2d9c"]; // violet/magenta spores
   const MUSH_CAP=["#c084fc","#f0abfc","#e879f9","#7c3aed"]; // mushroom caps
@@ -3956,9 +4575,8 @@ function drawTerrain(){const g=tctx;
   for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){
     const t=ST.ter[x+y*MW],X=x*T,Y=y*T;
     const h=hash2(x*3,y*7),h2=hash2(x*7,y*13),h3=hash2(x*11,y*5);
-    // base concrete — slightly varied darkness
-    const shade=t===3?"#010305":t===1?"#020509":"#030710";
-    g.fillStyle=shade;g.fillRect(X,Y,T,T);
+    // float on the abyss: open ground left to the gradient; roads get only a faint darker wash
+    if(t===3){g.globalAlpha=.45;g.fillStyle="#04090f";g.fillRect(X,Y,T,T);g.globalAlpha=1;}
     // cracked concrete texture — thin fracture lines
     if(t!==3){
       if(h>.72){g.strokeStyle="rgba(0,8,20,.9)";g.lineWidth=.5;
@@ -3976,9 +4594,9 @@ function drawTerrain(){const g=tctx;
       // glowing pixel at the brightest point
       g.fillStyle="rgba(200,150,255,.6)";g.fillRect(sx,sy,1,1)}
     // subtle grid lines — infrastructure feel
-    if((x+y)%2===0){g.fillStyle="rgba(0,0,0,.12)";g.fillRect(X,Y,T,1)}
+    // (grid seam removed — open abyss has no visible tile grid)
     // mushroom clusters — surreal nature on walkable tiles
-    if(t!==3&&hash2(x*17,y*19)>.88){
+    if(t!==3&&hash2(x*17,y*19)>.80){
       const cx=X+T/2,cy=Y+T/2;
       const count=2+((h3*3)|0); // 2-4 mushrooms per cluster
       for(let i=0;i<count;i++){
@@ -4000,11 +4618,8 @@ function drawTerrain(){const g=tctx;
         gg.addColorStop(1,"rgba(0,0,0,0)");
         g.fillStyle=gg;g.beginPath();g.ellipse(mx,my-mh+2,capW*.8,capW*.3,0,0,7);g.fill();
         g.globalAlpha=1}}}
-  // infrastructure grid overlay — very faint
-  g.strokeStyle="rgba(0,20,50,.25)";g.lineWidth=.4;
-  for(let x=0;x<=MW;x++){g.beginPath();g.moveTo(x*T,0);g.lineTo(x*T,MH*T);g.stroke()}
-  for(let y=0;y<=MH;y++){g.beginPath();g.moveTo(0,y*T);g.lineTo(MW*T,y*T);g.stroke()}
-  g.strokeStyle="rgba(0,212,255,.06)";g.strokeRect(.5,.5,MW*T-1,MH*T-1);
+  // infrastructure grid overlay removed — abyss stays open; faint world-edge only
+  g.strokeStyle="rgba(0,212,255,.05)";g.lineWidth=.4;g.strokeRect(.5,.5,MW*T-1,MH*T-1);
 
   // ── ROAD NETWORK (procedural, scales with map) ──
   // Arterials defined once in ROADS (module-level) so streets line up with the core.
@@ -4057,19 +4672,8 @@ function drawTerrain(){const g=tctx;
       g.globalAlpha=.5+hv*.3;g.fillStyle=rg;
       g.beginPath();g.ellipse(X+T*.4,Y+T*.3,T*.6,T*.2,0,0,7);g.fill();g.globalAlpha=1}});
 
-  // ── GRAFFITI BASE LAYER on exterior walls (positioned near core buildings) ──
-  const grafSpots=[
-    {x:38,y:53,tag:"CORP LIES",col:"#ff3d5a",angle:-.08},
-    {x:38,y:56,tag:"RESIST",col:"#e040fb",angle:.05},
-    {x:94,y:53,tag:"MEDS=CREDS",col:"#00d4ff",angle:-.04},
-    {x:94,y:56,tag:"FREE THEM",col:"#39ff88",angle:.06},
-    {x:59,y:69,tag:"THE DEN",col:"#e040fb",angle:0},
-    {x:63,y:76,tag:"SPRAWL LIFE",col:"#ffc947",angle:-.05},
-    {x:45,y:35,tag:"HOME BLOCK",col:"#39ff88",angle:.03},
-    {x:72,y:50,tag:"CHROME",col:"#00d4ff",angle:-.02},
-    {x:50,y:62,tag:"NO CORP",col:"#ff3d5a",angle:.04},
-    {x:80,y:62,tag:"STAY UP",col:"#e040fb",angle:-.03},
-  ];
+  // ── GRAFFITI removed for the clean suspended look ──
+  const grafSpots=[];
   grafSpots.forEach(({x,y,tag,col,angle})=>{
     const X=x*T,Y=y*T+T*.6;
     g.save();g.translate(X,Y);g.rotate(angle);
@@ -4091,7 +4695,7 @@ function rrect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);
   ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);
   ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
 /* ============================================================
-   ROOM QUALITY (RimWorld-direction) — a room's space, beauty, and
+   ROOM QUALITY — a room's space, beauty, and
    upkeep combine into a quality score that affects how it LOOKS and
    how its occupants FEEL. Computed lazily + cached per room per day.
    ============================================================ */
@@ -4156,37 +4760,30 @@ function drawPod(rm){const th=PODTH[rm.theme]||PODTH.den;
   const q=roomQuality(rm);const qt=roomQTier(q);
   const qf=clamp(q/100,0,1);                 // 0..1 quality factor drives richness
   ctx.save();
-  // floor fill — darker base
-  ctx.fillStyle="rgba(0,0,0,.38)";ctx.fillRect(X,Y,W,H);
-  // richer floor: themed tile grid with quality-scaled brightness + panel seams
-  for(let fy=0;fy<rm.h;fy++)for(let fx=0;fx<rm.w;fx++){
-    const cx=X+fx*T,cy=Y+fy*T;
-    // alternating tile shade
-    ctx.globalAlpha=((fx+fy)%2===0)?0.05+qf*0.04:0.02;
-    ctx.fillStyle=th.c;ctx.fillRect(cx,cy,T,T);
-    // tile seam lines (subtle grid) — cleaner-looking in higher quality rooms
-    ctx.globalAlpha=0.05+qf*0.05;ctx.strokeStyle=th.c;ctx.lineWidth=0.5;
-    ctx.strokeRect(cx+0.5,cy+0.5,T-1,T-1);
-  }
-  ctx.globalAlpha=1;ctx.lineWidth=1;
-  // room glow border — brighter & blurrier the higher the quality
-  ctx.shadowColor=th.c;ctx.shadowBlur=7+qf*9;ctx.fillStyle=th.fill;
-  rrect(X,Y,W,H,8);ctx.fill();ctx.shadowBlur=0;
-  // inner accent line along walls (quality boosts opacity)
-  ctx.strokeStyle=th.c;ctx.globalAlpha=0.45+qf*0.4;ctx.lineWidth=1.4;
-  rrect(X,Y,W,H,8);ctx.stroke();
+  // faint themed wash — glass pane over the abyss
+  ctx.globalAlpha=0.05+qf*0.06;ctx.fillStyle=th.c;rrect(X,Y,W,H,8);ctx.fill();ctx.globalAlpha=1;
+  // INNER LUMINANCE — soft radial glow rising from the room's heart, tinted to theme
+  stampGlow(th.c,X+W/2,Y+H/2,Math.max(W,H)*0.55,0.05+qf*0.06);
+  // LAYERED NEON BORDER — wide soft halo, then a tight bright line (glossier with quality)
+  ctx.strokeStyle=th.c;ctx.shadowColor=th.c;
+  ctx.shadowBlur=13+qf*9;ctx.globalAlpha=.42;ctx.lineWidth=2.4;rrect(X,Y,W,H,8);ctx.stroke();
+  ctx.shadowBlur=5+qf*5;ctx.globalAlpha=.95;ctx.lineWidth=1.6;rrect(X,Y,W,H,8);ctx.stroke();
+  ctx.shadowBlur=0;ctx.globalAlpha=1;ctx.lineWidth=1;
   // inner secondary line
-  ctx.globalAlpha=.18;ctx.lineWidth=.8;
+  ctx.globalAlpha=.2;ctx.lineWidth=.8;
   rrect(X+3,Y+3,W-6,H-6,6);ctx.stroke();
-  // corner accent nodes — small neon studs at the four corners (luxe detail)
-  if(q>=45){ctx.globalAlpha=0.5+qf*0.5;ctx.fillStyle=qt.c;
-    const r=1.5;
-    for(const [cx,cy] of [[X,Y],[X+W,Y],[X,Y+H],[X+W,Y+H]]){
-      ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.fill();}}
+  // animated corner accent nodes — pulsing neon studs with a glow (animated trim)
+  {const tt=performance.now()*0.001, pls=0.5+0.5*Math.sin(tt*2.4+X*0.05+Y*0.03);
+   const r=1.3+pls*0.7;ctx.fillStyle=qt.c;
+   for(const [cx,cy] of [[X,Y],[X+W,Y],[X,Y+H],[X+W,Y+H]]){
+     if(q>=45){ctx.globalAlpha=(.3+.45*pls);ctx.drawImage(glowSprite(qt.c),cx-5,cy-5,10,10);}
+     ctx.globalAlpha=(.45+qf*.4)*(0.55+0.45*pls);ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.fill();}}
   ctx.globalAlpha=1;ctx.lineWidth=1;ctx.restore()}
 function drawRoomStruct(s){
   // walls are drawn by the room outline already — skip them
   if(s.type==="wall")return;
+  // subtle emissive lift so fixtures read as luminous (richer furniture)
+  if(DEF[s.type]&&DEF[s.type].furn){const gX=s.x*T,gY=s.y*T;stampGlow("#3aa0c8",gX+T/2,gY+T/2,T*.5,.07);}
   // draw full fixture art for everything else
   // temporarily clear inRoom flag so drawStruct renders the full sprite
   s.inRoom=false;
@@ -4292,16 +4889,31 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
         ctx.beginPath();ctx.moveTo(X+T*.3,Y+T*.2);ctx.lineTo(X+T*.55,Y+T*.7);ctx.stroke();ctx.lineWidth=1;}
       break;}
     case "door":{
-      rr(X,Y,T,T,"#0e1428");rr(X+2,Y+2,T-4,T-4,"#080c18");
-      const isOpen=ST.pawns.some(p=>DIST(p.px,p.py,s.x+.5,s.y+.5)<2.2);
-      const pulse=0.5+0.5*Math.sin(t*2.2);
-      const iCol=isOpen?"#00d4ff":"#1a3560";
-      ctx.globalAlpha=isOpen?(0.65+0.35*pulse):0.3;
-      for(let r=5;r>1;r--){ctx.strokeStyle=iCol;ctx.lineWidth=1.1;
-        ctx.beginPath();ctx.arc(X+T/2,Y+T/2,r*1.3,0,7);ctx.stroke();}
-      if(isOpen){ctx.fillStyle=iCol;ctx.globalAlpha=.25;
-        ctx.beginPath();ctx.arc(X+T/2,Y+T/2,2,0,7);ctx.fill();}
-      ctx.globalAlpha=1;ctx.lineWidth=1;break;}
+      // futuristic sliding blast door — parts from the centre when a citizen nears, glowing portal behind
+      const cx=X+T/2, innerX=X+2, innerY=Y+3, innerW=T-4, innerH=T-6, half=innerW/2;
+      const near=ST.pawns.some(p=>DIST(p.px,p.py,s.x+.5,s.y+.5)<2.4);
+      const tgt=near?1:0;
+      s._do=(s._do==null)?tgt:s._do+(tgt-s._do)*0.16;       // smooth open/close each frame
+      const o=clamp(s._do,0,1), ease=o*o*(3-2*o);            // smoothstep panel travel
+      const aCol=near?"#00e5ff":"#0c3a5a";
+      rr(X,Y,T,T,"#0a1322");                                  // housing
+      // glowing portal core revealed as the panels part
+      if(o>0.02){const pg=ctx.createRadialGradient(cx,Y+T/2,0,cx,Y+T/2,half+1);
+        pg.addColorStop(0,"rgba(130,242,255,"+(0.55*o).toFixed(3)+")");
+        pg.addColorStop(1,"rgba(0,40,70,0)");
+        ctx.fillStyle=pg;ctx.fillRect(innerX,innerY,innerW,innerH);}
+      // two sliding panels parting from the centre
+      const gap=ease*half, pw=Math.max(0,half-gap);
+      if(pw>0){ctx.fillStyle="#13243c";
+        ctx.fillRect(innerX,innerY,pw,innerH);               // left panel
+        ctx.fillRect(cx+gap,innerY,pw,innerH);               // right panel
+        ctx.strokeStyle=aCol;ctx.lineWidth=1;ctx.globalAlpha=.55+.45*o;
+        ctx.beginPath();ctx.moveTo(cx-gap,innerY);ctx.lineTo(cx-gap,innerY+innerH);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(cx+gap,innerY);ctx.lineTo(cx+gap,innerY+innerH);ctx.stroke();
+        ctx.globalAlpha=1;}
+      // housing frame glow — brighter when open
+      ctx.strokeStyle=aCol;ctx.lineWidth=1.3;ctx.globalAlpha=.45+.45*o;
+      rrect(X+1.5,Y+1.5,T-3,T-3,3);ctx.stroke();ctx.globalAlpha=1;ctx.lineWidth=1;break;}
     case "pod":
       rr(X+1,Y+3,T-2,T-6,"#0e1826");rr(X+2,Y+4,T-4,T-8,"#070c16");
       rr(X+3,Y+5,4,T-10,"#1a2e48");
@@ -4420,6 +5032,32 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
       ctx.fillStyle="#7aa2ff";ctx.fillRect(X+6,Y+5,5,2);
       ctx.fillStyle="#39ff88";ctx.fillRect(X+11,Y+9,2,2);break;}
     // ── RESOURCE PRODUCTION ──
+    case "sporevat":{
+      const vt=vatTier(s),tier=s.tier||1;
+      rr(X+2,Y+2,T-4,T-4,"#0c0f1a");                          // tank housing
+      ctx.strokeStyle=vt.core;ctx.globalAlpha=.7;ctx.lineWidth=1.2;
+      rrect(X+2.5,Y+2.5,T-5,T-5,2);ctx.stroke();ctx.globalAlpha=1;ctx.lineWidth=1;
+      const vpulse=0.6+0.4*Math.sin(t*2+s.x);
+      if(tier===1){          // glowing mushroom caps cultivated in the vat
+        for(let i=0;i<3;i++){const mx=X+5+i*4,my=Y+T-4;
+          ctx.fillStyle=vt.core;ctx.globalAlpha=.55+.3*vpulse;
+          ctx.beginPath();ctx.ellipse(mx,my-3,2,1.3,0,0,7);ctx.fill();
+          ctx.fillRect(mx-.4,my-3,.8,3);}
+        ctx.globalAlpha=1;
+      }else if(tier===2){    // hydroponic algae racks
+        for(let i=0;i<4;i++){const bx=X+4+i*3;
+          ctx.fillStyle=vt.core;ctx.globalAlpha=.4+.35*vpulse;
+          ctx.fillRect(bx,Y+5,1.6,T-9);}
+        ctx.globalAlpha=1;
+      }else{                 // engineered bio-reactor — glowing core + ring
+        ctx.fillStyle=vt.core;ctx.globalAlpha=.55+.4*vpulse;
+        ctx.beginPath();ctx.arc(X+T/2,Y+T/2,3,0,7);ctx.fill();
+        ctx.strokeStyle=vt.core;ctx.globalAlpha=.4;ctx.lineWidth=.8;
+        ctx.beginPath();ctx.arc(X+T/2,Y+T/2,5,0,7);ctx.stroke();ctx.globalAlpha=1;ctx.lineWidth=1;
+      }
+      stampGlow(vt.glow,X+T/2,Y+T/2,T*.6,(0.14+0.10*vpulse)*(0.7+tier*0.15));
+      for(let i=0;i<tier;i++){ctx.fillStyle=vt.glow;ctx.fillRect(X+2+i*2.4,Y+1.5,1.8,1.8);}  // tier pips
+      break;}
     case "farmplot":{
       // tilled soil base
       rr(X+1,Y+1,T-2,T-2,"#1a1208");
@@ -4457,7 +5095,7 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
       ctx.globalAlpha=1;
       // minecart rail hint
       rr(X+3,Y+T-2,T-6,1,"#4a3a28");
-      if((ST.goods.materials||0)>0)stampGlow("#ffc947",X+T/2,Y+T/2,T*.5,gl*.14);
+      if((ST.goods.data||0)>0)stampGlow("#47c8ff",X+T/2,Y+T/2,T*.5,gl*.14);
       break;}
     // ── CIVIC ──
     case "park":{
@@ -4727,22 +5365,28 @@ function faceExpr(p){
    ============================================================ */
 // floating emote bubbles above pawns. kind drives the symbol + color + motion.
 const EMOTES={
-  heart:   {s:"\u2665", c:"#ff6fae", rise:14, life:46, wob:1},
-  love:    {s:"\u2661", c:"#ff8fc4", rise:14, life:46, wob:1.4},
-  music:   {s:"\u266a", c:"#7ad0ff", rise:13, life:44, wob:1.6},
-  happy:   {s:"\u2727", c:"#ffd700", rise:12, life:38, wob:1},
-  party:   {s:"\u2736", c:"#ffc947", rise:16, life:50, wob:2},
-  sweat:   {s:"\u00b0", c:"#9fd8ff", rise:8,  life:34, wob:.4},
-  shock:   {s:"\u2049", c:"#ffe066", rise:10, life:40, wob:.6}, // interrobang-ish
-  excl:    {s:"\uff01", c:"#ffe066", rise:11, life:34, wob:.5},
-  ques:    {s:"\uff1f", c:"#aec6ff", rise:11, life:36, wob:.7},
-  anger:   {s:"\u2762", c:"#ff5a5a", rise:9,  life:34, wob:.5}, // anger puff
-  cry:     {s:"\u2767", c:"#7ec8ff", rise:7,  life:38, wob:.5},
-  sleepy:  {s:"z", c:"#aef3ff", rise:9, life:40, wob:.5},
-  ghost:   {s:"\u2620", c:"#cdd6ff", rise:20, life:64, wob:2.2}, // skull/ghost puff for KO
-  dizzy:   {s:"\u204b", c:"#c98bff", rise:8, life:40, wob:1.8},
-  idea:    {s:"\u273c", c:"#fff1a8", rise:12, life:38, wob:.8},
-  gross:   {s:"\u2754", c:"#a8ff78", rise:8, life:34, wob:.6},
+  heart:   {s:"\u2665", c:"#ff6fae", rise:14, life:46, wob:1,   bloom:1.3},  // heart
+  love:    {s:"\u2661", c:"#ff8fc4", rise:14, life:46, wob:1.4, bloom:1.3},  // open heart
+  music:   {s:"\u266a", c:"#7ad0ff", rise:13, life:44, wob:1.6, bloom:1.1},  // note
+  happy:   {s:"\u273f", c:"#ffe14d", rise:12, life:40, wob:1,   bloom:1.4},  // black florette — cheery bloom
+  party:   {s:"\u2740", c:"#ffc947", rise:16, life:52, wob:2,   bloom:1.5},  // white florette burst
+  sweat:   {s:"\u2235", c:"#9fd8ff", rise:8,  life:34, wob:.4,  bloom:.9},   // little drops
+  shock:   {s:"\u2757", c:"#ffe066", rise:11, life:40, wob:.6,  bloom:1.2},  // rounded heavy !
+  excl:    {s:"\u2757", c:"#ffe066", rise:11, life:34, wob:.5,  bloom:1.1},  // rounded heavy !
+  ques:    {s:"\u2753", c:"#aec6ff", rise:11, life:36, wob:.7,  bloom:1.1},  // rounded heavy ?
+  anger:   {s:"\u2763", c:"#ff7a8c", rise:9,  life:36, wob:.7,  bloom:1.2},  // heart-! — even mad it's cute
+  cry:     {s:"\u2767", c:"#7ec8ff", rise:7,  life:40, wob:.5,  bloom:1.0},  // rotated bud — teary
+  sleepy:  {s:"z", c:"#aef3ff", rise:9, life:42, wob:.5, bloom:1.0},          // zzz
+  ghost:   {s:"\u2727", c:"#dfe6ff", rise:20, life:64, wob:2.2, bloom:1.3},  // soft sparkle puff for KO
+  dizzy:   {s:"\u2733", c:"#c98bff", rise:8, life:42, wob:1.9,  bloom:1.1},   // swirly spark
+  idea:    {s:"\u273c", c:"#fff1a8", rise:12, life:40, wob:.8,  bloom:1.5},   // teardrop-spoked star — idea!
+  gross:   {s:"\u2235", c:"#a8ff78", rise:8, life:34, wob:.6,  bloom:.9},     // queasy drops
+  chat:    {s:"\u266c", c:"#bfe8ff", rise:11, life:36, wob:.7,  bloom:1.0},   // chatty notes
+  // ── "evil but cute" set — scheming, smug, mischievous — rounded & appealing, never harsh ──
+  scheme:  {s:"\u263b", c:"#c77dff", rise:10, life:44, wob:.9,  bloom:1.5},   // filled smiley — smug little schemer
+  evil:    {s:"\u2665", c:"#b15cff", rise:11, life:42, wob:1.0, bloom:1.5},   // violet heart — cute menace
+  smug:    {s:"\u2734", c:"#ff9f4a", rise:9,  life:40, wob:.7,  bloom:1.3},   // eight-point — pleased
+  greed:   {s:"\u2742", c:"#ffd24a", rise:10, life:42, wob:.8,  bloom:1.5},   // circled star — $$ sparkle-eyes
 };
 function emote(p,kind){
   if(!p||p.hp<=0&&kind!=="ghost")return;
@@ -4767,21 +5411,73 @@ function onlookersReact(x,y,kind,radius){
     tryEmote(q,kind,90);
   }
 }
+// draw NPC speech bubbles — a small rounded bubble above the speaker with their line, fading in/out.
+function roundRectPath(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();
+}
+function drawSays(x0,y0,x1,y1){
+  if(!ST.says||!ST.says.length)return;
+  ctx.textAlign="left";ctx.font="7px monospace";
+  for(const s of ST.says){
+    const p=ST.pawns.find(q=>q.id===s.id);if(!p)continue;
+    if(p.px<x0-2||p.px>x1+2||p.py<y0-2||p.py>y1+2)continue;
+    // fade: in over first 12%, hold, out over last 18%
+    const prog=1-s.ttl/s.t0;
+    let a=1; if(prog<0.12)a=prog/0.12; else if(prog>0.82)a=(1-prog)/0.18;
+    a=clamp(a,0,1); if(a<=0)continue;
+    // wrap text to ~22 chars/line
+    const words=s.txt.split(" ");const lines=[];let cur="";
+    for(const w of words){if((cur+" "+w).trim().length>22){lines.push(cur.trim());cur=w;}else cur+=" "+w;}
+    if(cur.trim())lines.push(cur.trim());
+    const lh=8, padX=4, padY=3;
+    let maxW=0; for(const ln of lines)maxW=Math.max(maxW,ctx.measureText(ln).width);
+    const bw=maxW+padX*2, bh=lines.length*lh+padY*2;
+    const cx=p.px*T, by=p.py*T-14-bh;     // above the pawn's head
+    const bx=cx-bw/2;
+    ctx.globalAlpha=a*0.92;
+    // bubble body
+    ctx.fillStyle="rgba(8,14,26,0.92)";roundRectPath(bx,by,bw,bh,3);ctx.fill();
+    ctx.strokeStyle="rgba(120,180,230,0.5)";ctx.lineWidth=0.7;ctx.stroke();
+    // little tail
+    ctx.fillStyle="rgba(8,14,26,0.92)";ctx.beginPath();ctx.moveTo(cx-2,by+bh);ctx.lineTo(cx+2,by+bh);ctx.lineTo(cx,by+bh+3);ctx.closePath();ctx.fill();
+    // text
+    ctx.globalAlpha=a;ctx.fillStyle="#cfe6ff";ctx.textAlign="left";
+    for(let i=0;i<lines.length;i++)ctx.fillText(lines[i],bx+padX,by+padY+lh*(i+1)-2);
+  }
+  ctx.globalAlpha=1;ctx.textAlign="left";
+}
 function drawEmotes(x0,y0,x1,y1){
   if(!ST.emotes||!ST.emotes.length)return;
   ctx.textAlign="center";
   for(const em of ST.emotes){
     if(em.x<x0-2||em.x>x1+2||em.y<y0-2||em.y>y1+2)continue;
+    // if this pawn has an active speech bubble, skip the emote so they don't stack/overlap above the head
+    if(ST.says&&ST.says.length){const sp=ST.pawns.find(q=>Math.abs(q.px-em.x)<0.6&&Math.abs(q.py-em.y)<0.6);if(sp&&ST.says.some(s=>s.id===sp.id))continue;}
     const def=EMOTES[em.kind]||EMOTES.happy;
     const prog=1-em.ttl/em.t0;
     const a=clamp(em.ttl<8?em.ttl/8:1,0,1); // fade out at end
     const rise=prog*def.rise;
     const wob=Math.sin(prog*7+em.seed)*def.wob;
-    const sz=Math.round((em.kind==="ghost"?11:9)+prog*2);
+    // CUTE bounce-in: pop slightly past full size in the first ~18% of life, then settle (squash-stretch feel)
+    let pop=1;
+    if(prog<0.18){const t=prog/0.18;pop=0.3+1.1*t;}      // spring up from small
+    else if(prog<0.30){const t=(prog-0.18)/0.12;pop=1.4-0.4*t;} // overshoot settles back
+    const sz=Math.round(((em.kind==="ghost"?11:9)+prog*1.5)*pop);
     const X=em.x*T+wob, Y=em.y*T-10-rise;
     ctx.globalAlpha=a;
+    // SOFT GLOW BLOOM behind the symbol — makes it pop & feel rounded/cute rather than flat text
+    const bloom=(def.bloom||1.1);
+    if(typeof glowSprite==="function"){
+      ctx.globalAlpha=a*0.5;
+      const gr=sz*bloom*0.9;
+      ctx.drawImage(glowSprite(def.c),X-gr,Y-gr*0.75-2,gr*2,gr*2);
+      ctx.globalAlpha=a;
+    }
     ctx.font="bold "+sz+"px monospace";
-    // soft glow behind the symbol
     ctx.fillStyle=def.c;
     ctx.fillText(def.s,X,Y);
     ctx.globalAlpha=1;
@@ -4791,6 +5487,33 @@ function drawEmotes(x0,y0,x1,y1){
 function tickEmotes(){
   if(!ST.emotes)return;
   for(let i=ST.emotes.length-1;i>=0;i--)if(--ST.emotes[i].ttl<=0)ST.emotes.splice(i,1);
+}
+// draw the trade caravan on the map while it's in town — a glowing cart with a goods banner, so the
+// "caravan arrives" event corresponds to something the player can actually SEE and walk to.
+function drawCaravan(x0,y0,x1,y1){
+  const cv=ST.caravan;if(!cv||cv.x==null)return;
+  if(cv.x<x0||cv.x>=x1||cv.y<y0||cv.y>=y1)return;
+  const X=cv.x*T,Y=cv.y*T,t=performance.now()*0.001;
+  const col=cv.mode==="buy"?"#39ff88":"#ffc947";
+  // soft ground glow so it reads as a destination
+  ctx.save();ctx.globalAlpha=0.18+0.06*Math.sin(t*2);
+  const gg=ctx.createRadialGradient(X+T/2,Y+T/2,0,X+T/2,Y+T/2,T*1.6);
+  gg.addColorStop(0,col);gg.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.fillStyle=gg;ctx.beginPath();ctx.arc(X+T/2,Y+T/2,T*1.6,0,7);ctx.fill();ctx.restore();
+  // cart body
+  ctx.fillStyle="#1a1206";ctx.fillRect(X+1,Y+4,T-2,T-6);
+  ctx.fillStyle="#2a1c0a";ctx.fillRect(X+2,Y+5,T-4,T-8);
+  // striped awning
+  for(let i=0;i<4;i++){ctx.fillStyle=i%2?col:"#0a0a0a";ctx.fillRect(X+1+i*((T-2)/4),Y+2,(T-2)/4,3);}
+  // wheel hints
+  ctx.fillStyle="#0a0a0a";ctx.fillRect(X+2,Y+T-2,2,2);ctx.fillRect(X+T-4,Y+T-2,2,2);
+  // floating goods banner
+  ctx.save();ctx.textAlign="center";ctx.font="bold 6px monospace";
+  const lit=0.7+0.3*Math.sin(t*2.4);
+  ctx.globalAlpha=0.55;ctx.fillStyle="rgba(2,6,14,.9)";ctx.fillRect(X+T/2-16,Y-9,32,7);
+  ctx.globalAlpha=lit;ctx.fillStyle=col;
+  ctx.fillText((cv.mode==="buy"?"BUY ":"SELL ")+cv.good.toUpperCase(),X+T/2,Y-3.5);
+  ctx.restore();
 }
 function drawTombstones(x0,y0,x1,y1){
   if(!ST.tombs||!ST.tombs.length)return;
@@ -4898,9 +5621,38 @@ function drawPawn(p){
     ctx.fillStyle="rgba(0,0,0,0.6)";ctx.fillRect(X-8,Y+9,16,3);
     const hpCol=p.hp>60?"#39ff88":p.hp>30?"#ffc947":"#ff3d5a";
     ctx.fillStyle=hpCol;ctx.fillRect(X-8,Y+9,16*clamp(p.hp/100,0,1),3)}
-  // name when selected
-  if(sel){ctx.fillStyle=p.accent;ctx.font="bold 7px monospace";ctx.textAlign="center";
-    ctx.fillText(p.name.split(" ")[0],X,Y-20);ctx.textAlign="left"}
+  // NAME — shown BELOW the wisp, with readability scaled to zoom so a busy map doesn't turn into a wall
+  // of overlapping labels. Your operative + named roles + the selected wisp are ALWAYS legible; ordinary
+  // wisps' names fade in only as you zoom in close enough to read them. (Emotions/alerts render ABOVE the
+  // wisp, names BELOW — clean separation.)
+  {const isRole=!!p.role,isYou=!!p.isAvatar;
+   const nm=p.name.split(" ")[0];
+   // ordinary wisps: name visibility ramps with zoom (invisible when zoomed out, clear when zoomed in)
+   const ordinaryVis=clamp((cam.z-1.0)/0.6,0,1);   // 0 at z<=1.0, full by z>=1.6
+   const show=isYou||isRole||sel||ordinaryVis>0.05;
+   if(show){
+     ctx.textAlign="center";
+     const ny=Y+22;
+     let col,fnt,alpha=1;
+     if(isYou){fnt="bold 8px monospace";col="#22ddff";}
+     else if(isRole){fnt="bold 7px monospace";col=p.accent;}
+     else if(sel){fnt="7px monospace";col=p.accent;}
+     else{fnt="7px monospace";col="rgba(190,205,225,1)";alpha=ordinaryVis*0.8;}
+     ctx.font=fnt;
+     const w=ctx.measureText(nm).width;
+     // consistent dark backing for EVERY visible name (was only role/you/selected before) — legibility
+     ctx.globalAlpha=alpha*(isYou||isRole||sel?0.6:0.5*ordinaryVis);
+     ctx.fillStyle="rgba(2,8,20,.85)";
+     ctx.fillRect(X-w/2-2,ny-7,w+4,9);
+     ctx.globalAlpha=alpha;ctx.fillStyle=col;
+     ctx.fillText(nm,X,ny);
+     ctx.globalAlpha=1;ctx.textAlign="left";
+   }}
+  // ROLE marker — a small colored diamond above named role-wisps so the cast is findable at a glance
+  if(p.role&&!p.isAvatar){const R0=ROLES[p.role];if(R0){
+    ctx.fillStyle=R0.accent;ctx.globalAlpha=0.9;
+    ctx.beginPath();ctx.moveTo(X,Y-15);ctx.lineTo(X-3,Y-18);ctx.lineTo(X,Y-21);ctx.lineTo(X+3,Y-18);ctx.closePath();ctx.fill();
+    ctx.globalAlpha=1;}}
   // AVATAR marker — a pulsing cyan ring + a chevron above, so YOU are always findable
   if(p.isAvatar){
     const pul=0.5+0.35*Math.sin(ST.tick*0.1);
@@ -4953,12 +5705,21 @@ function menuBg(){ctx.setTransform(dpr,0,0,dpr,0,0);
   for(let x=-140+o;x<VW+40;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x-100,VH);ctx.stroke()}}
 
 let MOTES=null;
-function initMotes(){const SPORE=["#a259ff","#d946ef","#7c3aed","#e879f9","#ff47c8"],a=[];
-  const N=12; // wisp count — kept low per design (8-15 range)
+let BLOBS=null;
+function initBlobs(){const COL=["#39d4ff","#7af7ff","#a259ff","#5cffd0"],a=[];
+  const N=16;   // a few more floating clusters for ambience (was 10) — still sparse, not busy
   for(let i=0;i<N;i++){
-    // bias spawn toward map edges (nature outskirts), away from built core
+    const orbs=2+RI(0,2),cl=[];                       // 2-4 orbs per cluster
+    for(let k=0;k<orbs;k++)cl.push({dx:(Math.random()-.5)*9,dy:(Math.random()-.5)*9,r:1.3+Math.random()*1.7});
+    a.push({x:RI(3,MW-3)*T,y:RI(3,MH-3)*T,c:COL[i%COL.length],ph:Math.random()*6.28,
+      vx:(Math.random()-.5)*.05,vy:(Math.random()-.5)*.05,orbs:cl});}
+  return a;}
+function initMotes(){const SPORE=["#39ff88","#5cffd0","#7affb0","#a259ff","#5cffd0"],a=[];
+  const N=18; // a few more drifting sparks for ambience (was 12) — kept tasteful
+  for(let i=0;i<N;i++){
+    // bias spawn toward map edges (nature outskirts), but let more drift through the core too
     let mx,my;
-    if(Math.random()<0.7){
+    if(Math.random()<0.55){
       // edge band
       const edge=RI(0,3);
       if(edge===0){mx=RI(2,MW-3);my=RI(2,18)}
@@ -5011,48 +5772,62 @@ function drawStreetLayer(x0,y0,x1,y1){
     ctx.strokeRect(X,Y,T-2,T-2);}
 
   // ── BUILDING NEON SIGNS (positioned above new core buildings) ──
-  // Production cluster (corp office x40-49 y52, shop x53-60 y52)
-  neonSign(40,51,"▲ NEXUS CORP",  "#00d4ff",54,10);
-  neonSign(53,51,"BODEGA",          "#ffc947",46,10);
-  // Commercial strip (bar x72-79 y52, clinic x84-92 y52)
+  // Labor tier (corp office x31-40 y50, bodega x44-51 y50)
+  neonSign(31,49,"▲ NEXUS CORP",  "#00d4ff",54,10);
+  neonSign(44,49,"BODEGA",          "#ffc947",46,10);
+  // Corporate sector (chrome bar x74-81 y26, med center x86-94 y26)
   const barCol=`hsl(${((t*.4)%1*360)|0},100%,65%)`;
-  neonSign(72,51,"CHROME BAR",      barCol,   48,10);
-  neonSign(84,51,"✚ MEDCENTER",  "#39ff88",54,10);
-  // Crime corner (dealer x60-66 y70)
-  neonSign(59,69,"THE DEN",         "#a259ff",40,9);
+  neonSign(74,25,"CHROME BAR",      barCol,   48,10);
+  neonSign(86,25,"✚ MEDCENTER",  "#39ff88",54,10);
+  // Crime corner (dealer x40-46 y68)
+  neonSign(40,67,"THE DEN",         "#a259ff",40,9);
+  // new districts
+  neonSign(57,48,"HYDRO FARM",      "#39ff88",52,9);
+  neonSign(50,66,"FIXER ROW",       "#ff8c42",46,9);
+  neonSign(76,48,"⌂ CITY HALL",   "#7af7ff",54,10);
+  neonSign(73,36,"⚖ PRECINCT",    "#47c8ff",50,9);
 
-  // ── RESIDENTIAL BLOCK LABELS (hand-painted, above home rows) ──
-  const resX0=46;
-  for(let i=0;i<4;i++)grafSign(resX0+i*9,29,"HOME "+(i+1),
+  // ── HOLOGRAPHIC BILLBOARDS — floating animated corp signage over open ground ──
+  const billboards=[[96,42,9,5,"#19d4ff"],[34,60,8,4,"#ff2da6"],[100,20,9,5,"#7af7ff"],[60,58,8,4,"#39ffd0"]];
+  billboards.forEach(([bx,by,bw,bh,col],bi)=>{
+    if(bx+bw<x0||bx>x1||by+bh<y0||by>y1)return;
+    const X=bx*T,Y=by*T,W=bw*T,H=bh*T,fl=0.55+0.45*Math.sin(t*3+bi*1.3);
+    ctx.save();ctx.globalCompositeOperation="lighter";
+    ctx.globalAlpha=0.06*fl;ctx.fillStyle=col;ctx.fillRect(X,Y,W,H);            // holo panel
+    ctx.globalAlpha=0.11*fl;ctx.strokeStyle=col;ctx.lineWidth=0.6;              // scanlines
+    for(let sy=Y+2;sy<Y+H;sy+=3){ctx.beginPath();ctx.moveTo(X,sy);ctx.lineTo(X+W,sy);ctx.stroke();}
+    ctx.globalAlpha=0.5*fl;ctx.lineWidth=1;ctx.shadowColor=col;ctx.shadowBlur=6;
+    ctx.strokeRect(X+.5,Y+.5,W-1,H-1);ctx.shadowBlur=0;                          // border
+    const bg=ctx.createLinearGradient(X+W/2,Y+H,X+W/2,Y+H+T*3);                  // projector beam
+    bg.addColorStop(0,col);bg.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.globalAlpha=0.05*fl;ctx.fillStyle=bg;ctx.fillRect(X+W*.32,Y+H,W*.36,T*3);
+    ctx.restore();ctx.globalAlpha=1;});
+
+  // ── HOUSING BLOCK LABELS (above the aligned home rows) ──
+  const resX0=31;
+  for(let i=0;i<4;i++)grafSign(resX0+i*9,24,"HOME "+(i+1),
     ["#39ff88","#ffc947","#e040fb","#00d4ff"][i],(i%2?.04:-.05));
-  for(let i=0;i<3;i++)grafSign(resX0+5+i*9,39,"HOME "+(i+5),
+  for(let i=0;i<3;i++)grafSign(resX0+i*9,32,"HOME "+(i+5),
     ["#39ff88","#ffc947","#e040fb"][i],(i%2?-.04:.05));
 
-  // ── ZONE LABELS (reserved outer-ring nature/resource areas) ──
-  if(ST.zones){
-    grafSign(ST.zones.farm.x+8,ST.zones.farm.y+8,"FARMLAND","#b8ff5e",0);
-    grafSign(ST.zones.woods.x+8,ST.zones.woods.y+8,"THE WOODS","#39ff88",0);
-    grafSign(ST.zones.mine.x+8,ST.zones.mine.y+8,"OLD MINE","#ffc947",0);
-    grafSign(ST.zones.civic.x+10,ST.zones.civic.y+9,"CIVIC ZONE","#00d4ff",0);
-  }
-
-  // ── WALL POSTERS (near core buildings) ──
-  poster(38,54,["WANTED","VOLT","100c"],    "#1a0808","#ff3d5a");
-  poster(38,55,["CORP","SURVEY"],           "#080818","#00d4ff");
-  poster(94,54,["FREE","CLINIC"],           "#081408","#39ff88");
-  poster(94,55,["STIMS","=DEATH"],          "#180818","#e040fb");
-  poster(63,45,["DISTRICT","MEET HERE"],    "#0a0c10","#00d4ff");
+  // ── ZONE LABELS + WALL POSTERS removed for the clean suspended look ──
+  // (building name labels kept as wayfinding)
 
   // ── PUDDLE SHIMMER (on horizontal arterials near core) ──
+  // PERF: build the radial gradient ONCE at the origin, then translate to each puddle, instead of
+  // allocating a fresh createRadialGradient per puddle per frame (was a per-frame hotspot).
   const pshimmer=0.08+0.06*Math.sin(t*2.1);
+  if(!_puddleGrad){_puddleGrad=ctx.createRadialGradient(T*.4,T*.2,0,T*.4,T*.2,T*.6);
+    _puddleGrad.addColorStop(0,"rgba(0,180,255,.5)");_puddleGrad.addColorStop(1,"rgba(0,0,0,0)");}
+  ctx.fillStyle=_puddleGrad;
   ROADS.h.forEach(([rx0,rx1,ry])=>{
     for(let px=rx0+5;px<rx1;px+=20){
       if(px<x0||px>x1||ry<y0||ry>y1)continue;
       const X=px*T,Y=ry*T+T*.9;
       ctx.globalAlpha=pshimmer;
-      const rg=ctx.createRadialGradient(X+T*.4,Y+T*.2,0,X+T*.4,Y+T*.2,T*.6);
-      rg.addColorStop(0,"rgba(0,180,255,.5)");rg.addColorStop(1,"rgba(0,0,0,0)");
-      ctx.fillStyle=rg;ctx.beginPath();ctx.ellipse(X+T*.4,Y+T*.2,T*.55,T*.18,0,0,7);ctx.fill();
+      ctx.save();ctx.translate(X,Y);
+      ctx.beginPath();ctx.ellipse(T*.4,T*.2,T*.55,T*.18,0,0,7);ctx.fill();
+      ctx.restore();
       ctx.globalAlpha=1;}});
 
   // ── ZEBRA CROSSING at the central spine / mid-arterial intersection ──
@@ -5060,6 +5835,76 @@ function drawStreetLayer(x0,y0,x1,y1){
   for(let xi=66;xi<=70;xi+=2){
     if(xi<x0||xi>x1)continue;
     ctx.fillRect(xi*T,48*T,T,T*2);}
+
+  // ── NEON ARTERIAL STRIPS — glowing animated centerlines along the roads (cyberpunk road glow) ──
+  ctx.save();ctx.globalCompositeOperation="lighter";ctx.lineCap="round";
+  const hCols=["#19d4ff","#ffb020"], vCols=["#ff2da6","#19d4ff"];   // cyan/amber on h, magenta/cyan on v
+  ROADS.h.forEach(([rx0,rx1,ry],idx)=>{
+    if(ry<y0-2||ry>y1+1)return;
+    const Y=(ry+1)*T, ax0=Math.max(rx0,x0)*T, ax1=Math.min(rx1,x1)*T;
+    if(ax1<=ax0)return; const col=hCols[idx%hCols.length];
+    ctx.shadowColor=col;
+    ctx.strokeStyle=col;ctx.globalAlpha=.30;ctx.lineWidth=2.5;ctx.shadowBlur=8;
+    ctx.beginPath();ctx.moveTo(ax0,Y);ctx.lineTo(ax1,Y);ctx.stroke();
+    ctx.globalAlpha=.65;ctx.lineWidth=1;ctx.shadowBlur=3;
+    ctx.beginPath();ctx.moveTo(ax0,Y);ctx.lineTo(ax1,Y);ctx.stroke();
+    const span=ax1-ax0, head=ax0+((t*70+idx*140)%(span+140))-70;   // travelling pulse
+    const g=ctx.createLinearGradient(head-70,0,head+18,0);
+    g.addColorStop(0,"rgba(0,0,0,0)");g.addColorStop(.85,col);g.addColorStop(1,"rgba(255,255,255,0)");
+    ctx.strokeStyle=g;ctx.globalAlpha=.9;ctx.lineWidth=2.5;ctx.shadowBlur=10;
+    ctx.beginPath();ctx.moveTo(Math.max(head-70,ax0),Y);ctx.lineTo(Math.min(head+18,ax1),Y);ctx.stroke();});
+  ROADS.v.forEach(([rx,ry0,ry1],idx)=>{
+    if(rx<x0-2||rx>x1+1)return;
+    const X=(rx+1)*T, ay0=Math.max(ry0,y0)*T, ay1=Math.min(ry1,y1)*T;
+    if(ay1<=ay0)return; const col=vCols[idx%vCols.length];
+    ctx.shadowColor=col;
+    ctx.strokeStyle=col;ctx.globalAlpha=.30;ctx.lineWidth=2.5;ctx.shadowBlur=8;
+    ctx.beginPath();ctx.moveTo(X,ay0);ctx.lineTo(X,ay1);ctx.stroke();
+    ctx.globalAlpha=.65;ctx.lineWidth=1;ctx.shadowBlur=3;
+    ctx.beginPath();ctx.moveTo(X,ay0);ctx.lineTo(X,ay1);ctx.stroke();
+    const span=ay1-ay0, head=ay0+((t*62+idx*110)%(span+140))-70;
+    const g=ctx.createLinearGradient(0,head-70,0,head+18);
+    g.addColorStop(0,"rgba(0,0,0,0)");g.addColorStop(.85,col);g.addColorStop(1,"rgba(255,255,255,0)");
+    ctx.strokeStyle=g;ctx.globalAlpha=.9;ctx.lineWidth=2.5;ctx.shadowBlur=10;
+    ctx.beginPath();ctx.moveTo(X,Math.max(head-70,ay0));ctx.lineTo(X,Math.min(head+18,ay1));ctx.stroke();});
+  // ── CIRCUIT-BOARD TRACES — subtle PCB branch stubs + via-pads off the arterials (replaces round junction glows) ──
+  const _np=0.6+0.4*Math.sin(t*2.2);
+  // a glowing PCB via-pad: soft halo + bright annular ring + bright center
+  const _vp=(px,py,col,rad)=>{
+    ctx.globalAlpha=.45*_np;ctx.drawImage(glowSprite(col),px-rad*2.3,py-rad*2.3,rad*4.6,rad*4.6);
+    ctx.globalAlpha=.9;ctx.strokeStyle=col;ctx.lineWidth=1.3;ctx.shadowColor=col;ctx.shadowBlur=4;
+    ctx.beginPath();ctx.arc(px,py,rad,0,7);ctx.stroke();
+    ctx.globalAlpha=.95;ctx.fillStyle="#dffcff";ctx.beginPath();ctx.arc(px,py,rad*.42,0,7);ctx.fill();
+    ctx.shadowBlur=0;};
+  // a glowing trace stub (wide soft glow + tight bright core)
+  const _stub=(xa,ya,xb,yb,col)=>{
+    ctx.strokeStyle=col;ctx.shadowColor=col;
+    ctx.globalAlpha=.28;ctx.lineWidth=2.2;ctx.shadowBlur=7;
+    ctx.beginPath();ctx.moveTo(xa,ya);ctx.lineTo(xb,yb);ctx.stroke();
+    ctx.globalAlpha=.68;ctx.lineWidth=.9;ctx.shadowBlur=2;
+    ctx.beginPath();ctx.moveTo(xa,ya);ctx.lineTo(xb,yb);ctx.stroke();};
+  // branch stubs off horizontal arterials (alternate up/down), each ending in a via-pad
+  ROADS.h.forEach(([rx0,rx1,ry],idx)=>{ if(ry<y0-5||ry>y1+5)return;
+    const Y=(ry+1)*T, col=hCols[idx%hCols.length];
+    for(let bx=rx0+9;bx<rx1-3;bx+=17){
+      if(bx<x0-4||bx>x1+4)continue;
+      const dir=((bx+idx)&1)?1:-1, X=bx*T, len=(3+(bx%2))*T;
+      _stub(X,Y,X,Y+dir*len,col); _vp(X,Y+dir*len,col,3.1);}});
+  // branch stubs off vertical arterials (alternate left/right)
+  ROADS.v.forEach(([rx,ry0,ry1],idx)=>{ if(rx<x0-5||rx>x1+5)return;
+    const X=(rx+1)*T, col=vCols[idx%vCols.length];
+    for(let by=ry0+11;by<ry1-3;by+=19){
+      if(by<y0-4||by>y1+4)continue;
+      const dir=((by+idx)&1)?1:-1, Y=by*T, len=(3+(by%2))*T;
+      _stub(X,Y,X+dir*len,Y,col); _vp(X+dir*len,Y,col,3.1);}});
+  // larger PCB via-pads where arterials cross (replaces the round junction glow)
+  ROADS.h.forEach(([hx0,hx1,hy])=>{ if(hy<y0-2||hy>y1+1)return;
+    ROADS.v.forEach(([vx,vy0,vy1])=>{
+      if(vx<hx0||vx>hx1||hy<vy0||hy>vy1)return;                 // arterials must actually cross
+      if(vx<x0-1||vx>x1+1)return;
+      _vp((vx+1)*T,(hy+1)*T,"#7af7ff",4.3);});});
+  ctx.globalAlpha=1;ctx.shadowBlur=0;
+  ctx.shadowBlur=0;ctx.globalAlpha=1;ctx.lineCap="butt";ctx.restore();
 }
 
 function render(){
@@ -5072,6 +5917,15 @@ function render(){
   ctx.drawImage(tc,0,0);
   const x0=clamp(Math.floor(cam.x/T)-1,0,MW-1),y0=clamp(Math.floor(cam.y/T)-1,0,MH-1);
   const x1=clamp(Math.ceil((cam.x+VW/z)/T)+1,0,MW),y1=clamp(Math.ceil((cam.y+VH/z)/T)+1,0,MH);
+  // ── FLOOR CAUSTICS — slow underwater light shimmer drifting over the abyss (additive, faint) ──
+  {ctx.save();ctx.globalCompositeOperation="lighter";const cw=MW*T,ch=MH*T,ct=performance.now()*0.001;
+   for(let i=0;i<6;i++){
+     const px=cw*0.5+Math.sin(ct*0.15+i*1.7)*cw*0.42, py=ch*0.5+Math.cos(ct*0.11+i*2.3)*ch*0.42;
+     if(px<x0*T-90||px>x1*T+90||py<y0*T-90||py>y1*T+90)continue;
+     const rad=72+Math.sin(ct*0.3+i)*22;
+     ctx.globalAlpha=0.03+0.02*Math.sin(ct*0.5+i);
+     ctx.drawImage(glowSprite("#2ad8e0"),px-rad,py-rad,rad*2,rad*2);}
+   ctx.restore();ctx.globalAlpha=1;}
   // drifting spore-motes
   if(!MOTES)MOTES=initMotes();
   for(const mo of MOTES){mo.y-=mo.sp;mo.x+=mo.drift||0;mo.ph+=0.04;
@@ -5087,6 +5941,22 @@ function render(){
     ctx.globalAlpha=ma;ctx.fillStyle=mo.c;
     ctx.beginPath();ctx.arc(mo.x,mo.y,mo.r,0,7);ctx.fill()}
   ctx.globalAlpha=1;
+  // lingering plankton-blobs — slow bioluminescent jellyfish-clusters hovering in the void
+  if(!BLOBS)BLOBS=initBlobs();
+  for(const bl of BLOBS){
+    bl.x+=bl.vx;bl.y+=bl.vy;bl.ph+=0.012;
+    if(bl.x<T){bl.x=T;bl.vx=Math.abs(bl.vx)}if(bl.x>(MW-1)*T){bl.x=(MW-1)*T;bl.vx=-Math.abs(bl.vx)}
+    if(bl.y<T){bl.y=T;bl.vy=Math.abs(bl.vy)}if(bl.y>(MH-1)*T){bl.y=(MH-1)*T;bl.vy=-Math.abs(bl.vy)}
+    if(bl.x<x0*T||bl.x>x1*T||bl.y<y0*T||bl.y>y1*T)continue;
+    const bob=Math.sin(bl.ph)*2,base=0.20+0.12*Math.sin(bl.ph*1.3);
+    ctx.save();ctx.globalCompositeOperation="lighter";
+    for(const o of bl.orbs){const ox=bl.x+o.dx,oy=bl.y+o.dy+bob;
+      ctx.globalAlpha=base*0.6;ctx.drawImage(glowSprite(bl.c),ox-o.r*4,oy-o.r*4,o.r*8,o.r*8);
+      ctx.globalAlpha=base*1.1;ctx.fillStyle=bl.c;ctx.beginPath();ctx.arc(ox,oy,o.r,0,7);ctx.fill();
+      const spk=Math.sin(bl.ph*2.3+o.dx);                      // occasional bright sparkle
+      if(spk>0.86){ctx.globalAlpha=(spk-0.86)*7*base;ctx.fillStyle="#ffffff";ctx.beginPath();ctx.arc(ox,oy,o.r*0.7,0,7);ctx.fill();}}
+    ctx.restore();}
+  ctx.globalAlpha=1;
   // gang territory tint (drawn over terrain, under structures)
   if(ST.gangs.length){
     for(const g of ST.gangs){if(!g.turf.size)continue;
@@ -5101,27 +5971,18 @@ function render(){
   // bio-pod canopies (drawn under the room glints below)
   for(const rm of (ST.rooms||[])){if(rm.x0+rm.w<x0||rm.x0>x1||rm.y0+rm.h<y0||rm.y0>y1)continue;drawPod(rm)}
   drawStreetLayer(x0,y0,x1,y1);
-  // watch-post security coverage — subtle ring so the player can see protected ground
-  if(ST._secZones&&ST._secZones.length){
-    for(const z of ST._secZones){
-      if(z.x+z.r<x0||z.x-z.r>=x1||z.y+z.r<y0||z.y-z.r>=y1)continue;
-      const cx=(z.x+.5)*T,cy=(z.y+.5)*T,rr=z.r*T;
-      ctx.save();
-      ctx.globalAlpha=0.05;ctx.fillStyle="#39ff88";
-      ctx.beginPath();ctx.arc(cx,cy,rr,0,7);ctx.fill();
-      ctx.globalAlpha=0.18;ctx.strokeStyle="#39ff88";ctx.lineWidth=1;ctx.setLineDash([5,6]);
-      ctx.beginPath();ctx.arc(cx,cy,rr,0,7);ctx.stroke();ctx.setLineDash([]);
-      ctx.restore();
-    }
-  }
+  // (watch-post coverage rings removed per circuit-aesthetic pass — _secZones still drives gameplay coverage, just not drawn as a circle)
   // structures — iterate the structure set directly and viewport-cull each,
   // instead of scanning every tile in the viewport (huge win at zoom-out).
   for(const s of ST.structs.values()){
     if(s.x<x0||s.x>=x1||s.y<y0||s.y>=y1)continue;
+    if(DEF[s.type]&&DEF[s.type].nat)continue;   // suspended-void look: hide open-area decor (benches, lamps, crates, dumpsters, planters)
     drawStruct(s);}
+  drawCaravan(x0,y0,x1,y1);
   for(const p of ST.pawns)drawPawn(p);
   drawTombstones(x0,y0,x1,y1);
   drawEmotes(x0,y0,x1,y1);
+  drawSays(x0,y0,x1,y1);
   // floating text
   ctx.font="7px monospace";ctx.textAlign="center";
   for(const f of ST.floats){const prog=1-f.ttl/f.t0;const a=clamp(1-prog*prog,0,1);
@@ -5150,11 +6011,86 @@ function render(){
   if(ST.blackoutUntil&&ST.tick<ST.blackoutUntil){
     const flick=0.62+0.06*Math.sin(performance.now()*0.02)+(Math.random()<0.03?0.1:0);
     ctx.fillStyle="rgba(2,4,10,"+flick.toFixed(2)+")";ctx.fillRect(0,0,VW,VH);
-  }}
+  }
+  // ── ATMOSPHERE OVERLAY (rain + drifting smog) — opt-in via the ☂ HUD toggle, off by default
+  // so it never costs framerate unless the player wants the mood. Screen-space, cheap.
+  if(ATMO.on){drawAtmosphere();}
+  // ── LIGHTNING (⚡ toggle) — periodic flashes; the flash value also drives sprite-glow elsewhere.
+  if(STORM.on){drawLightning();}
+}
+
+// rain + smog atmosphere, drawn in screen space. State + particle pool created lazily.
+const ATMO={on:false,drops:null,fog:0};
+// LIGHTNING storm: when on, schedules flashes. STORM.flash (0..1) ramps up on a strike and decays —
+// it's read by drawLightning (screen flash) AND by the sprite glow (stormGlow()) so neon pops on strikes.
+const STORM={on:false,flash:0,nextAt:0,seq:0};
+function stormGlow(){return STORM.on?STORM.flash:0;}   // 0..1 extra glow factor during a flash
+function drawLightning(){
+  const now=performance.now();
+  // schedule the next strike
+  if(now>=STORM.nextAt){
+    STORM.flash=1; STORM.seq++;
+    STORM.nextAt=now+2200+Math.random()*5200;   // a strike every ~2.2–7.4s
+  }
+  if(STORM.flash>0.001){
+    // a strike is often a quick double-flash; model with a fast decay + a small secondary bump
+    STORM.flash*=0.86;
+    if(STORM.flash>0.55&&Math.random()<0.12)STORM.flash=Math.min(1,STORM.flash+0.4); // flicker
+    // screen flash: cool white-blue, brightest at the top (sky) fading down
+    const a=STORM.flash;
+    const fg=ctx.createLinearGradient(0,0,0,VH);
+    fg.addColorStop(0,"rgba(200,225,255,"+(0.42*a).toFixed(3)+")");
+    fg.addColorStop(0.5,"rgba(170,200,255,"+(0.22*a).toFixed(3)+")");
+    fg.addColorStop(1,"rgba(140,170,230,"+(0.06*a).toFixed(3)+")");
+    ctx.fillStyle=fg;ctx.fillRect(0,0,VW,VH);
+    // an occasional jagged bolt across the sky on the strongest flashes
+    if(a>0.7){
+      ctx.save();ctx.globalAlpha=a;ctx.strokeStyle="rgba(220,235,255,0.9)";ctx.lineWidth=2;ctx.lineCap="round";
+      let bx=VW*(0.2+Math.random()*0.6),by=0;ctx.beginPath();ctx.moveTo(bx,by);
+      const segs=5+((Math.random()*4)|0);
+      for(let i=0;i<segs;i++){bx+=(Math.random()-0.5)*VW*0.12;by+=VH/segs*(0.7+Math.random()*0.6);ctx.lineTo(bx,by);}
+      ctx.stroke();ctx.restore();
+    }
+  }
+}
+function initRain(){const a=[];const n=Math.round((VW*VH)/5500);  // density scales to canvas
+  for(let i=0;i<n;i++)a.push({x:Math.random()*VW,y:Math.random()*VH,len:6+Math.random()*10,sp:7+Math.random()*7,w:Math.random()*0.5+0.3});
+  return a;}
+function drawAtmosphere(){
+  // drifting smog haze — a slow-moving translucent gradient wash, layered for depth
+  const t=performance.now()*0.00006;
+  ATMO.fog=Math.min(1,ATMO.fog+0.02);   // fades in when toggled on
+  const fogA=0.10*ATMO.fog;
+  ctx.save();
+  for(let i=0;i<2;i++){
+    const ox=((Math.sin(t*(i+1))*0.5+0.5)*VW*0.4)-(VW*0.1);
+    const fg=ctx.createLinearGradient(ox,0,ox+VW,VH);
+    fg.addColorStop(0,"rgba(40,30,60,0)");
+    fg.addColorStop(0.5,"rgba("+(30+i*15)+","+(24+i*8)+","+(50+i*10)+","+fogA+")");
+    fg.addColorStop(1,"rgba(20,30,50,0)");
+    ctx.fillStyle=fg;ctx.fillRect(0,0,VW,VH);
+  }
+  ctx.restore();
+  // rain — diagonal streaks, brighter and denser so it clearly reads as falling rain
+  if(!ATMO.drops)ATMO.drops=initRain();
+  ctx.save();
+  const skew=3.0;  // slant
+  ctx.lineWidth=1.1;ctx.lineCap="round";
+  for(const d of ATMO.drops){
+    d.y+=d.sp;d.x+=skew*0.45;
+    if(d.y>VH){d.y=-d.len;d.x=Math.random()*VW;}
+    if(d.x>VW)d.x-=VW;
+    ctx.globalAlpha=(d.w*0.55+0.35)*ATMO.fog;
+    ctx.strokeStyle="rgba(170,205,240,0.9)";
+    ctx.beginPath();ctx.moveTo(d.x,d.y);ctx.lineTo(d.x-skew*d.len*0.22,d.y+d.len);ctx.stroke();
+  }
+  ctx.globalAlpha=1;ctx.restore();
+}
 
 // cached day/night vignette — rebuilds only when the (quantized) tint or canvas size changes,
 // instead of allocating a full-screen radial gradient every frame.
 let _vigCache=null,_vigKey="";
+let _puddleGrad=null;   // cached radial gradient for puddle shimmer (built once, translated per puddle)
 function vignetteGradient(r,g,b){
   const key=r+","+g+","+b+"|"+VW+"x"+VH;
   if(_vigCache&&_vigKey===key)return _vigCache;
@@ -5175,6 +6111,48 @@ function s2w(sx,sy){return{wx:sx/cam.z+cam.x,wy:sy/cam.z+cam.y}}
 function cellAt(sx,sy){const w=s2w(sx,sy);
   return{x:Math.floor(w.wx/T),y:Math.floor(w.wy/T),wx:w.wx,wy:w.wy}}
 function selPawns(){return ST.sel.filter(e=>e.kind==="pawn")}
+let INSPECT_TAB="status";   // which character-panel tab is active: status|person|ties|mind
+// wispThoughts — surfaces a wisp's inner state as short thoughts. Outliers + critical events + a
+// little mundane chatter. Each {txt, col}. Derived from the wisp's current state, no AI cost.
+function wispThoughts(p){
+  const out=[];const add=(txt,col)=>out.push({txt,col:col||"#9fb4d8"});
+  const mood=p.mood||50,stress=p.stress||0;
+  // EXTREMES (outliers) — strongest signals first
+  if(mood<18)add("Everything is falling apart. I can't keep doing this.","#ff6b6b");
+  else if(mood>82)add("Things are actually good right now. I could get used to this.","#5cff9e");
+  if(stress>80)add("My nerves are shot. One more thing and I'll snap.","#ff8da3");
+  if((p.needs.food||100)<15)add("I'm starving. I need to eat something, anything.","#ffb454");
+  if((p.needs.rest||100)<15)add("So tired. I can barely keep my eyes open.","#ffb454");
+  if(p.homeless)add("No bed tonight. Sleeping rough again — this isn't living.","#ff8c42");
+  if(p.sick)add("I feel awful. Burning up. I need a clinic.","#ff6b6b");
+  if((p.addiction||0)>50)add("I need a hit. I can't think about anything else.","#c98bff");
+  // CRITICAL EVENTS — recent strong memories
+  if(p.mem&&p.mem.length){const recent=p.mem.slice(-3);
+    for(const m of recent){const t=m.t||"";
+      if(/evicted/i.test(t)){add("Losing my place still stings. They threw me out like nothing.","#ff8c42");break;}
+      if(/robbed|lifting|pocket/i.test(t)&&/got|caught/i.test(t)){add("Someone took what was mine. I won't forget it.","#ff6b6b");break;}
+      if(/witnessed|attack|kill/i.test(t)){add("I saw something I can't unsee. It plays over and over.","#ff8da3");break;}
+    }}
+  // INSURRECTION state
+  if(p.recruited)add("I'm part of something now. The cause is bigger than any of us.","#5cff9e");
+  else if(p.informant)add("If they ever find out what I've told the regime... I can't think about it.","#ff5470");
+  else if((p.allegiance||0)>50)add("Something has to change in this city. Maybe I could help.","#5cff9e");
+  else if((p.allegiance||0)<-50)add("These agitators are going to get us all killed. Order matters.","#ff8da3");
+  // MUNDANE CHATTER — only if nothing pressing, and only sometimes (keeps it from being noise)
+  if(out.length===0){
+    const idx=(p.id+Math.floor(ST.tick/TPD))%6;   // stable-ish per day so it doesn't flicker
+    const chatter=[
+      "Another day on the block. Same as the last.",
+      "Wonder what's cooking at the market today.",
+      "Could use a drink and some quiet.",
+      "The neon never really lets you sleep, does it.",
+      "Keeping my head down. That's how you survive here.",
+      "One of these days I'll get out of this sprawl.",
+    ];
+    if(p.mood>40)add(chatter[idx],"rgba(159,180,216,.7)");
+  }
+  return out.slice(0,3);
+}
 function pawnAt(wx,wy){let best=null,bd=.8;
   for(const p of ST.pawns){const d=DIST(wx/T,wy/T,p.px,p.py);if(d<bd){bd=d;best=p}}return best}
 function setTool(t){TOOL=t;$("cancelTool").style.display=t?"block":"none";refreshToolBtns()}
@@ -5203,6 +6181,23 @@ function paintTo(c){if(!PT.lastC){PT.lastC=c;paintCell(c.x,c.y);return}
   PT.lastC=c}
 
 function clickSelect(c){const p=pawnAt(c.wx,c.wy);
+  // AVATAR OP TARGETING: if we're picking a target for sabotage/frame, resolve it here
+  if(ST.opTargeting){
+    const opKey=ST.opTargetingOp;const need=ST.opTargeting;
+    if(need==="utility"){
+      const s=structAt(c.x,c.y);
+      if(s&&DEF[s.type]&&DEF[s.type].utility&&!s.bp){
+        s.kind="s";runAvatarOp(opKey,s);ST.opTargeting=null;ST.opTargetingOp=null;
+        ST.sel=ST.sel&&ST.sel[0]&&ST.sel[0].isAvatar?ST.sel:[theAvatar()].filter(Boolean);
+        renderInspect();syncHUD();return;
+      }else{flashMsg&&flashMsg("Not a power/water building — pick a utility, or tap the op again to cancel.");return;}
+    }else if(need==="regime"){
+      if(p&&!p.isAvatar&&!isChild(p)&&(p.regimeForce||p.informant||(p.allegiance||0)<-20)){
+        p.kind="pawn";runAvatarOp(opKey,p);ST.opTargeting=null;ST.opTargetingOp=null;
+        ST.sel=[theAvatar()].filter(Boolean);renderInspect();syncHUD();return;
+      }else{flashMsg&&flashMsg("Not a regime asset — pick a loyalist/enforcer/informant, or tap the op again to cancel.");return;}
+    }
+  }
   if(p){ST.sel=[p];renderInspect();return}
   const s=structAt(c.x,c.y);if(s){ST.sel=[s];renderInspect();return}
   ST.sel=[];renderInspect()}
@@ -5280,6 +6275,7 @@ window.addEventListener("keydown",e=>{const k=e.key.toLowerCase();
   else if(k==="k")openOverlay("crew");
   else if(k==="l")openOverlay("district");
   else if(k==="t")openOverlay("tasks");
+  else if(k==="p")togglePerfHUD();
   else if(k==="escape"){if(TOOL)setTool(null);
     else if(cam.follow){stopFollow();renderInspect();}
     else{ST.sel=[];renderInspect();closeSub();syncHUD()}}});
@@ -5562,6 +6558,11 @@ function collectAlerts(){
       alerts.push({sev:"info",ic:"\u25C8",t:"Caravan buying "+cv.good.toUpperCase(),s:"Pays "+cv.rate+"c/unit on departure. You have "+have+" in stock — produce more to cash in."});}
     else alerts.push({sev:"info",ic:"\u25C8",t:"Caravan selling "+cv.good.toUpperCase(),s:"Cheap "+cv.good.toUpperCase()+" available while they're here."});}
   if(ST.debtDays)alerts.push({sev:"crit",ic:"\u26a0",t:"Debt: day "+ST.debtDays+"/6",s:"The district is condemned at day 6 of debt."});
+  // active election — surface it so the player can watch + back a candidate
+  if(ST.election&&!ST.election.resolved){const e=ST.election;
+    const cnames=e.candidates.map(id=>{const p=ST.pawns.find(q=>q.id===id);return p?p.name.split(" ")[0]:"";}).filter(Boolean).join(", ");
+    const daysLeft=Math.max(0,(e.voteAt-ST.tick)/TPD).toFixed(1);
+    alerts.push({sev:"warn",ic:"\u2696",t:ROLES[e.role].title+" election underway",s:"The seat is empty. Candidates: "+cnames+". Vote in ~"+daysLeft+" days. Select a citizen to back them."+(e.playerPick?" (Backing: "+(ST.pawns.find(p=>p.id===e.playerPick)||{}).name+")":"")});}
   // gang recruitment risk — unaffiliated, desperate, disaffected citizens near a gang (AGGREGATED)
   if(ST.gangs&&ST.gangs.length){
     const atRiskPawns=[];
@@ -5739,20 +6740,24 @@ function renderRequests(){
   const pending=ST.requests?ST.requests.filter(r=>r.status==="pending"):[];
   if(!pending.length){el.style.display="none";if(typeof refreshTaskBadge==="function")refreshTaskBadge();return}
   el.style.display="block";
-  let h='<div class="rq-hdr">AGENT REQUESTS</div>';
-  const now=ST.tick;
-  for(const r of pending){
-    const frac=(r.expires-now)/(r.expires-r.created);
-    const cls=frac<0.25?"rq-urgent":frac<0.5?"rq-warn":"";
-    const agent=ST.pawns.find(p=>p.id===r.agentId);
-    const col=agent?agent.accent:"var(--cy)";
-    h+="<div class='rq-card "+cls+"' data-rid='"+r.id+"'>";
-    h+="<div class='rq-name' style='color:"+col+"'>"+r.agentName+"</div>";
-    h+="<div class='rq-text'>"+r.text+"</div>";
-    h+="<div class='rq-opts'>";
-    r.options.forEach((opt,i)=>{
-      h+="<button class='tb' data-rid='"+r.id+"' data-oi='"+i+"'>"+opt.label+"</button>"});
-    h+="</div></div>"}
+  const collapsed=!!window.REQ_COLLAPSED;
+  let h='<div class="rq-hdr" id="rq-toggle" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">'
+    +'<span>AGENT REQUESTS ('+pending.length+')</span><span style="opacity:.6">'+(collapsed?"\u25B8":"\u25BE")+'</span></div>';
+  if(!collapsed){
+    const now=ST.tick;
+    for(const r of pending){
+      const frac=(r.expires-now)/(r.expires-r.created);
+      const cls=frac<0.25?"rq-urgent":frac<0.5?"rq-warn":"";
+      const agent=ST.pawns.find(p=>p.id===r.agentId);
+      const col=agent?agent.accent:"var(--cy)";
+      h+="<div class='rq-card "+cls+"' data-rid='"+r.id+"'>";
+      h+="<div class='rq-name' style='color:"+col+"'>"+r.agentName+"</div>";
+      h+="<div class='rq-text'>"+r.text+"</div>";
+      h+="<div class='rq-opts'>";
+      r.options.forEach((opt,i)=>{
+        h+="<button class='tb' data-rid='"+r.id+"' data-oi='"+i+"'>"+opt.label+"</button>"});
+      h+="</div></div>"}
+  }
   el.innerHTML=h;
   if(typeof refreshTaskBadge==="function")refreshTaskBadge();}
 
@@ -5935,6 +6940,7 @@ function applyRequest(rid,oi){
   renderRequests()}
 
 $("requests").addEventListener("click",e=>{
+  if(e.target.closest&&e.target.closest("#rq-toggle")){SFX.ui&&SFX.ui();window.REQ_COLLAPSED=!window.REQ_COLLAPSED;renderRequests();return;}
   const rid=e.target.dataset.rid;
   const oi=e.target.dataset.oi;
   if(rid&&oi!==undefined){SFX.ui();applyRequest(+rid,parseInt(oi))}});
@@ -5950,7 +6956,14 @@ function expireRequests(){
         log(agent.name+" didn't wait for the word — moving on "+victim.name+".","warn")}
       continue}
     if(agent)agent.pers.soc=clamp(agent.pers.soc-1,0,100);
-    log((agent?agent.name:"Agent")+" got tired of waiting — acted on instinct.","warn")}}
+    log((agent?agent.name:"Agent")+" got tired of waiting — acted on instinct.","warn")}
+  // prune resolved/expired petitions so the list (and saves) don't grow unbounded — keep all pending + 8 most-recent resolved
+  if(ST.requests.length>16){
+    const keep=new Set(),resolved=[];
+    for(const r of ST.requests){if(r.status==="pending")keep.add(r);else resolved.push(r);}
+    for(const r of resolved.slice(-8))keep.add(r);
+    ST.requests=ST.requests.filter(r=>keep.has(r));
+  }}
 
 function applyDrift(p,deltas){
   const today=Math.floor(ST.tick/2400);
@@ -5964,13 +6977,25 @@ function canGenRequest(p){
   return !ST.requests.some(r=>r.agentId===p.id&&r.status==="pending")}
 
 function genRequests(){
+  if(!REQUESTS_ENABLED)return;   // agent requests disabled for now
   if(ST.phase!=="run"||!ST.requests)return;
-  const gap=600;
+  // PACING: keep petitions occasional, not a flood. A global cooldown spaces them out, and a cap on
+  // simultaneous pending requests prevents pile-up. (Routine flashpoints surface in the weekly council.)
+  const pending=ST.requests.filter(r=>r.status==="pending").length;
+  if(pending>=3)return;                                    // never more than 3 open at once
+  if(ST.lastGlobalReqT&&ST.tick-ST.lastGlobalReqT<900)return;  // ~9h min between any two petitions
+  const gap=2400;                                          // each wisp can petition at most ~once/day
+  // gather eligible wisps, pick ONE at random so we don't spawn several at once
+  const eligible=[];
   for(const p of ST.pawns){
     if(!canGenRequest(p))continue;
     if(p.lastReqT&&ST.tick-p.lastReqT<gap)continue;
-    const r=tryBuildRequest(p);
-    if(r){ST.requests.push(r);p.lastReqT=ST.tick;renderRequests()}}}
+    eligible.push(p);
+  }
+  if(!eligible.length)return;
+  const p=eligible[Math.floor(Math.random()*eligible.length)];
+  const r=tryBuildRequest(p);
+  if(r){ST.requests.push(r);p.lastReqT=ST.tick;ST.lastGlobalReqT=ST.tick;renderRequests();}}
 
 function tryBuildRequest(p){
   const id=uid();
@@ -6049,7 +7074,7 @@ function syncHUD(){
   const hudEl=$("hud");if(hudEl)hudEl.classList.toggle("crisis",!!ST.crisis);
   // goods pips — color when stocked
   const g=ST.goods||{};
-  ["food","wood","materials","data","chem","parts","stims","gear"].forEach(k=>{
+  ["food","scrap","data","chem","parts","stims","gear"].forEach(k=>{
     const el=$("g-"+k);if(!el)return;
     const v=g[k]||0;
     el.textContent=v;
@@ -6098,91 +7123,120 @@ function renderInspectCore(){const el=$("inspect");
     el.innerHTML="<h3>"+ST.sel.length+" RUNNERS</h3><div class='sub'>squad selected</div>";return}
   const e=ST.sel[0];
   if(e.kind==="pawn"){
+    const tab=INSPECT_TAB;
     let h="<h3 style='color:"+e.accent+"'>"+e.name+"</h3>";
-    h+="<div class='sub'>"+e.tr.map(t=>t.n).join(" · ")+"</div>";
-    h+=barHtml("HP",e.hp,"#39ff88");
-    h+=barHtml("FOOD",e.needs.food,"#b8ff5e");
-    h+=barHtml("REST",e.needs.rest,"#7aa2ff");
-    h+=barHtml("MOOD",e.mood,e.mood<25?"#ff4757":"#ffd84a");
-    // mood drivers — surface the biggest current contributors (the hidden math, made visible)
-    if(e.mods&&e.mods.length){
-      const active=e.mods.filter(md=>md.until>ST.tick&&md.l).slice().sort((a,b)=>Math.abs(b.v)-Math.abs(a.v)).slice(0,3);
-      if(active.length){h+="<div class='sub' style='font-size:10px;opacity:.85'>"+
-        active.map(md=>"<span style='color:"+(md.v>=0?"#39ff88":"#ff6b6b")+"'>"+(md.v>=0?"+":"")+md.v+" "+md.l+"</span>").join(" · ")+"</div>";}
-    }
-    h+="<div class='sub'>TASK: "+jobLabel(e)+"</div>";
-    // AVATAR: show your Operative Attributes
-    if(e.isAvatar){
-      const bg=OPS_BACKGROUNDS.find(b=>b.k===e.background);
-      h+="<div class='ordsec' style='margin-top:4px;color:#22ddff'>YOUR OPERATIVE"+(bg?" · "+bg.name:"")+"</div>";
-      h+="<div class='sub' style='display:flex;flex-wrap:wrap;gap:3px 10px'>";
-      for(const a of OPS_ATTRS){const v=ops(e,a.k);
-        const col=v>=8?"#5cff9e":v>=5?"#7aa2ff":"#8aa8c8";
-        h+="<span title='"+a.blurb+"'>"+a.name+" <span style='color:"+col+";font-weight:600'>"+v+"</span></span>";}
-      h+="</div>";
-    }
-    // job/assignment clarity: show where they're assigned + their vocation, with a quick unassign
-    if(!e.child){
-      const voc=vocationOf(e);
-      h+="<div class='sub'>VOCATION: <span style='color:#7aa2ff'>"+(voc&&voc.name?voc.name:"Laborer")+"</span></div>";
-      if(e.assigned){const as=ST.structs.get(e.assigned);
-        h+="<div class='sub'>ASSIGNED TO: <span style='color:#ffd84a'>"+(as?DEF[as.type].name:"—")+"</span>"
-          +" <button class='tb' id='i-unassign' style='font-size:9px;padding:2px 6px;margin-left:4px'>unassign</button></div>";}
-      else h+="<div class='sub' style='opacity:.7'>ASSIGNED TO: <span style='opacity:.6'>nothing (works where needed)</span></div>";
-    }
-    // home quality readout (RimWorld-style) — surfaces the room mechanic
-    if(!e.child&&!e.homeless){const hr=homeRoom(e);
-      if(hr){const q=roomQuality(hr),qt=roomQTier(q);
-        h+="<div class='sub'>HOME: <span style='color:"+qt.c+"'>"+qt.name+"</span> <span style='opacity:.6'>(quality "+q+")</span></div>";}}
-    // child status — clear flag when inspecting a young wisp
-    if(e.child){const pn=(e.parents||[]).map(id=>{const pp=ST.pawns.find(x=>x.id===id);return pp?pp.name:null}).filter(Boolean);
-      h+="<div class='sub' style='color:#ffd84a'>CHILD"+(e.surname?" · "+e.surname:"")+(e.age!=null?" · age "+e.age:"")+(pn.length?" · child of "+pn.join(" & "):"")+"</div>";}
-    // glanceable identity: vocation · clique · gang (the deep systems at a glance)
-    {const bits=[];
-     if(e.career&&!e.child)bits.push("<span style='color:var(--cy)'>"+vocationOf(e).name+"</span>");
-     const c=cliqueOf(e);if(c)bits.push("<span style='color:#c98bff'>"+c.name+"</span>");
-     const g=pawnGang(e);if(g)bits.push("<span style='color:"+g.color+"'>"+g.name+"</span>");
-     if(bits.length)h+="<div class='sub'>"+bits.join(" · ")+"</div>";}
-    h+="<div class='sub'>CREDITS "+(e.credits|0)+(e.homeless?" · <span style='color:var(--rd)'>EVICTED</span>":"")+"</div>";
-    if(e.assigned){const as=ST.structs.get(e.assigned);h+="<div class='sub'>ASSIGNED: "+(as?DEF[as.type].name:"—")+"</div>";}
-    if(e.sick)h+="<div class='sub' style='color:var(--rd)'>INFECTED — needs a clinic</div>";
-    h+="<div class='sub'>STRESS "+(e.stress|0)+(e.addiction>0?" · ADDICTION "+(e.addiction|0):"")+(e.hasGear?" · <span style='color:#7aa2ff'>GEARED</span>":"")+"</div>";
-    if(e.rep&&(e.rep.city||e.rep.gang)){
-      const cR=e.rep.city|0,gR=e.rep.gang|0;
-      const cC=cR<-20?"var(--rd)":cR>20?"var(--gn)":"var(--dim)";
-      const gC=gR>20?"var(--mg)":gR<-10?"var(--rd)":"var(--dim)";
-      h+="<div class='sub'>CITY REP <span style='color:"+cC+"'>"+(cR>0?"+":"")+cR+"</span>"
-        +" · GANG <span style='color:"+gC+"'>"+(gR>0?"+":"")+gR+"</span></div>";}
-    h+="<div class='sub'>SAL "+e.sk.sal+" · BLD "+e.sk.bld+" · COOK "+e.sk.cook+" · SHT "+e.sk.sht+"</div>";
-    {const rels=relsOf(e);
-     if(rels.length){h+="<div class='ordsec'>TIES</div>";
-       for(const tie of rels.slice(0,5)){const v=tie.v,col=v>0?"#39ff88":"#ff4757";
-         const lbl=v>=50?"ally":v>=15?"warm":v<=-50?"hostile":v<=-15?"rival":"·";
-         h+="<div class='sub' style='display:flex;justify-content:space-between;gap:8px'><span style='color:"+tie.o.accent+"'>"+tie.o.name+"</span><span style='color:"+col+"'>"+lbl+" "+(v>0?"+":"")+(v|0)+"</span></div>"}}}
-    if(e.mem&&e.mem.length)h+="<div class='sub' style='font-style:italic;opacity:.78'>\u201c"+e.mem[e.mem.length-1].t+"\u201d</div>";
-    // INSURRECTION: allegiance + recruitment
-    if(!isChild(e)){
-      const al=e.allegiance||0;
-      const alC=al>30?"#5cff9e":al<-30?"#ff5470":"var(--dim)";
-      const alLbl=e.informant?"REGIME INFORMANT":e.recruited?("CELL "+(e.cellRole||"member").toUpperCase()):
-        al>30?"sympathetic":al<-30?"loyalist":"undecided";
-      h+="<div class='sub'>ALLEGIANCE <span style='color:"+alC+"'>"+alLbl+"</span> ("+(al>0?"+":"")+al+")</div>";
-      if(!e.recruited&&!e.informant){
-        const pot=radicalPotential(e);
-        const ch=Math.round(clamp(0.3+pot/120,0.05,0.92)*100);
-        h+="<button class='tb' id='i-recruit' style='border-color:rgba(92,255,158,.4);color:#5cff9e'>\u270A RECRUIT (8 intel · "+ch+"%)</button>";
+    h+="<div class='sub'>"+e.tr.map(t=>t.n).join(" \u00b7 ")+"</div>";
+    if(e.isAvatar){h+="<div class='sub' style='border-left:2px solid #22ddff;padding-left:6px;margin:3px 0;color:#22ddff;font-weight:600'>YOUR OPERATIVE</div>";}
+    else if(e.role&&ROLES[e.role]){const R0=ROLES[e.role];
+      const alignCol=R0.align==="regime"?"#ff5470":R0.align==="insurgent"?"#5cff9e":"#ffd84a";
+      const alignLbl=R0.align==="regime"?"REGIME":R0.align==="insurgent"?"INSURGENT LEVER":"CIVIC";
+      h+="<div class='sub' style='border-left:2px solid "+R0.accent+";padding-left:6px;margin:3px 0'><span style='color:"+R0.accent+";font-weight:600'>"+R0.title.toUpperCase()+"</span> \u00b7 <span style='color:"+alignCol+";font-size:10px'>"+alignLbl+"</span></div>";}
+    const tabs=[["status","STATUS"],["person","PERSON"],["ties","TIES"],["mind","MIND"]];
+    h+="<div style='display:flex;gap:2px;margin:6px 0 8px;border-bottom:1px solid rgba(120,160,200,.2)'>";
+    for(const tt of tabs){const on=tab===tt[0];
+      h+="<button class='tb' data-itab='"+tt[0]+"' style='flex:1;padding:4px 2px;font-size:9px;letter-spacing:.08em;border:none;border-bottom:2px solid "+(on?e.accent:"transparent")+";background:"+(on?"rgba(120,160,200,.08)":"transparent")+";color:"+(on?e.accent:"var(--dim)")+";border-radius:0'>"+tt[1]+"</button>";}
+    h+="</div>";
+    if(tab==="status"){
+      h+=barHtml("HP",e.hp,"#39ff88");
+      h+=barHtml("FOOD",e.needs.food,"#b8ff5e");
+      h+=barHtml("REST",e.needs.rest,"#7aa2ff");
+      h+=barHtml("HYGIENE",e.needs.hyg!=null?e.needs.hyg:60,"#5cffd0");
+      h+=barHtml("MOOD",e.mood,e.mood<25?"#ff4757":"#ffd84a");
+      if(e.mods&&e.mods.length){
+        const active=e.mods.filter(md=>md.until>ST.tick&&md.l).slice().sort((a,b)=>Math.abs(b.v)-Math.abs(a.v)).slice(0,3);
+        if(active.length)h+="<div class='sub' style='font-size:10px;opacity:.85'>"+active.map(md=>"<span style='color:"+(md.v>=0?"#39ff88":"#ff6b6b")+"'>"+(md.v>=0?"+":"")+Math.round(md.v)+" "+md.l+"</span>").join(" \u00b7 ")+"</div>";
+      }
+      h+="<div class='sub'>TASK: "+jobLabel(e)+"</div>";
+      h+="<div class='sub'>CREDITS "+(e.credits|0)+(e.homeless?" \u00b7 <span style='color:var(--rd)'>EVICTED</span>":"")+"</div>";
+      h+="<div class='sub'>STRESS "+(e.stress|0)+(e.addiction>0?" \u00b7 ADDICTION "+(e.addiction|0):"")+(e.hasGear?" \u00b7 <span style='color:#7aa2ff'>GEARED</span>":"")+"</div>";
+      if(e.sick)h+="<div class='sub' style='color:var(--rd)'>INFECTED \u2014 needs a clinic</div>";
+      if(!e.child&&!e.homeless){const hr=homeRoom(e);
+        if(hr){const q=roomQuality(hr),qt=roomQTier(q);
+          h+="<div class='sub'>HOME: <span style='color:"+qt.c+"'>"+qt.name+"</span> <span style='opacity:.6'>(quality "+q+")</span></div>";}}
+      else if(e.homeless)h+="<div class='sub' style='color:#ff8c42'>HOMELESS \u2014 sleeping rough</div>";
+      // ── AVATAR OPERATIONS PANEL — your insurgent toolkit ──
+      if(e.isAvatar){
+        const m=M();const rep=avatarRep();
+        const repLbl=rep>40?"BELOVED":rep>10?"RESPECTED":rep<-40?"FEARED":rep<-10?"RUTHLESS":"UNKNOWN";
+        const repCol=rep>10?"#5cff9e":rep<-10?"#ff7a8c":"#8aa8c8";
+        h+="<div class='ordsec' style='color:#22ddff;margin-top:10px'>OPERATIONS</div>";
+        h+="<div class='sub' style='font-size:10px'>Intel <span style='color:#22ddff;font-weight:600'>"+(m.intel|0)+"</span> \u00b7 Exposure <span style='color:#ff5470;font-weight:600'>"+(m.exposure|0)+"</span> \u00b7 Rep <span style='color:"+repCol+";font-weight:600'>"+repLbl+"</span></div>";
+        if((m.exposure|0)>40)h+="<div class='sub' style='font-size:9px;color:#ff8c42'>\u26a0 High exposure \u2014 ops are riskier. Lie low to cool off.</div>";
+        h+="<div class='opsgrid' style='display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px'>";
+        for(const ok in AVATAR_OPS){const op=AVATAR_OPS[ok];
+          const afford=(m.intel||0)>=op.cost;
+          const lbl=op.name.replace(/^(Sabotage|Gather|Spread|Frame.*)/,(x)=>x).split(" ")[0];
+          h+="<button class='tb i-op' data-op='"+ok+"' title='"+op.desc+"' style='font-size:9px;padding:5px 4px;border-color:"+(afford?"rgba(34,221,255,.4)":"rgba(120,140,160,.25)")+";color:"+(afford?"#bfe8ff":"#6a7a8c")+"'>"+op.name.toUpperCase()+(op.cost?" ("+op.cost+")":"")+"</button>";
+        }
+        h+="</div>";
+        h+="<button class='tb' id='i-lielow' style='font-size:9px;padding:4px;margin-top:4px;border-color:rgba(122,162,255,.4);color:#aebfff'>\u25ad LIE LOW \u2014 reduce exposure (12 intel)</button>";
+        if(ST.opTargeting)h+="<div class='sub' style='font-size:10px;color:#ffd24a;margin-top:4px'>\u25c9 Select a "+(ST.opTargeting==='utility'?"power/water building":"regime asset")+" to "+ST.opTargetingOp+", or tap an op again to cancel.</div>";
       }
     }
-    h+="<div class='ordsec'>DIRECT ORDERS</div><div class='ordgrid'>"+
-      "<button class='ob' data-o='work'><span>⚒</span>Work</button>"+
-      "<button class='ob' data-o='sleep'><span>☾</span>Rest</button>"+
-      "<button class='ob' data-o='eat'><span>⊕</span>Feed</button>"+
-      "<button class='ob' data-o='hygiene'><span>≈</span>Cleanse</button>"+
-      "<button class='ob' data-o='recreate'><span>◈</span>Wander</button>"+
-      "<button class='ob' data-o='socialize'><span>⚇</span>Commune</button></div>";
-    if(aiReady())h+="<button class='tb i-talk' id='i-talk'>◆ TALK</button>";
-    h+="<button class='tb' id='i-follow'>"+(cam.follow===e.id?"◉ FOLLOWING":"◎ FOLLOW")+"</button>";
-    h+="<button class='tb' id='i-profile'>☰ FULL PROFILE</button>";
+    else if(tab==="person"){
+      if(e.child){const pn=(e.parents||[]).map(id=>{const pp=ST.pawns.find(x=>x.id===id);return pp?pp.name:null}).filter(Boolean);
+        h+="<div class='sub' style='color:#ffd84a'>CHILD"+(e.surname?" \u00b7 "+e.surname:"")+(e.age!=null?" \u00b7 age "+e.age:"")+(pn.length?" \u00b7 child of "+pn.join(" & "):"")+"</div>";}
+      if(e.isAvatar){
+        const bg=OPS_BACKGROUNDS.find(b=>b.k===e.background);
+        h+="<div class='ordsec' style='color:#22ddff'>OPERATIVE"+(bg?" \u00b7 "+bg.name:"")+"</div>";
+        h+="<div class='sub' style='display:flex;flex-wrap:wrap;gap:3px 10px'>";
+        for(const a of OPS_ATTRS){const v=ops(e,a.k);const col=v>=8?"#5cff9e":v>=5?"#7aa2ff":"#8aa8c8";
+          h+="<span title='"+a.blurb+"'>"+a.name+" <span style='color:"+col+";font-weight:600'>"+v+"</span></span>";}
+        h+="</div>";
+      }
+      if(e.role&&ROLES[e.role])h+="<div class='sub' style='opacity:.8;font-style:italic'>"+ROLES[e.role].desc+"</div>";
+      if(!e.child){const voc=vocationOf(e);
+        h+="<div class='sub'>VOCATION: <span style='color:#7aa2ff'>"+(voc&&voc.name?voc.name:"Laborer")+"</span></div>";
+        if(e.assigned){const as=ST.structs.get(e.assigned);
+          h+="<div class='sub'>ASSIGNED TO: <span style='color:#ffd84a'>"+(as?DEF[as.type].name:"\u2014")+"</span> <button class='tb' id='i-unassign' style='font-size:9px;padding:2px 6px;margin-left:4px'>unassign</button></div>";}
+        else h+="<div class='sub' style='opacity:.7'>ASSIGNED TO: <span style='opacity:.6'>nothing (works where needed)</span></div>";}
+      h+="<div class='sub'>SKILLS: SAL "+e.sk.sal+" \u00b7 BLD "+e.sk.bld+" \u00b7 COOK "+e.sk.cook+" \u00b7 SHT "+e.sk.sht+"</div>";
+      if(e.pers){const P=e.pers;const pBit=(lbl,v)=>lbl+" <span style='color:"+(v>60?"#5cff9e":v<40?"#ff8da3":"#8aa8c8")+"'>"+Math.round(v)+"</span>";
+        h+="<div class='ordsec'>TEMPERAMENT</div><div class='sub' style='display:flex;flex-wrap:wrap;gap:3px 10px;font-size:10px'>"+pBit("Empathy",P.emp||50)+" \u00b7 "+pBit("Integrity",P.intg||50)+" \u00b7 "+pBit("Ambition",P.amb||50)+" \u00b7 "+pBit("Caution",P.cau||50)+" \u00b7 "+pBit("Social",P.soc||50)+" \u00b7 "+pBit("Impulse",P.imp||50)+"</div>";}
+    }
+    else if(tab==="ties"){
+      if(!isChild(e)){const al=e.allegiance||0;
+        const alC=al>30?"#5cff9e":al<-30?"#ff5470":"var(--dim)";
+        const alLbl=e.informant?"REGIME INFORMANT":e.recruited?("CELL "+(e.cellRole||"member").toUpperCase()):al>30?"sympathetic":al<-30?"loyalist":"undecided";
+        h+="<div class='sub'>ALLEGIANCE <span style='color:"+alC+"'>"+alLbl+"</span> ("+(al>0?"+":"")+Math.round(al)+")</div>";}
+      {const bits=[];const c=cliqueOf(e);if(c)bits.push("<span style='color:#c98bff'>"+c.name+"</span>");
+       const g=pawnGang(e);if(g)bits.push("<span style='color:"+g.color+"'>"+g.name+"</span>");
+       if(bits.length)h+="<div class='sub'>"+bits.join(" \u00b7 ")+"</div>";}
+      if(e.rep&&(e.rep.city||e.rep.gang)){const cR=e.rep.city|0,gR=e.rep.gang|0;
+        const cC=cR<-20?"var(--rd)":cR>20?"var(--gn)":"var(--dim)";const gC=gR>20?"var(--mg)":gR<-10?"var(--rd)":"var(--dim)";
+        h+="<div class='sub'>CITY REP <span style='color:"+cC+"'>"+(cR>0?"+":"")+cR+"</span> \u00b7 GANG <span style='color:"+gC+"'>"+(gR>0?"+":"")+gR+"</span></div>";}
+      {const rels=relsOf(e);
+       if(rels.length){h+="<div class='ordsec'>TIES</div>";
+         for(const tie of rels.slice(0,7)){const v=tie.v,col=v>0?"#39ff88":"#ff4757";
+           const lbl=v>=50?"ally":v>=15?"warm":v<=-50?"hostile":v<=-15?"rival":"\u00b7";
+           h+="<div class='sub' style='display:flex;justify-content:space-between;gap:8px'><span style='color:"+tie.o.accent+"'>"+tie.o.name+"</span><span style='color:"+col+"'>"+lbl+" "+(v>0?"+":"")+(v|0)+"</span></div>";}}
+       else h+="<div class='sub' style='opacity:.6'>No notable relationships yet.</div>";}
+    }
+    else if(tab==="mind"){
+      const thoughts=wispThoughts(e);
+      if(thoughts.length){h+="<div class='ordsec'>ON THEIR MIND</div>";
+        for(const t of thoughts)h+="<div class='sub' style='color:"+t.col+";font-style:italic'>\u201c"+t.txt+"\u201d</div>";}
+      else h+="<div class='sub' style='opacity:.6'>Nothing pressing on their mind right now.</div>";
+      if(e.mem&&e.mem.length){h+="<div class='ordsec'>MEMORIES</div>";
+        for(const mm of e.mem.slice(-5).reverse())h+="<div class='sub' style='font-size:10px;opacity:.7'>\u00b7 "+mm.t+"</div>";}
+    }
+    if(!isChild(e)&&!e.recruited&&!e.informant){
+      const pot=radicalPotential(e);const ch=Math.round(clamp(0.3+pot/120,0.05,0.92)*100);
+      h+="<button class='tb' id='i-recruit' style='border-color:rgba(92,255,158,.4);color:#5cff9e;margin-top:6px'>\u270a RECRUIT (8 intel \u00b7 "+ch+"%)</button>";
+    }
+    if(e.refusedOrder){
+      h+="<button class='tb' id='i-force' style='border-color:rgba(255,84,112,.5);color:#ff8da3;margin-top:4px'>\u26a1 FORCE COMPLIANCE (10 intel)</button>";
+      h+="<div class='sub' style='font-size:9px;opacity:.6'>They refused. Forcing works but breeds resentment.</div>";
+    }
+    h+="<div class='ordsec'>DIRECT ORDERS</div><div class='ordgrid'><button class='ob' data-o='work'><span>\u2692</span>Work</button><button class='ob' data-o='sleep'><span>\u263e</span>Rest</button><button class='ob' data-o='eat'><span>\u2295</span>Feed</button><button class='ob' data-o='hygiene'><span>\u2248</span>Cleanse</button><button class='ob' data-o='recreate'><span>\u25c8</span>Wander</button><button class='ob' data-o='socialize'><span>\u2687</span>Commune</button></div>";
+    if(aiReady())h+="<button class='tb i-talk' id='i-talk'>\u25c6 TALK</button>";
+    // ELECTION: if a vote is underway and this wisp could hold the seat, let the player back them
+    if(ST.election&&!ST.election.resolved&&!e.isAvatar&&!e.role&&!e.child&&e.hp>0){
+      const backing=ST.election.playerPick===e.id;
+      h+="<button class='tb' id='i-back' style='border-color:rgba(255,210,74,.6);color:#ffe066;margin-top:4px'>\u2696 "+(backing?"BACKING FOR "+ROLES[ST.election.role].title.toUpperCase():"BACK FOR "+ROLES[ST.election.role].title.toUpperCase())+"</button>";
+    }
+    h+="<button class='tb' id='i-follow'>"+(cam.follow===e.id?"\u25c9 FOLLOWING":"\u25ce FOLLOW")+"</button>";
+    h+="<button class='tb' id='i-profile'>\u2630 FULL PROFILE</button>";
     el.innerHTML=h}
   else if(e.kind==="foe"){
     el.innerHTML="<h3 style='color:"+e.col+"'>"+e.name+"</h3>"+
@@ -6229,17 +7283,53 @@ function renderInspectCore(){const el=$("inspect");
       if(contracted.length)h+="<button class='tb' id='i-fire'>FIRE CONTRACTED</button>";
     }
     if(d.desc)h+="<div class='sub'>"+d.desc+"</div>";
+    if(e.type==="sporevat"&&!e.bp){const vt=vatTier(e),nx=VAT_TIERS[(e.tier||1)];
+      h+="<div class='sub'>STAGE: <span style='color:"+vt.core+"'>"+vt.name.toUpperCase()+"</span> \u00b7 +"+vt.food+" food/cycle</div>";
+      if(nx&&vt.up){const up=vt.up,parts=Object.entries(up).map(([k,v])=>v+(k==="income"?"c":" "+k)).join(" + ");
+        const can=(ST.income||0)>=(up.income||0)&&Object.entries(up).every(([k,v])=>k==="income"||(ST.goods[k]||0)>=v);
+        h+="<button class='tb' id='i-upgrade'"+(can?"":" style='opacity:.5'")+">UPGRADE \u2192 "+nx.name.toUpperCase()+" ("+parts+")</button>";}}
     if(e.type==="scrap"||e.type==="cache")
       h+="<button class='tb' id='i-salv'>"+(e.desig?"UNMARK":"SALVAGE")+"</button>";
     else if(e.type==="ruin"||d.cat==="b")
       h+="<button class='tb' id='i-decon'>"+(e.decon?"CANCEL DECON":"DECONSTRUCT")+"</button>";
     el.innerHTML=h}}
 $("inspect").addEventListener("click",e=>{
+  // character-panel tab switch
+  const tabBtn=e.target.closest&&e.target.closest("[data-itab]");
+  if(tabBtn){SFX.ui&&SFX.ui();INSPECT_TAB=tabBtn.dataset.itab;renderInspect();return;}
   const ob=e.target.closest&&e.target.closest(".ob");
-  if(ob){const s=ST.sel[0];if(s&&s.kind==="pawn"){SFX.ui();clearJob(s);s.job=null;s.cmd=ob.dataset.o;renderInspect()}return}
+  if(ob){const s=ST.sel[0];if(s&&s.kind==="pawn"){SFX.ui();clearJob(s);s.job=null;s.cmd=ob.dataset.o;s.refusedOrder=false;renderInspect()}return}
+  // AVATAR OPERATIONS: op button clicked
+  const opBtn=e.target.closest&&e.target.closest(".i-op");
+  if(opBtn){const opKey=opBtn.dataset.op;const op=AVATAR_OPS[opKey];SFX.ui&&SFX.ui();
+    if(!op)return;
+    if(op.target){
+      // targeted op (sabotage/frame): toggle targeting mode — player then clicks a building/pawn
+      if(ST.opTargeting===op.target&&ST.opTargetingOp===opKey){ST.opTargeting=null;ST.opTargetingOp=null;}
+      else{ST.opTargeting=op.target;ST.opTargetingOp=opKey;
+        flashMsg&&flashMsg("Select a "+(op.target==="utility"?"power/water building":"regime asset")+" to "+opKey);}
+      renderInspect();
+    }else{
+      // direct op (intel/dissent): run it now
+      runAvatarOp(opKey,null);renderInspect();syncHUD();
+    }
+    return;}
   const id=e.target.id;if(!id)return;
   const sel=ST.sel[0];SFX.ui();
+  if(id==="i-force"&&sel&&sel.kind==="pawn"){
+    // override a refused order at a cost: intel + resentment + allegiance pushback
+    if((M().intel||0)<10){flashMsg&&flashMsg("Need 10 intel to force compliance");return;}
+    M().intel-=10;sel.refusedOrder=false;
+    if(sel.pendingForceCmd){clearJob(sel);sel.job=null;sel.cmd=sel.pendingForceCmd;sel.pendingForceCmd=null;}
+    addMod(sel,"forced","Forced against my will",-12,TPD);
+    sel.allegiance=clamp((sel.allegiance||0)-8,-100,100);   // resentment hardens them against you
+    sel.stress=Math.min(100,(sel.stress||0)+10);
+    log("You forced "+sel.name+" to comply — they resent it.","warn");
+    renderInspect();syncHUD();return;
+  }
   if(id==="i-talk"&&sel&&sel.kind==="pawn")openChat(sel);
+  else if(id==="i-lielow"){if(goToGround()){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
+  else if(id==="i-back"&&sel&&sel.kind==="pawn"){if(proposeCandidate(sel.id)){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
   else if(id==="i-recruit"&&sel&&sel.kind==="pawn"){if(recruitWisp(sel)){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
   else if(id==="i-follow"&&sel&&sel.kind==="pawn"){
     if(cam.follow===sel.id)stopFollow();else setFollow(sel);
@@ -6280,6 +7370,16 @@ $("inspect").addEventListener("click",e=>{
     if(tgt&&repairRobo(tgt)){renderInspect();syncHUD()}}
   else if(id==="i-salv"&&sel){sel.desig=!sel.desig;
     if(sel.desig)ST.flags.salv=true;renderInspect()}
+  else if(id==="i-upgrade"&&sel&&sel.type==="sporevat"){
+    const up=vatTier(sel).up;
+    if(!up){return;}
+    const can=(ST.income||0)>=(up.income||0)&&Object.entries(up).every(([k,v])=>k==="income"||(ST.goods[k]||0)>=v);
+    if(!can){flashMsg&&flashMsg("Can't afford the upgrade");return;}
+    if(up.income)ST.income-=up.income;
+    for(const[k,v] of Object.entries(up))if(k!=="income")ST.goods[k]=(ST.goods[k]||0)-v;
+    sel.tier=(sel.tier||1)+1;
+    float(sel.x+.5,sel.y+.5,"UPGRADED","#39ff88");log(DEF.sporevat.name+" upgraded to "+vatTier(sel).name+".","good");
+    renderInspect();syncHUD();return;}
   else if(id==="i-decon"&&sel){sel.decon=!sel.decon;renderInspect()}});
 
 /* ---------- ambient musings (Haiku, background flavor) ---------- */
@@ -6322,6 +7422,120 @@ async function tickAmbient(){
   }catch(e){/* silent — ambient is best-effort */}
   AMBIENT.inFlight=false;}
 
+/* ═══════════ NPC-TO-NPC AI CONVERSATION ═══════════
+   When two wisps socialize side-by-side AND the player is actually watching them (on-screen, zoomed in
+   enough to read faces), occasionally generate a short, in-character AI exchange between the two. Gated
+   hard on "is the player looking" so API calls only happen for conversations the player can actually see —
+   a handful per session, not hundreds. Uses the cheap ambient model + the shared budget guards. */
+const NPCCONVO={lastTick:-1e9,gapTicks:600,inFlight:false,cooldownByPair:{}};
+// is a world tile currently visible AND the camera zoomed in enough to read pawns?
+function playerWatching(wx,wy){
+  if(cam.z<1.15)return false;                       // zoomed too far out to read a conversation
+  const sx=wx*T,sy=wy*T;
+  const left=cam.x, top=cam.y, right=cam.x+VW/cam.z, bottom=cam.y+VH/cam.z;
+  const pad=T*1.5;
+  return sx>left+pad&&sx<right-pad&&sy>top+pad&&sy<bottom-pad;   // comfortably inside the viewport
+}
+// a speech line shown above a pawn for a few seconds (longer + wrapped vs a quick float)
+function sayLine(p,txt){ if(!p||!txt)return;
+  ST.says=ST.says||[];
+  // remove any existing line from this speaker so they don't stack
+  ST.says=ST.says.filter(s=>s.id!==p.id);
+  ST.says.push({id:p.id,txt:txt.slice(0,90),ttl:240,t0:240});
+  if(ST.says.length>4)ST.says.shift();
+}
+async function tickNpcConvo(){
+  if(NPCCONVO.inFlight||!aiReady()||!AMBIENT.enabled)return;
+  if(ST.tick-NPCCONVO.lastTick<NPCCONVO.gapTicks)return;
+  if(AI_CAP_USD>0&&aiCostUSD()>=AI_CAP_USD*0.85)return;   // leave headroom for player TALK
+  // find a socializing pair the player is watching
+  let a=null,b=null;
+  for(const p of ST.pawns){
+    if(!p.socWith||isChild(p))continue;
+    const o=ST.pawns.find(q=>q.id===p.socWith);
+    if(!o||isChild(o))continue;
+    if(!playerWatching((p.px+o.px)/2,(p.py+o.py)/2))continue;
+    // pair cooldown so the same two don't chatter repeatedly
+    const pk=[p.id,o.id].sort().join("_");
+    if(ST.tick-(NPCCONVO.cooldownByPair[pk]||-1e9)<1800)continue;
+    a=p;b=o;NPCCONVO.cooldownByPair[pk]=ST.tick;break;
+  }
+  if(!a||!b)return;
+  NPCCONVO.lastTick=ST.tick;NPCCONVO.inFlight=true;
+  try{
+    const rel=relGet(a.id,b.id);
+    const tone=rel>50?"warm, they're close":rel>15?"friendly enough":rel<-15?"tense, there's friction":"neutral, acquaintances";
+    const sys="You write ONE short line of overheard dialogue between two residents of a cyberpunk slum district. "
+      +"Keep it under 14 words, natural and in-character — like a snatch of conversation caught in passing. "
+      +"No names, no quotes, no stage directions. Just the spoken line.";
+    const ctxLine=a.name+" ("+axTraits(a)+", currently "+feltState(a)+") is talking with "
+      +b.name+" ("+axTraits(b)+"). Their relationship: "+tone+". "
+      +"Write what "+a.name+" says to "+b.name+" right now.";
+    const line1=await aiChat(sys,[{role:"user",content:ctxLine}],AI_MODEL_AMBIENT);
+    const c1=(line1||"").replace(/^[\s"'\u201c\u201d]+|[\s"'\u201c\u201d]+$/g,"").replace(/\[.*?\]/g,"").trim();
+    if(c1&&a.socWith===b.id){
+      sayLine(a,c1);remember(a,"talking with "+b.name+": \u201c"+c1+"\u201d");
+      // a brief beat, then b replies (only if they're still together + still on screen)
+      setTimeout(async()=>{
+        if(a.socWith!==b.id&&b.socWith!==a.id)return;
+        if(!playerWatching((a.px+b.px)/2,(a.py+b.py)/2))return;
+        if(AI_CAP_USD>0&&aiCostUSD()>=AI_CAP_USD*0.85)return;
+        try{
+          const reply=await aiChat(sys,[{role:"user",content:b.name+" ("+axTraits(b)+") replies to: \u201c"+c1+"\u201d. One short line back."}],AI_MODEL_AMBIENT);
+          const c2=(reply||"").replace(/^[\s"'\u201c\u201d]+|[\s"'\u201c\u201d]+$/g,"").replace(/\[.*?\]/g,"").trim();
+          if(c2)sayLine(b,c2);
+        }catch(e){}
+      },1600);
+    }
+  }catch(e){/* best-effort */}
+  NPCCONVO.inFlight=false;
+}
+
+/* ELECTION AI — candidates generate short campaign pitches and a couple of swing voters explain their
+   reasoning, all via the cheap ambient model. Gated like the NPC convos (only spends when there's an
+   active election) so an election feels like a real political moment without burning budget. */
+const ELECTAI={inFlight:false,lastTick:-1e9};
+async function tickElectionPitches(){
+  const e=ST.election;if(!e||e.resolved)return;
+  if(ELECTAI.inFlight||!aiReady()||!AMBIENT.enabled)return;
+  if(ST.tick-ELECTAI.lastTick<90)return;
+  if(AI_CAP_USD>0&&aiCostUSD()>=AI_CAP_USD*0.85)return;
+  // find a candidate who hasn't pitched yet
+  const need=e.candidates.find(cid=>!e.pitches[cid]);
+  if(!need){
+    // all pitched — occasionally have a swing voter voice their reasoning (color, not required)
+    if(Math.random()<0.5)return;
+    const voter=ST.pawns.find(p=>p.hp>0&&!isChild(p)&&!e.candidates.includes(p.id)&&playerWatching(p.px,p.py)&&!p._votedAloud);
+    if(!voter)return;
+    ELECTAI.lastTick=ST.tick;ELECTAI.inFlight=true;
+    try{
+      const lead=e.candidates.map(cid=>ST.pawns.find(p=>p.id===cid)).filter(Boolean);
+      const names=lead.map(c=>c.name+" ("+axTraits(c)+")").join(" vs ");
+      const sys="You write ONE short line of an ordinary slum resident saying who they'll vote for in a local election and why. Under 16 words, in-character, plainspoken. No quotes, no names of the speaker.";
+      const line=await aiChat(sys,[{role:"user",content:voter.name+" ("+axTraits(voter)+") is deciding between: "+names+" for "+ROLES[e.role].title+". What do they mutter about their choice?"}],AI_MODEL_AMBIENT);
+      const c=(line||"").replace(/^[\s"'\u201c\u201d]+|[\s"'\u201c\u201d]+$/g,"").replace(/\[.*?\]/g,"").trim();
+      if(c){sayLine(voter,c);voter._votedAloud=true;}
+    }catch(e2){}
+    ELECTAI.inFlight=false;return;
+  }
+  const cand=ST.pawns.find(p=>p.id===need);if(!cand){e.pitches[need]="(withdrew)";return;}
+  ELECTAI.lastTick=ST.tick;ELECTAI.inFlight=true;
+  try{
+    const fit=roleFit(cand,e.role);
+    const angle=fit>0.66?"genuinely suited to it":(cand.pers.amb||50)>66?"hungry for the power more than the work":"a long shot making their case";
+    const sys="You write ONE short campaign pitch line from a candidate for a local slum-district office. Under 16 words, in-character, revealing their personality. No quotes, no stage directions — just the spoken pitch.";
+    const line=await aiChat(sys,[{role:"user",content:cand.name+" ("+axTraits(cand)+", "+angle+") is running for "+ROLES[e.role].title+" — "+ROLES[e.role].desc+". Their pitch to the block:"}],AI_MODEL_AMBIENT);
+    const c=(line||"").replace(/^[\s"'\u201c\u201d]+|[\s"'\u201c\u201d]+$/g,"").replace(/\[.*?\]/g,"").trim();
+    if(c){
+      e.pitches[need]=c;
+      log("\uD83D\uDDF3 "+cand.name+": \u201c"+c+"\u201d","info");
+      if(playerWatching(cand.px,cand.py))sayLine(cand,c);
+      remember(cand,"campaigned for "+ROLES[e.role].title+": "+c);
+    } else {e.pitches[need]="(stayed quiet)";}
+  }catch(e2){e.pitches[need]="(stayed quiet)";}
+  ELECTAI.inFlight=false;
+}
+
 /* ---------- wisp conversation (Phase 1) ---------- */
 let CHAT={p:null,hist:[],busy:false,wasPaused:false};
 function axTraits(p){const a=p.pers,o=[];
@@ -6362,10 +7576,23 @@ function wispSystemPrompt(p){
     if(allies.length)parts.push("you're tight with "+allies.map(q=>q.name).join(" and "));
     return parts.length?"On the block right now: "+parts.join("; ")+".":""};
   const gearLine=p.hasGear?"You're kitted out right now — gear gives you an edge.":"You're running unprotected.";
+  // ROLE CONTEXT — for named role-wisps, inject their station, allegiance, and stat-driven disposition.
+  let roleLine="";
+  if(p.role&&ROLES[p.role]){const R0=ROLES[p.role];
+    const intg=p.pers.intg||50,emp=p.pers.emp||50,amb=p.pers.amb||50;
+    const al=p.allegiance||0;
+    const bribe=intg<40?"Your integrity is thin — you can be bought, if the price or the angle is right.":
+      intg>65?"You hold your principles hard — bribes and threats don't move you easily.":"You're pragmatic — you'll bend if it's worth it, but you have some lines.";
+    const cause=al<-30?"You serve the regime's order here and distrust troublemakers and agitators.":
+      al>30?"You quietly sympathize with the idea of resistance, even if you're careful about it.":"You keep your head down and your politics to yourself.";
+    const fnc=R0.regimeForce?" You are the regime's instrument on this block — you answer to power, not the people.":
+      R0.secretInformant?" You secretly inform on dissidents to the regime, for your own safety — a fact you hide carefully.":
+      R0.insurgentLever?" You operate in the gray market and owe loyalty to no authority — you could be useful to the right person.":"";
+    roleLine="\n\nYour station: you are the "+R0.title+" of this district — "+R0.desc+"."+fnc+" "+bribe+" "+cause+"\n";}
   return "You ARE "+p.name+", a person scraping out a life on a dead block at the ragged edge of a neon megacity in 2087. "+
     "Scrap is currency, protein is life, gangs hunt after dark, and corp enforcers shake people down.\n\n"+
     "Your character: you come across as "+axTraits(p)+". You've got a streak of "+(p.tr.map(t=>t.n).join(" and ")||"hard sprawl grit")+" in you. "+
-    "Right now you are "+feltState(p)+". It is day "+dayN()+", around "+(hourN()|0)+":00. "+gearLine+"\n\n"+
+    "Right now you are "+feltState(p)+". It is day "+dayN()+", around "+(hourN()|0)+":00. "+gearLine+roleLine+"\n"+
     districtState()+"\n\nOn your mind lately:\n"+mem+"\n\n"+
     "You're hearing a voice — call it the operator, or your own gut; someone watching over this block who can talk to you. "+
     "Answer the way this person actually would: street-worn, clipped, in the moment, sprawl slang where it fits. "+
@@ -6595,6 +7822,12 @@ $("b-fs").onclick=()=>{SFX.ui();
   }
 };
 $("b-load").onclick=()=>{SFX.ui();openLoadSlots()};
+$("b-atmo").onclick=()=>{SFX.ui();ATMO.on=!ATMO.on;ATMO.fog=0;
+  const b=$("b-atmo");if(b){b.style.color=ATMO.on?"#22ddff":"";b.title=ATMO.on?"Rain & fog: ON":"Rain & fog: OFF";}
+};
+$("b-storm").onclick=()=>{SFX.ui();STORM.on=!STORM.on;STORM.flash=0;STORM.nextAt=0;
+  const b=$("b-storm");if(b){b.style.color=STORM.on?"#ffe066":"";b.title=STORM.on?"Lightning: ON":"Lightning: OFF";}
+};
 $("b-diary").onclick=()=>{SFX.ui();openOverlay("diary")};
 $("b-crew").onclick=()=>{SFX.ui();openOverlay("crew")};
 $("b-tasks").onclick=()=>{SFX.ui();openOverlay("tasks")};
@@ -6615,7 +7848,7 @@ function districtStatsHTML(){
   // economy
   h+="<h4>Economy</h4>";
   const g=ST.goods||{};
-  h+=["food","wood","materials","data","chem","parts","stims","gear"].map(k=>
+  h+=["food","scrap","data","chem","parts","stims","gear"].map(k=>
     "<div class='srow'><span>"+k.toUpperCase()+"</span><b class='"+(g[k]>0?"sgood":"")+"'>"+(g[k]||0)+"</b></div>").join("");
   h+="<div class='srow'><span>Income</span><b class='"+(ST.income<0?"sbad":ST.crisis?"sbad":"sgood")+"'>"+(ST.crisis?"⚠ ":"")+Math.round(ST.income||0)+"c</b></div>";
   if(ST.debtDays)h+="<div class='srow'><span>Debt days</span><b class='sbad'>"+ST.debtDays+"/6</b></div>";
@@ -6660,10 +7893,10 @@ function districtStatsHTML(){
       {const st=c.stance||0;const stLbl=st>=55?"<span style='color:#39ff88'>backs you</span>":st<=-55?"<span style='color:#ff4757'>opposes you</span>":"<span style='opacity:.6'>neutral</span>";
        h+="<div class='srow'><span>Loyalty"+(rival?" · rivals "+rival.name:"")+"</span><b>"+(c.loyalty|0)+" · "+stLbl+"</b></div>";}}}
   // MARKET — current dynamic prices reflect supply/demand
-  {const BASE={stims:22,gear:16,data:8,chem:6,parts:6,wood:7,materials:14,food:5};
+  {const BASE={stims:22,gear:16,data:8,chem:6,parts:6,scrap:7,food:5};
    const px=(g)=>{const base=BASE[g];const stock=ST.goods[g]||0;const mult=clamp(1.6-(stock/12),0.55,1.6);return Math.max(1,Math.round(base*mult));};
    h+="<h4>Market</h4>";
-   for(const g of ["stims","gear","materials","data","chem","parts","wood","food"]){
+   for(const g of ["stims","gear","scrap","data","chem","parts","food"]){
      const stock=ST.goods[g]||0;const p=px(g);const base=BASE[g];
      const trend=p>base?"<span style='color:#39ff88'>▲</span>":p<base?"<span style='color:#ff6b6b'>▼</span>":"·";
      h+="<div class='srow'><span>"+g+" <span style='opacity:.5'>(stock "+stock+")</span></span><b>"+p+"c "+trend+"</b></div>";}}
@@ -6709,7 +7942,7 @@ function showHelp(){if(ST.phase==="run"){ST.paused=true;refreshSpd()}showModal(
   "<tr><td style='color:var(--cy)'>Citizens</td><td>Each has needs: food, rest, hygiene, fun, and social. When needs go unmet, stress rises. High stress → snapping, fights, crime. Faces show their emotional state — watch them.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Economy</td><td>Production fixtures (Workstation, Chemlab, Workshop) generate goods. Vendors sell goods for district income. District income pays rent (34c/day per citizen). Income below zero for 3 days triggers Crisis — 5 days means collapse.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Goods chain</td><td>DATA (workstation) + CHEM (chemlab) + PARTS (workshop) → STIMS (stimlab) or GEAR (gearshop). Stims reduce stress. Gear cuts damage taken and boosts crime success.</td></tr>"+
-  "<tr><td style='color:var(--cy)'>Resources</td><td>The outskirts ring the core: FARMLAND (NW) grows Food that feeds the block cheaply, THE WOODS (NE) yield Wood, and the OLD MINE (SW) extracts Materials. Farms grow on their own; assign citizens to logging/mining to boost output. Wood and Materials sell through vendors for district income.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Resources</td><td>The outskirts ring the core: FARMLAND (NW) grows Food that feeds the block cheaply, the SALVAGE SECTOR (NE) yields Scrap stripped from dead sectors, and the DATA SLUMS (SW) run grey-market hacks for Data. Farms grow on their own; assign citizens to salvage/data work to boost output. Scrap and Data sell through vendors for district income.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Civic (SE)</td><td>PARK — free recreation and strong stress relief. ARCADE — premium fun, small fee feeds income. HOSPITAL — faster, cheaper, stronger treatment than a Med Bay. LEARNING HUB — citizens study here in their spare time, raising their work skills over a few visits.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Population</td><td>New citizens arrive only if you have open housing. Build a Housing Unit (150c) to add one home slot. Citizens pay 34c rent per day — evicted citizens sleep rough and get stressed.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Petitions</td><td>Citizens surface flashpoints — feuds, epidemics, gang formations, thefts — in the REQUESTS panel. Your choice shapes the outcome. Daily reports summarize each day.</td></tr>"+
@@ -6829,19 +8062,22 @@ function serializeState(){
     goods:ST.goods,income:ST.income,debtDays:ST.debtDays||0,crisis:ST.crisis||false,
     savedAt:Date.now(),
     gangs:(ST.gangs||[]).map(g=>({...g,turf:[...g.turf]})),
-    stats:ST.stats,flags:ST.flags,milestones:ST.milestones||[],tierReached:ST.tierReached||1,contrabandPolicy:ST.contrabandPolicy||"crackdown",hintsSeen:ST.hintsSeen||{},pendingDisaster:ST.pendingDisaster||null,blackoutUntil:ST.blackoutUntil||0,caravan:ST.caravan||null,chronicle:CHRONICLE.slice(0,80),
+    stats:ST.stats,flags:ST.flags,milestones:ST.milestones||[],tierReached:ST.tierReached||1,contrabandPolicy:ST.contrabandPolicy||"crackdown",hintsSeen:ST.hintsSeen||{},pendingDisaster:ST.pendingDisaster||null,blackoutUntil:ST.blackoutUntil||0,caravan:ST.caravan||null,election:ST.election||null,electionQueue:ST.electionQueue||[],chronicle:CHRONICLE.slice(0,80),
     mov:ST.mov,regime:ST.regime,cases:ST.cases||[],caseSeq:ST.caseSeq||0,
     ter:Array.from(ST.ter),
     structs:[...ST.structs.values()].map(snapStruct),
     pawns:ST.pawns.map(snapPawn),
+    heat:ST.heat||0,heatWarn:ST.heatWarn||false,
+    requests:ST.requests||[],lastGlobalReqT:ST.lastGlobalReqT||0,lastUpkeep:ST.lastUpkeep||0,
+    zones:ST.zones||null,cityHomes:ST.cityHomes||[],
     rooms:ST.rooms}}
 function applyState(d){
   ST.tick=d.tick||0;
   ST.grp=d.grp||{};ST.rel=d.rel||{};ST.relMeta=d.relMeta||{};ST.cliques=d.cliques||[];ST.nextEv=(d.nextEv==null?1e9:d.nextEv);ST.lastCrackdown=d.lastCrackdown||0;
-  ST.goods=d.goods||{data:0,chem:0,parts:0,stims:0,gear:0,food:0,wood:0,materials:0};ST.income=d.income||0;
+  ST.goods=d.goods||{data:0,chem:0,parts:0,stims:0,gear:0,food:0,scrap:0};ST.income=d.income||0;
   ST.debtDays=d.debtDays||0;ST.crisis=d.crisis||false;
   ST.gangs=(d.gangs||[]).map(g=>({...g,turf:new Set(g.turf||[])}));
-  ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];ST.tierReached=d.tierReached||1;ST.contrabandPolicy=d.contrabandPolicy||"crackdown";ST.hintsSeen=d.hintsSeen||{};ST.pendingDisaster=d.pendingDisaster||null;ST.blackoutUntil=d.blackoutUntil||0;ST.caravan=d.caravan||null;CHRONICLE.length=0;if(Array.isArray(d.chronicle))for(const e of d.chronicle)CHRONICLE.push(e);
+  ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];ST.tierReached=d.tierReached||1;ST.contrabandPolicy=d.contrabandPolicy||"crackdown";ST.hintsSeen=d.hintsSeen||{};ST.pendingDisaster=d.pendingDisaster||null;ST.blackoutUntil=d.blackoutUntil||0;ST.caravan=d.caravan||null;ST.election=d.election||null;ST.electionQueue=d.electionQueue||[];CHRONICLE.length=0;if(Array.isArray(d.chronicle))for(const e of d.chronicle)CHRONICLE.push(e);
   ST.mov=d.mov||{support:5,exposure:0,intel:0,cells:0,stance:"hidden",doctrine:null,foundedTick:0};
   ST.cases=d.cases||[];ST.caseSeq=d.caseSeq||0;
   ST.regime=d.regime||{grip:60,awareness:0,lastSweep:0,informants:[]};
@@ -6863,9 +8099,21 @@ function applyState(d){
     if(p.surname===undefined)p.surname=CH(NL);
     if(p.child===undefined)p.child=false;
     if(p.parents===undefined)p.parents=null;}
-  ST.beams=[];ST.floats=[];ST.emotes=[];ST.tombs=[];ST.sel=[];ST.rooms=d.rooms||[];
-  ST.phase="run";ST.paused=false;ST.speed=1;
-  powerRecalc()}
+  ST.heat=d.heat||0;ST.heatWarn=d.heatWarn||false;
+  ST.requests=Array.isArray(d.requests)?d.requests:[];
+  ST.lastGlobalReqT=d.lastGlobalReqT||0;ST.lastUpkeep=d.lastUpkeep||0;
+  if(d.zones)ST.zones=d.zones;
+  if(Array.isArray(d.cityHomes)&&d.cityHomes.length){   // restore home registry + re-link by-value pawn homes back to shared entries
+    ST.cityHomes=d.cityHomes;
+    for(const p of ST.pawns){
+      if(p.home&&p.home.bed){
+        const h=ST.cityHomes.find(H=>H.bed&&H.bed.x===p.home.bed.x&&H.bed.y===p.home.bed.y);
+        if(h)p.home=h;
+      }
+    }
+  }
+  ST.beams=[];ST.floats=[];ST.emotes=[];ST.tombs=[];ST.says=[];ST.sel=[];ST.rooms=d.rooms||[];
+  ST.phase="run";ST.paused=false;ST.speed=1;}
 function saveToSlot(slot){
   if(ST.phase!=="run"){flashMsg("Nothing to save yet");return false}
   try{localStorage.setItem(slotKeyFor(slot),JSON.stringify(serializeState()));
@@ -6877,7 +8125,7 @@ function loadFromSlot(slot){
   if(!raw){flashMsg("Slot "+slot+" is empty");return false}
   let d;try{d=JSON.parse(raw)}catch(e){flashMsg("Save file corrupt");return false}
   applyState(d);
-  drawTerrain();MOTES=null;
+  drawTerrain();MOTES=null;BLOBS=null;
   if(ST.pawns[0]){cam.x=ST.pawns[0].px*T-VW/cam.z/2;cam.y=ST.pawns[0].py*T-VH/cam.z/2;clampCam()}
   hideModal();closeOverlay();refreshSpd();syncHUD();renderRoster();renderInspect();
   flashMsg("Loaded "+(slot==="auto"?"autosave":"slot "+slot)+" — day "+dayN());banner("RUN LOADED","good");return true}
@@ -6897,7 +8145,7 @@ function loadGame(){
   const slot=mostRecentSlot();
   if(slot==="legacy"){
     try{const d=JSON.parse(localStorage.getItem(SAVE_KEY));applyState(d);
-      drawTerrain();MOTES=null;
+      drawTerrain();MOTES=null;BLOBS=null;
       if(ST.pawns[0]){cam.x=ST.pawns[0].px*T-VW/cam.z/2;cam.y=ST.pawns[0].py*T-VH/cam.z/2;clampCam()}
       hideModal();refreshSpd();syncHUD();renderRoster();renderInspect();
       flashMsg("Run loaded — day "+dayN());banner("RUN LOADED","good");return true;}
@@ -6951,8 +8199,8 @@ function openLoadSlots(){
    ============================================================ */
 function newGame(){
   ST.phase="run";ST.tick=0;ST.speed=1;ST.paused=false;
-  ST.pawns.length=0;ST.beams.length=0;ST.floats.length=0;
-  ST.grp={};ST.sel=[];ST.goods={data:0,chem:0,parts:0,stims:0,gear:0,food:0,wood:0,materials:0};ST.income=200;ST.debtDays=0;ST.crisis=false;ST.gangs=[];
+  ST.pawns.length=0;ST.beams.length=0;ST.floats.length=0;ST.says=[];ST.election=null;ST.electionQueue=[];
+  ST.grp={};ST.sel=[];ST.goods={data:0,chem:0,parts:0,stims:0,gear:0,food:0,scrap:0};ST.income=200;ST.debtDays=0;ST.crisis=false;ST.gangs=[];
   ST.stats={built:0,deaths:0};ST.milestones=[];ST.tierReached=1;
   ST.mov={support:5,exposure:0,intel:0,cells:0,stance:"hidden",doctrine:null,foundedTick:0};
   ST.regime={grip:60,awareness:0,lastSweep:0,informants:[]};
@@ -6970,16 +8218,37 @@ function newGame(){
   sta.mem=[{d:0,h:6,t:"settled into this block with Vex — somebody's got to keep it running straight"},{d:0,h:6,t:"I grind steady and careful; Vex thinks I'm too slow about it"}];
   ST.pawns.push(sta);
   // populace — scatter procedural agents near the core (not across the whole 140x100 map)
+  // NAMED ROLE-WISPS — the district's power structure & civic pillars, present from turn one.
+  {const roleKeys=["doctor","shopkeeper","enforcer","mayor","informant","fixer"];
+   for(const rk of roleKeys){const R0=ROLES[rk];
+     // find this role's workplace building (if any) so we can post them there
+     let workS=null;
+     if(R0.workType){for(const s of ST.structs.values()){if(s.type===R0.workType&&!s.bp){workS=s;break;}}}
+     // spawn near the workplace if found, else anywhere walkable in the core
+     let placed=false,tries=0;
+     while(tries<2000&&!placed){tries++;
+       let x,y;
+       if(workS){x=clamp(workS.x+RI(-2,2),1,MW-2);y=clamp(workS.y+RI(-2,2),1,MH-2);}
+       else{x=RI(44,92);y=RI(30,74);}
+       if(colCost(x,y)<0)continue;
+       if(ST.pawns.some(q=>(q.px|0)===x&&(q.py|0)===y))continue;
+       const rp=mkRoleWisp(x,y,rk);
+       // ASSIGN them to their post so the job system keeps them working there (the panel + interaction)
+       if(workS)rp.assigned=K(workS.x,workS.y);
+       ST.pawns.push(rp);placed=true;}}}
+  // fill the rest of the starting population with procedural citizens
   {let tries=0;while(ST.pawns.length<POP&&tries<4000){tries++;
     const x=RI(40,96),y=RI(28,78);  // within the built-up core region
     if(colCost(x,y)<0)continue;
     if(ST.pawns.some(q=>(q.px|0)===x&&(q.py|0)===y))continue;
     ST.pawns.push(mkPawn(x,y))}}
-  {let hi=0;for(const p of ST.pawns){const home=ST.cityHomes[hi%ST.cityHomes.length];hi++;claimHome(p,home);p.attach=RI(3,12);}}
-  // THE AVATAR — your operative, dropped into the core. Uses the creation spec if one was made.
-  {const av=mkAvatar(63,49,window.PENDING_AVATAR||null);
+  {let hi=0;const regularHomes=ST.cityHomes.filter(h=>!h.fixerRoom);for(const p of ST.pawns){const home=regularHomes[hi%regularHomes.length];hi++;claimHome(p,home);p.attach=RI(3,12);}}
+  // THE AVATAR — your operative. Starts crashing in the FIXER'S BACK ROOM (the motel-room beginning):
+  // a borrowed pod in the fixer's quarters while you scrape together money and work your way up.
+  {const av=mkAvatar(51,71,window.PENDING_AVATAR||null);   // spawn AT the fixer-room pod
    ST.pawns.push(av);
-   const ah=ST.cityHomes[0];if(ah){claimHome(av,ah);av.attach=8;}
+   const ah=ST.fixerHome||ST.cityHomes[0];if(ah){claimHome(av,ah);av.attach=2;}  // low attach — it's borrowed, not owned
+   av.startedAtFixer=true;
    ST.sel=[av];  // start with your operative selected
   }
   cam.z=1.4;  // start zoomed into the core on the bigger map
@@ -6988,12 +8257,21 @@ function newGame(){
   $("log").innerHTML="";DIARY_ENTRIES.length=0;CHRONICLE.length=0;renderDiary();renderRoster();
   log("The sprawl wakes — citizens drifting to homes, jobs, and the night's vices.","info");
   log("You watch over the district. Build it out, steer who you can, and keep the block from tearing itself apart.","info");
-  powerRecalc();updateFlags();syncHUD();renderInspect();refreshSpd();hideModal();
+  syncHUD();renderInspect();refreshSpd();hideModal();
   banner("DAY 1 — THE SPRAWL","good")}
 
+// ── PERF HUD (press P) — self-contained DOM overlay; measures real frame rate in-browser, incl. fullscreen ──
+let PERF_HUD=false,_fpsT=0,_fpsN=0,_fps=0;
+const perfEl=(typeof document!=="undefined")?document.createElement("div"):null;
+if(perfEl){perfEl.id="perfhud";
+  perfEl.style.cssText="position:fixed;top:6px;right:8px;z-index:99999;font:11px ui-monospace,Menlo,monospace;color:#39ff88;background:rgba(0,0,0,.55);padding:3px 7px;border:1px solid #1c3a2a;border-radius:3px;pointer-events:none;display:none;white-space:nowrap";
+  if(document.body)document.body.appendChild(perfEl);}
+function togglePerfHUD(){PERF_HUD=!PERF_HUD;if(perfEl)perfEl.style.display=PERF_HUD?"block":"none";}
 let lastT=0,acc=0;
 function loop(ts){requestAnimationFrame(loop);
   const dt=Math.min(60,lastT?ts-lastT:16);lastT=ts;
+  if(PERF_HUD){_fpsN++;_fpsT+=dt;if(_fpsT>=500){_fps=Math.round(_fpsN*1000/_fpsT);_fpsN=0;_fpsT=0;
+    if(perfEl)perfEl.textContent="FPS "+_fps+" · pawns "+(ST.pawns?ST.pawns.length:0)+" · spd "+ST.speed+(ST.paused?" · PAUSED":"");}}
   if(ST.phase==="run"&&!ST.paused){
     acc+=dt;const step=100/ST.speed;let n=0;
     while(acc>=step&&n<10){tick();acc-=step;n++;if(ST.phase!=="run")break}

@@ -35,6 +35,345 @@ done yet.
 **IMMEDIATE city-first work queue:** ~~character-CREATION SCREEN~~ (DONE) → stat-gated DIALOGUE
 (opsCheck/ops built to feed it) → job/farming VISUALS + litter → deep testing/tuning.
 
+---
+
+## ⚡ LATEST STATE (read this first — reconciled from the live VM, June 2026) ⚡
+
+**AVATAR OPERATIONS SYSTEM (most recent session — the big avatar-agency feature):**
+
+The player's avatar now has a full insurgent OPERATIONS toolkit — turning the avatar from a passive
+influencer (recruit/force/back-election) into an active protagonist. Design (Carlo): a toolkit of ops,
+HIGH-RISK (failure spikes exposure + can get you caught), WITH progression (stats grow with use + district
+reputation builds).
+
+- **The toolkit (`AVATAR_OPS`, 4 ops):**
+  - **Sabotage Infrastructure** (tradecraft, 10 intel, targets a power/water building): knocks the utility
+    offline for 1–1.5 days (`s.sabotaged=ST.tick+...`), triggers a blackout if power, +heat, +support,
+    −regime grip. The flagship insurgent strike. Reputation −6 (feared).
+  - **Gather Intel** (insight, free, no target): +6–12 intel. Rep +2.
+  - **Spread Dissent** (presence, 6 intel, no target): +support, nearby wisps warm to the cause. Rep +5
+    (championing people earns goodwill).
+  - **Frame a Regime Asset** (guile, 14 intel, targets a loyalist/enforcer/informant): plants evidence,
+    turns the block against them, −regime grip. Hardest/riskiest. Rep −4.
+- **The core runner (`runAvatarOp`):** spends intel, applies an EXPOSURE PENALTY to difficulty
+  (`Math.floor(exposure/25)` — the more suspected you are, the riskier everything is), rolls `opsCheck`,
+  branches to `opSuccess`/`opFailure`. Big-margin successes leave less trace.
+- **HIGH RISK (`opFailure`):** failure spikes exposure (+12, or +22 if botched) and regime awareness; a
+  botched op can draw an enforcer's grudge. Verified: spamming ops drove exposure to 64 over a day — the
+  tension is real, you can't just spam.
+- **PROGRESSION:** `trainOpStat` grows the used stat via `avatar.opXp` (need 4+stat*2 reps, harder as it
+  climbs, caps at 10) — "you get better at what you practice." District REPUTATION (`avatar.rep.district`,
+  −100 feared .. +100 beloved) shifts by op nature: sabotage/frame lower it (feared), dissent/intel raise
+  it. Shown as FEARED/RUTHLESS/UNKNOWN/RESPECTED/BELOVED.
+- **UI:** an OPERATIONS panel on the avatar's STATUS inspect tab — shows intel/exposure/reputation, the 4
+  op buttons (greyed if unaffordable), a LIE LOW button (reduce exposure), and a high-exposure warning.
+  Targeted ops (sabotage/frame) enter a TARGETING mode: the panel prompts you to click a building/asset on
+  the map, and `clickSelect` intercepts the click to run the op on that target (with validation — must be a
+  utility building / a regime asset). Non-target ops (intel/dissent) run on click.
+- **Sabotage hook:** the `hasPower`/`hasWater` utility computation (~line 4394) now also tests
+  `!(s.sabotaged>ST.tick)`, so a sabotaged building genuinely goes offline. NOTE the utility mood-effect
+  computation runs on a DAILY cadence (`ST.tick%TPD===0`), so sabotage duration was set to 1–1.5 days to
+  reliably span a daily check; the blackout effect (`ST.blackoutUntil`) is immediate regardless.
+- **Persistence:** `snapPawn`/`snapStruct` copy ALL fields (`Object.assign`), so `rep`/`opXp`/`framed` (on
+  pawns) and `sabotaged` (on structs) serialize automatically; `mov`/`regime` (intel/exposure/support) were
+  already saved. Targeting state (`ST.opTargeting`) resets on newGame. Validated: clean, no stuck-loops
+  (max 47t), all 4 ops work end-to-end, UI renders, progression + reputation + exposure all function.
+
+---
+
+## ⚡ HEALTH AUDIT + BALANCE (prior session) ⚡
+
+- **Broad health scan (economy / mood / population / disease over multi-day runs)** to find degenerate
+  trends. Findings:
+  - **Chronic sickness (REAL weak spot — FIXED):** infection recovery used to STRICTLY require `hyg>50 &&
+    hp>50`, but sickness blocks work (→ no income → hygiene hard to maintain), so sick pawns got trapped
+    below the hygiene gate and stayed chronically ill — the city trended toward everyone-sick. FIX:
+    recovery now works at ANY health above hp>35 with a tiered chance (clean+healthy 14%, ok-hygiene 7%,
+    rough 3.5% per 80 ticks) — better hygiene still speeds it, but being sick is no longer a near-permanent
+    trap. VERIFIED: sickness now OSCILLATES (peaks ~5/13, ebbs back via recoveries) instead of ratcheting to
+    everyone — a managed disease pressure, not a death spiral.
+  - **Income (FALSE alarm):** a 2-day snapshot showed income at 29 (looked like insolvency), but the real
+    trajectory is healthy — climbs 200→236, settles ~137; no crisis, no debt, pawns accumulate credits
+    (avg 62). Economy is stable and self-sustaining. No change needed.
+  - **Mood/social/feedback/onboarding — all SOLID:** mood drifts gently (60→49 over 2d, not collapse);
+    relationships richly drive behavior (47 `relGet` uses — socializing, partnerships, grudges, revenge,
+    rivalry); ~30 events get visible BANNERS; 15 contextual first-time HINTS onboard the player. The game
+    is in genuinely good shape — most systems are well-built, so this pass was honest auditing + targeted
+    fixes rather than manufacturing problems.
+- **Election visual presence (enhancement):** the election was mechanically clean but INVISIBLE (candidates
+  didn't gather or signal). Added performative CAMPAIGN EMOTES during a race — schemers (low intg) smirk
+  with scheme/smug, idealists (high amb) beam with party/happy — fired every ~55 ticks, NO forced pathing
+  (preserves the no-crowd-jam property). Now you can spot who's running on the map. Verified clean through
+  full election cycles, no loops.
+
+---
+
+## ⚡ AUDIT + CORE-FABRIC (prior session) ⚡
+
+- **Cafeteria death-spiral — VERIFIED end-to-end:** simulated an eviction wave (5 pawns forced homeless +
+  broke + hungry) WITH vs WITHOUT a cafeteria. With it, hungry victims kept avg food 58 vs 37 without;
+  pawns actively eat at the cafeteria (26 eat-ticks/day) and it consumes the communal farm stockpile (so it
+  genuinely "serves the grown food"). HONEST nuance: the death-spiral was never catastrophic at baseline
+  (the counter/bar already serve as fallback food + a subsistence-income mechanic exists), but the cafeteria
+  measurably improves food access and gives a dedicated thematic place. Verdict: working as intended.
+- **Election crowd stuck-loop hunt — CLEAN:** the election is purely ABSTRACT — it does NOT send pawns to
+  city hall or make them congregate (no `chooseJob`/`scoreJobs` changes), so there's no crowd-jam risk. Max
+  stuck-streak during a full campaign = 6t (cap is 140t). Candidates live normally during the campaign
+  (12–40 job changes). NOTE the tradeoff: the election is mechanically clean but less VISUALLY present
+  (nobody walks anywhere) — a future enhancement could stage a physical gathering if desired.
+- **Sabotage system — PRE-INVESTIGATED (design note written to SABOTAGE_DESIGN.md):** mapped exactly how a
+  power/water sabotage system hooks into the existing utility computation (~line 4251: `hasPower`/`hasWater`
+  = building exists + not blueprint + has a worker — so 3 ways to knock it out), the blackout mechanic
+  (`strikeBlackout` ~3982 is the model), building damage (`hp`/`isBroken`/`surgeT`), and the insurrection
+  layer (`ST.mov`, `allegiance`, `insurgentLever`). Minimal first version + exact lines-to-touch documented
+  so the build goes fast. Not built yet — it's the blueprint.
+- **CUTER EMOTES (your "cute even if evil" ask):** redesigned the emote set — 21 emotes now (was 17). Every
+  emote gets a SOFT GLOW BLOOM behind it (`glowSprite`, per-emote `bloom` factor) + a CUTE bounce-in pop
+  (spring up past full size, overshoot, settle). Upgraded glyphs to rounder/softer forms (florettes,
+  sparkles, rounded heavy !/?, heart-! for anger so even mad reads cute). Added an "EVIL BUT CUTE" set:
+  `scheme` (smug dark smiley), `evil` (violet heart — cute menace), `smug` (pleased spark), `greed`
+  (sparkle-eyes for $$). Wired them: a content-but-crooked wisp (low intg / gang / addicted) shows
+  scheme/evil instead of plain cheer; an ambitious flush wisp shows greed; a low-intg high-amb wisp preens
+  with smug even when neutral. All render validated.
+- **CORE FABRIC — attribute influence deepened (audit found `cur`/`emp`/`cau` underused):** mapped how much
+  each personality attribute drives behavior — `intg`(23 refs), `amb`(19) well-used; `cur` was barely used
+  (3 refs), `emp`(8), `cau`(7) thin. Enhancements: CURIOSITY now strongly drives learning (`learn` weight
+  `cur/150` + base scaled by cur) and reduces idling (curious wisps would rather DO something) — but EASES
+  when a need is critical (a bored wisp still picks fun over a textbook, preserving smoke test F2). EMPATHY
+  now drives `treat` (empathetic wisps rush to tend the sick, `emp/120`) and `visit` (warm wisps check on
+  friends). VERIFIED: curious wisps now learn ~32% more per capita than incurious ones (1761 vs 1332
+  learn-ticks/2d) — a real, measurable behavioral difference where before `cur` did almost nothing. Tuning
+  lesson (recurring): boosting an attribute's job-weight can break the personality-fidelity smoke tests
+  (F1/F2/F3) — scale the boost so a CRITICAL need still wins; don't let a trait override survival/pressing
+  needs. No stuck-loops introduced (max 62t, cap 140t).
+
+---
+
+## ⚡ ELECTION HARDENING (prior session) ⚡
+- **Concurrent elections (bug):** `ST.election` was singular, so if a 2nd role-holder died while an election
+  ran, the 2nd vacancy OVERWROTE the first — the first seat would sit empty forever. FIX: added an
+  `ST.electionQueue`; a vacancy that arrives mid-election is queued, and the next queued election kicks off
+  when the current one resolves. Verified: kill doctor + shopkeeper together → both seats refill, all 6
+  roles restored. (Matters in real play when a fire/raid kills multiple role-holders at once.)
+- **Save/load (bug):** `ST.election`/`ST.electionQueue` were NOT in the save payload, and load explicitly
+  reset them to null — so saving mid-campaign LOST the election (seat empty forever on reload). FIX: added
+  both to the save payload + restore them on load; removed the stale null-reset in `applyState` that was
+  wiping the restored value. Verified: election is in the save payload + survives reload.
+- **Endorsement balance (tuning):** measured how often the player's backed candidate wins when backing the
+  WEAKEST (lowest-fit) candidate — was 63% (too close to a rubber stamp). Reduced the endorsement weight
+  from `0.15` to `0.10` per voter → now 38%, the ideal range: your backing clearly MATTERS, but the block
+  can override a genuinely-poor pick most of the time. Makes the "can you override the wisps' judgment?"
+  tension feel right — real influence, but not a dictator; backing a bad candidate is a gamble.
+
+---
+
+## ⚡ ELECTION SYSTEM (same session — the feature itself) ⚡
+
+- **ELECTIONS (big new system):** when a public role-holder DIES, that seat opens and the block elects a
+  replacement. Design choices (Carlo): trigger ONLY on death; the seat sits EMPTY during the campaign
+  (~0.6 day) so the loss is felt; candidates self-nominate by ambition OR role-fit; the PLAYER can propose/
+  back a candidate (who competes, doesn't auto-win). Voters score each candidate by role-fit (`roleFit()`
+  = closeness of pers to the role's `persLean`) + relationship + a small pitch-bump + the player's
+  endorsement (weighted by the voter's allegiance), colored by voter empathy (empathetic voters weigh
+  relationships, pragmatic weigh fit). Winner installed via `installRole()`; ambitious losers take a mood
+  hit + a grudge toward the victor; backing the winner/loser nudges the avatar's standing. Functions:
+  `openElection`, `proposeCandidate`, `tallyElection`, `resolveElection`, `installRole`, `electableRole`,
+  `roleFit`. State in `ST.election` (reset on newGame/load). Triggered from `killPawn`; resolved in the
+  tick loop when `ST.tick>=election.voteAt`. AUTO-FILL fallback: if nobody runs, the best-fit wisp is
+  pressed into the role so the city isn't crippled. The secret informant never holds elections.
+  - **AI showcase layer (`tickElectionPitches`, gated like NPC convos):** each candidate generates a short
+    in-character campaign PITCH via the cheap model (revealing personality), and a couple of swing voters
+    voice their reasoning ("I'd back X but Y shows up when it matters"). Pitches show as `sayLine` bubbles +
+    log entries. Self-gated: only spends while an election is active + when player is watching the speaker.
+    AI can't fire headless (no proxy) but all machinery validated; the non-AI vote works fully on its own.
+  - **UI:** an election ALERT in the tasks panel (shows the role, candidates, days-left, who you're
+    backing); a "BACK FOR <ROLE>" button on the pawn inspect panel (when a vote's underway and the wisp is
+    eligible). Verified end-to-end: doctor dies → election opens → seat empty → 4 candidates self-nominate →
+    player backs one → vote resolves after the campaign → winner installed as the new doctor. Stable through
+    full election cycles, no stuck-loops.
+- **Cafeteria building (`cafeteria`, 🍽, Commerce menu):** a public canteen serving communal food
+  (`canteen:true`). Added as an eat source in `mkEat` (now `fridge||counter||bar||cafeteria`). This is the
+  FIX for the death-spiral: homeless pawns can't use home fridges, so without a public food source they
+  starve after eviction — the cafeteria gives them somewhere to eat. Verified: a homeless hungry pawn
+  correctly targets the cafeteria.
+- **Death cadence — investigated:** deaths are RARE at baseline (2 full days = 0 deaths, pop stable at 13).
+  Starvation requires food→0 THEN ~1.25 days of continuous starving to kill (slow, from prolonged neglect).
+  Five causes: combat, starvation, untreated infection, murder. The real risk is the eviction→homeless→
+  can't-reach-food→starve spiral — which the cafeteria addresses. No pathological fast-death found.
+- **Agent requests REMOVED (reversibly):** all 4 generators (`genRequests`, `maybeCliquePetition`,
+  `genWorkPetitions`, `genExpansionPetition`) gated behind `const REQUESTS_ENABLED=false;` (near AI_CAP_USD).
+  They were too intrusive; flip the flag to restore once tied into the game properly (e.g. via the planned
+  weekly council / quests). Verified: zero requests generate.
+- **Wisp area readability cleanup:** names render BELOW the wisp with visibility scaled to ZOOM — your
+  operative + named roles + the selected wisp are always legible; ordinary wisps' names fade in only as you
+  zoom in (`ordinaryVis=clamp((cam.z-1.0)/0.6,0,1)`), so a busy map isn't a wall of overlapping labels.
+  Every visible name now gets a consistent dark backing. Emotes SKIP a pawn that has an active speech
+  bubble, so they don't stack/overlap above the head. Emotions above, names below — clean separation.
+
+---
+
+## ═══ STILL PENDING (from Carlo's batch) ═══
+- **Critical infrastructure + SABOTAGE** (wisps sabotage power/water — BIG, ties to insurrection). NOT started.
+- **Real rain/thunder AUDIO** when the weather toggles are on (moderate; Claude can't hear to verify).
+- **The requests proper game integration** (Carlo deferred — "put in work later").
+
+---
+
+## ⚡ DEBUG STATE (prior session) ⚡
+- **Social-lock infinite loop (SELF-INFLICTED by last session's side-by-side feature):** a stuck-loop
+  detector caught pawns holding the `socWith` lock for 184t→1052t (design was 45t). Root cause traced via
+  tick-by-tick logging: the SOCIAL HOLD path (`p.job=null` to freeze the partner) was ALSO firing on the
+  conversation INITIATOR, killing its own socialize-job progress every other tick, so `prog` never climbed
+  to 40 and the pair re-initiated forever every ~8t. FIX: (a) the social hold now only applies if the pawn
+  is NOT running its own socialize job (`!(p.job&&p.job.t==="socialize")`); (b) conversation completes on
+  job-prog≥40 OR a hard elapsed cap (`elapsed>=70`); (c) post-chat cooldowns (`socCd`, `lastSocPartner`/
+  `lastSocT`) stop immediate re-initiation with the same partner. Verified: max lock now ~39t, bounded.
+- **Frozen pawns (pre-existing):** pawns stuck 600t+ at a workstation, `prog` frozen at 20 — a pathing
+  dead-end (couldn't squeeze the last tile to a work target whose adjacent tiles were tight). Added a
+  general STUCK DETECTOR in pawnTick: if a pawn has a job but hasn't moved AND `prog` hasn't advanced for
+  ~140t, drop the job, `markUnre` the target, re-choose. IMPORTANT: it checks BOTH no-move AND no-prog, so
+  pawns legitimately working/learning in place (which advance prog) are NOT killed. Verified: genuinely-
+  stuck incidents went 11 → 0.
+- **Phantom "power" good (real bug):** the Power Station had `prod:"power"`, so working it accumulated a
+  `ST.goods.power` good that nothing consumes and the HUD never shows (the goods object is data/chem/parts/
+  stims/gear/food/scrap). Its SIBLING the Water Facility correctly had NO `prod` — power is a UTILITY, not
+  a good. FIX: removed `prod:"power"`. The utility effect (no staffed power building → every adult gets a
+  -4 "No power" mood mod; no water → -3 + hygiene drain) is fully implemented at lines ~4136 and works;
+  the building still does everything its description promises, minus the phantom good.
+- **Audit method:** built a stuck-loop detector (tracks per-pawn position-stillness, job-thrash rate,
+  social-lock duration) + a missing-item scan (building types referenced but not in DEF, goods referenced
+  but not in the goods object, emote kinds not in EMOTES). Most missing-item hits were false positives
+  (`murder`/`informant` are CASE types not buildings; `text` is an AI block type) — only `power` was real.
+
+---
+
+## ⚡ FEATURES STATE (prior session) ⚡
+- **Avatar motel/fixer-room start (+ sleep-anywhere fix):** the avatar was sleeping on the ground because
+  `mkSleep` targets sleep-PODS and the avatar didn't reliably own one. FIX + feature: the avatar now spawns
+  living in the FIXER'S BACK ROOM (`ST.fixerHome`, registered as a reserved cityHome at world ~51,71) with
+  its own claimed pod, low `attach` (it's borrowed). Regular pawns skip the fixer home. This is the "start
+  in a motel/the fixer's room while you build up" beginning. Avatar sickness confirmed working-as-designed
+  (gets infected, blocked from work, recovers when hyg/hp allow — not a bug).
+- **Caravan made visible (fixed the "phantom popup"):** the caravan was a real trade deal with NO map
+  presence, so "CARAVAN ARRIVES" felt fake. Now `ST.caravan` has an {x,y} (via `caravanSpot()` — next to a
+  Market if built, else a road edge) and `drawCaravan()` renders a glowing trader cart with a BUY/SELL goods
+  banner. The event now corresponds to something you can see + walk to.
+- **Side-by-side socializing (`socWith`):** when two wisps socialize they now LOCK into a stable adjacent
+  pair — both pause, hold position, face each other, and emit alternating chat/happy emotes — so the
+  interaction is legible (you can see both thought bubbles). Added a `chat` emote (speech mark). The social
+  hold is in pawnTick (a `socWith`+`socUntil` lock the partner respects). Verified: pairs lock to distance 0.
+- **Lightning toggle (`STORM`, ⚡ button):** mirrors the rain toggle, off by default. `drawLightning()`
+  schedules flashes (~2–7s apart) with a cool-white screen flash, occasional jagged bolts, and double-flash
+  flicker. CRUCIAL hookup: `stampGlow()` boosts every glow by `STORM.flash` during a strike, so ALL the map's
+  neon/sprites POP on each flash (your request). `stormGlow()` exposes the 0..1 flash factor.
+- **Expanded NPC routines (daily rhythm):** `mkSched` already produced wake/work/meal times; ADDED an
+  evening LEISURE WINDOW (`leisureStart`/`leisureEnd`, sociable wisps start earlier + stay out later). In
+  `scoreJobs`, recreate/socialize/visit are biased UP (~1.8x) during the leisure window and gently down
+  outside it — but the out-of-window penalty EASES as the need grows (a genuinely bored/lonely wisp still
+  goes out), so it biases TIMING without suppressing real needs. Result: daytime is work-heavy, evenings
+  shift to leisure. (NOTE: an over-aggressive 0.5x penalty initially broke smoke test F2 — softened to a
+  need-scaled `max(0.78, 1-need/220)`; lesson: don't hard-suppress needs, bias timing.)
+- **NPC-to-NPC AI conversation (`tickNpcConvo`):** the big one. When two wisps are socializing side-by-side
+  AND the player is WATCHING (`playerWatching()` = on-screen + `cam.z>=1.15`), occasionally generate a short
+  in-character AI exchange between them using the CHEAP ambient model (`AI_MODEL_AMBIENT`/Haiku) + the shared
+  budget guards (`AI_CAP_USD`, leaves 15% headroom for player TALK). Pair cooldowns prevent chatter. Lines
+  show as `sayLine()` speech bubbles (`drawSays()` + `roundRectPath()`, wrapped, fade in/out, tail). The
+  "only when watching" gate means a handful of API calls per session, only for conversations you can see.
+  Called at `ST.tick%40===0`, self-gated internally. AI can't fire headless (no proxy) but all machinery —
+  detection, gating, display, tick wiring — is validated; `playerWatching` correctly true zoomed-in /
+  false zoomed-out.
+
+---
+
+## ⚡ AUDIT STATE (prior session) ⚡
+- **Structural integrity: CLEAN.** No dead functions, no duplicate definitions, no const redeclarations,
+  no calls to undefined functions, no leftover debug/console.log, no `debugger`. Removed the one piece of
+  dead weight: the empty retired `updateFlags(){}` (and its 3 call sites). `powerRecalc` already gone.
+- **Feature-presence: ALL WIRED.** Every system claimed DONE exists in code AND is referenced/called in
+  the loop — verified ~22 systems (economy, jobs, eviction, mood, crime, gangs, heists, disasters,
+  caravans, dynasties, factions, insurrection, detective, role-wisps, requests, events, relationships,
+  cliques, mentorship, room-quality, commerce, spore-vat, blobs). No phantom features.
+- **Behavioral validation (ran the sim 5–12 days, measured effects):** Economy active (income → 1442/10d,
+  goods flow). Roles correctly assigned to workplaces, **38% on-duty during work hours** (in the 37–82%
+  target). Relationships form naturally (**67 pairs in 5 days**, positive+negative, strong bonds ≥30).
+  Cliques form. Caravans arrive (~6 days/10). Disasters fire (telegraphed). Insurrection support+intel
+  rise (support 20, intel 18). Events schedule+fire (nextEv advances). **Crime/gang/heat loop WORKS**
+  (seeded a gang: gangHeat rose, racket bank → 1955, district heat rose).
+  - **KEY DESIGN NOTE (not a bug):** the crime system is GATED — `crimeTick()` starts with
+    `if(!ST.gangs.length)return;`. Gangs only form when the PLAYER sanctions a "gang" request (gang
+    requests DO generate autonomously; the player opts in). So crime/heat is correctly dormant until the
+    first gang exists. A headless run with no player input will show 0 gangs / 0 heat — that is correct.
+  - Cases (detective) need informants first; informant cases trigger at `ST.tick%TPD===0` when
+    `REG().informants.length>0` (25% chance). The detective layer is wired but sparse by design.
+- **Optimization (POP=12): the render path is already well-optimized** (prior viewport-culling + cached
+  vignette). Found + fixed the ONE genuine per-frame hotspot: **puddle shimmer** was allocating a fresh
+  `createRadialGradient` per puddle per frame — now builds the gradient ONCE (`_puddleGrad`, module-level)
+  and `translate()`s it per puddle. Other candidates (per-pawn `performance.now()` ≈ 4µs/frame total; the
+  two O(n²) pawn loops = 66 checks at POP=12, one gated to %5 ticks, one daily) are NEGLIGIBLE at the
+  game's actual scale (one city, ~12–30 pawns) — deliberately NOT "optimized" since that would add
+  regression risk for unmeasurable gain.
+- **Validation harness note:** when writing headless test harnesses, pawns use `px`/`py` (float tile
+  positions, e.g. `x+.5`), NOT `x`/`y`. Relationships live in the GLOBAL `ST.rel` map (keyed by pawn-pair
+  via `relKey`), NOT on `p.rel`. `p.assigned` stores a tile KEY (`K(x,y)`), looked up via
+  `ST.structs.get(p.assigned)`. (Getting these wrong produces false "broken" readings.)
+
+---
+
+## ⚡ PRIOR STATE (reconciled from the live VM) ⚡
+
+**⚠ MULTI-SESSION DIVERGENCE WARNING — READ BEFORE EDITING.** Work happens on this game in MORE THAN
+ONE place. A separate session (or the user's own edits) built features DIRECTLY into the live VM that
+never came back to any single container. This caused a real divergence that took a full session to
+untangle. **At the START of any session that will modify the game, the user must upload their current
+`index.html` from the repo FIRST**, so the work is based on the true latest. The md5 is the tripwire:
+if the hash you're working from ≠ the VM's hash (`md5sum /var/www/game/neon-sprawl/index.html`), the
+files have diverged and you MUST reconcile before writing anything. The canonical source of truth is
+the VM file, NOT any container copy.
+
+**Features that originated on the VM (from a parallel session) — DO NOT clobber or duplicate these:**
+- **Spore Vat building** (`sporevat`, "Spore Vat", income-cost building) + `vatTier()` (tier logic) +
+  `initBlobs()` (floating bio-blob rendering) + `togglePerfHUD()` (a performance HUD toggle).
+- **A generative PIANO instrument with C418-style reverb/echo** woven into the audio engine: an `echo`
+  delay bus, `echoFb`/`echoLp` feedback+filter, a `pianoIn` send, and a `stopMelody` cleanup. (NOTE:
+  this was the basis the audio was later rewritten on — see below.)
+- A richer ROAD network with thematic district comments ("THE DIVIDE — underclass | corporate sector",
+  "labor | civic divide").
+
+**This session's work (applied ON TOP of the VM base, all validated + shipped):**
+1. **Rain/fog atmosphere toggle** — the ☂ HUD button (id `b-atmo`) toggles `ATMO.on` (OFF by default so
+   it never costs framerate). `drawAtmosphere()` + `initRain()` render drifting smog + diagonal rain,
+   screen-space, only when on. The button uses a `.hud-icon` span (a bare 🌧 emoji rendered BLANK in the
+   HUD font — that was a real bug; use ☂ in a hud-icon span).
+2. **More ambient floating elements** — MOTES 12→18 (less edge-biased so they drift through the core),
+   BLOBS 10→16. Tasteful bump, render-cheap.
+3. **AUDIO ENGINE FULLY REWRITTEN to kill a persistent "hum"** — THE KEY LESSON: the hum was NOT a
+   composition problem, it was a SYNTHESIS defect. **Any raw OscillatorNode held open with no amplitude
+   envelope IS an electrical hum** (a steady unchanging waveform = electrical noise; detuned sustained
+   oscillators beating against each other = "two currents near each other"). Three failed attempts
+   removed the wrong sustained source each time (drone → pads → chord-engine bass) — the problem was that
+   ANYTHING sustained at all, not which notes. The FIX is architectural: **NOTHING sustains.** Every
+   voice (`piano`, `bell`, `padSwell`, `bassPulse`) is created, ramped up, held, ramped down, and
+   AUTO-STOPPED. Pads BREATHE (fade in/hold/fade out, retriggered by a scheduler) instead of being held.
+   Verified mechanically: every `.start()` in the file has a matching `.stop()`; ZERO continuous sound
+   sources remain (the old looping vinyl-hiss `nsrc.loop=true` is also gone). Added a procedural
+   convolution REVERB (3.2s tail from exp-decay noise, no file). Procedural composition (C-pentatonic/
+   Lydian, original — deliberately NOT Subwoofer Lullaby's C-Am-F-G-Em): `_bars` lays chords (bassPulse +
+   padSwell) every ~5.2s, `_melody` sparse piano every 3–7.5s, `_bells` rare shimmer every 9–20s. Matches
+   the user's spec: 55–70 BPM feel, sparse, long reverb, soft pads, bell harmonics, no percussion,
+   procedural, seamless loop, CPU-friendly. **CAVEAT: Claude cannot hear audio** — the STRUCTURE is
+   correct + the hum is structurally eliminated, but mix balance (bass vs piano loudness, chord pace) is
+   untested and may need ear-tuning. There is a headless AUDIO ENGINE TEST now (Web Audio mock) that
+   confirms ambientStart/ambientSet/toggleMute build + run without throwing.
+
+**Validation harness in container** (`/home/claude/work`): `build_smoke.js` (15 gates, expect ALL TESTS
+PASS), a RENDER smoke-test (mock canvas → drawStruct on all structs + drawTerrain + drawAtmosphere), an
+AUDIO engine test (Web Audio mock), dead-fn/dupe checks, CSS brace balance, trimmed ≤8-day stability run.
+POP=12 makes full-length probes exceed the in-container bash timeout — use TRIMMED ≤8-day runs (this is a
+harness-timing artifact, not a game bug; real-time ticks are ~0.35ms, smooth).
+
+---
+
+
 - **Character-creation screen** — DONE. NEW DISTRICT now routes through `showCharCreate()` before
   newGame: pick 1 of 5 backgrounds (live stat preview), distribute OPS_POINT_BUDGET(4) extra points
   via +/- per attribute (capped 0-10, remaining counter), enter a codename. BEGIN sets
@@ -42,7 +381,132 @@ done yet.
   `ccStats/ccPointsUsed/ccRemaining/ccSyncName` helpers, wired in the #modal click handler
   (data-ccbg/ccinc/ccdec/cc-begin/cc-back). Default fallback intact if skipped. Probe-verified: base
   spreads, point math, 10-cap, bg-switch, full creation→spawn pipeline all correct.
-- **Music → melancholy lofi + UI/GUI consistency pass** — DONE (this is the "proper test build").
+- **Professions + new buildings + cyberpunk resource re-theme** — DONE. (1) ROLES now work at the
+  CORRECT location instead of drifting to generic terminals: each role's workType points at its real
+  workplace (doctor→medbed, shopkeeper→counter, enforcer→copstation, mayor→mayorhouse, fixer→
+  fixercorner). genCity builds these role workplaces in the civic zone; newGame spawns each role NEXT to
+  their post and sets p.assigned=K(building). The work system already prefers p.assigned, plus a ROLE
+  ANCHOR in chooseJob sends a role-wisp to its post during work hours (08-19) unless a need is pressing,
+  and role work-desirability gets a 1.6x boost. Result: roles on-duty ~37-82% of work hours (citizens
+  can reliably find the Doctor at the clinic, etc.). (2) NEW BUILDINGS w/ defs, icons, build-menu
+  categories, city placement: Precinct (copstation, Enforcer's post, security), Street Vendor
+  (streetvendor, cheap food cart), Admin Villa (mayorhouse, Mayor's seat, civic), Fixer Corner
+  (fixercorner, Fixer's black-market node). New build categories: Utility (power/water), expanded Order
+  (watchpost+copstation). (3) CYBERPUNK RESOURCE RE-THEME: wood→scrap (Salvage Yard, ex-logging camp,
+  strips scrap from dead sectors), materials→data (Data Den, ex-mine shaft, grey-market hacking).
+  Updated EVERYWHERE: goods object (3 init sites), production trickle, vendor sales, PRICES, BASE,
+  CARAVAN_GOODS, HUD pips + sync loop, economy/market panels, zone signs (THE WOODS→SALVAGE SECTOR,
+  OLD MINE→DATA SLUMS), help text, data-den glow. Scavenger vocation (ex-laborer). ZERO wood/materials
+  refs remain (verified). Validated: scrap/data accumulate + sell, roles assigned + survive save/load,
+  stable 9-day run, bounds + economy valid. STILL PENDING: NPC request pacing (too frequent → weekly
+  city-council idea), tabs-shouldn't-resize-window + bigger character window, building reorg/resize
+  pass, furniture for new buildings, general UI/GUI check.
+- **Rain toggle fix + removed the music hum** — DONE. (1) RAIN BUTTON wasn't rendering — the 🌧 emoji
+  was a blank glyph in the HUD font, so there was no button to click ("rain didn't work" = no toggle
+  visible). Swapped to a ☂ umbrella in a .hud-icon span (matches the other HUD buttons, renders
+  reliably). Also made the rain CLEARLY visible when on: density up (VW*VH/9000 → /5500), brighter
+  streaks (rgba(170,205,240,0.9) cool-white), stronger slant, fade tied to ATMO.fog. Verified via
+  render smoke-test (186 drops, 0 errors). (2) MUSIC HUM REMOVED — the constant low "humming" was the
+  base DRONE: two detuned 55Hz triangle oscillators at gain 0.42 under everything. Removed it entirely
+  (o1/o2/droneG gone, no orphan refs). The warm Am9 sine PAD (L1) is now the base bed — always gently
+  present (was gated at intensity>0.10) — so the music is melodic and calm with NO droning fundamental.
+  Vinyl hiss + L2/L3 layers kept. LFO now modulates the pad filter. Validated: tests pass, audio engine
+  intact, stable 8-day run. SCREENSHOTS confirmed the visual pass landed well (neon signs NEXUS CORP/
+  BODEGA/CHROME BAR/MEDCENTER reading clearly, color-coded buildings). STILL PENDING: building footprint
+  reorg/resize, furniture for new buildings, weekly city-council.
+- **Visual cyberpunk city pass** — DONE. The terrain renderer had a strong COMPETING aesthetic
+  (bioluminescent mushrooms/spores carpeting the ground = alien-forest, not cyberpunk). Per user, KEPT
+  the psychedelic accent but made the city read cyberpunk-first. (1) MUSHROOMS dialed back from 12%→6%
+  of walkable tiles, spore-seep .82→.87 — now punctuation, not carpet. (2) CYBERPUNK STREET-GRIME layer
+  added to drawTerrain (static, drawn once to tctx, ZERO per-frame cost): oil slicks w/ iridescent
+  cyan/magenta sheen, scattered trash/debris flecks w/ metallic glints, exposed conduit/cable runs w/
+  live-current glow pips. This is the dominant ground texture now. (3) RAIN/FOG ATMOSPHERE TOGGLE — the
+  🌧 HUD button (id b-atmo) toggles ATMO.on (OFF by default so it never costs framerate). drawAtmosphere()
+  renders drifting layered smog gradients + diagonal rain streaks, screen-space, fades in. ATMO state +
+  initRain particle pool. (4) NEON MARQUEE SIGNS — the biggest top-down "cyberpunk city" signal: NEON_SIGNS
+  map (17 landmark types → {label,color}), rendered above each as a flickering glowing sign w/ additive
+  glow halo, dark backing, neon underline tube, position-keyed brownout flicker. Per-frame but only for
+  visible landmarks. e.g. CLINIC (green), GEAR (amber), PRECINCT (red), ADMIN (purple), FIXER (orange),
+  NOODLES, ARCADE, STIMS. Caught + fixed a `t` scoping bug via a headless render smoke-test (drawStruct
+  on all 414 structs + drawTerrain + drawAtmosphere = 0 errors). Validated: tests pass, stable 8-day run,
+  all roles alive, no dead/dupes. Perf-respectful (grime static, atmo opt-in, signs cull to viewport).
+  STILL PENDING: building footprint reorg/resize (structures are 1-tile icons; a multi-tile building
+  redesign is a separate deep pass), furniture for new buildings, weekly city-council session.
+- **Character panel sizing + request pacing** — DONE. (1) Inspect panel now FIXED SIZE (360px wide ×
+  560px tall, max-height calc(100vh-130px), overflow-y:auto) so switching tabs NEVER resizes the window
+  — and it's wider for readability. Narrow-screen variant gets max-height:50vh. (2) NPC REQUEST PACING:
+  was a flood (~13 wisps × one per 600 ticks). Now a global cooldown (900 ticks min between any two
+  petitions), a hard cap of 3 simultaneous pending, longer per-wisp gap (2400 ticks ≈ once/day), and
+  picks ONE eligible wisp at random per cycle instead of all at once. Measured ~3/day, max 3 pending.
+  STILL PENDING: weekly city-council session (to batch routine flashpoints — noted as the natural next
+  feature), building reorg/resize visual pass, furniture for the new buildings, deeper UI/GUI polish.
+- **UI cluster + mechanics document** — DONE. (1) CHARACTER PANEL rebuilt into 4 TABS: STATUS (vital
+  bars + mood drivers + task/credits/stress), PERSON (operative attrs, role desc, vocation, skills,
+  TEMPERAMENT personality readout), TIES (allegiance, clique/gang, rep, relationships), MIND (thoughts
+  + memories). Tab state INSPECT_TAB; switch via data-itab buttons. Actions (recruit/orders/talk/follow)
+  always-visible below tabs. (2) wispThoughts(p) — surfaces inner state as thoughts: outliers (mood/
+  stress/needs extremes, homeless, sick, addiction), critical-event reactions (evicted/robbed/witnessed
+  violence from recent memories), insurrection stance, + some stable-per-day mundane chatter when calm.
+  Capped at 3, no AI cost. (3) FORCE COMPLIANCE button — appears when p.refusedOrder set; costs 10 intel
+  + adds resentment (mood -12, allegiance -8, stress +10). REFUSAL logic in scoreJobs: a wisp may refuse
+  a direct order if too tired (rest 20-32), defiant (allegiance<-25 + ind>62), or frayed (stress>78);
+  sets refusedOrder + pendingForceCmd. Avatar never refuses. Note: starving/exhausted intercepted by
+  chooseJob (eats/sleeps first) by design. (4) Event VIEW button — events with a focusId show a button
+  that jumps camera to the focal wisp (wired on the defector event; pattern reusable). (5) Collapsible
+  AGENT REQUESTS — header click toggles window.REQ_COLLAPSED, shows count + arrow. All validated: tabs
+  render 0-error for avatar/role/ordinary, thoughts never crash, refusal fires for stress/defiant,
+  requests collapse clean, stable 9-day run, bounds valid.
+  DOCUMENT: NEON_SPRAWL_Mechanics_Reference.docx — polished in-game reference (docx@9.6.1 at the global
+  path /home/claude/.npm-global/lib/node_modules/docx; npm registry BLOCKED so reference by abs path).
+  13 sections + TOC, 12 styled tables (US Letter, Arial, navy headings): overview, resources, vital
+  signs, temperament, operative (+attrs +backgrounds), insurrection (4 metrics + flow), investigation,
+  named roles (+regime-cast behavior), directing wisps (+tabs +force), buildings (production/civic/
+  utility), items/furniture, events/disasters/crime/housing, reading-the-game tips. Validated via
+  docx validate.py (340 paragraphs, all checks pass). gendoc.js is the generator. STILL PENDING from
+  the 25-item batch: emotion-clarity review, further music chill pass, utility-WORKER roles, camera
+  AUTO-pan (only the button was built), event-engages-avatar for ALL events (only cache wired so far).
+- **Fixes & balance batch (test-build hardening)** — DONE. (1) EVICTION SPIRAL fixed: rent lowered
+  (28→11/day, crisis 42→16) + baseline SUBSISTENCE income (10/day employed-or-not, homeless 6) so the
+  unemployed aren't doomed + 4-day debt grace with a warning at day 2 (was instant eviction). Result:
+  ~2 evicted of 13 after 6 days (was near-total collapse). (2) NO DECIMALS: addMod rounds values at
+  source; allegiance/mood displays rounded. (3) NAMES under every wisp always-on — player operative
+  bold cyan, role-wisps bold in role-accent + a colored diamond marker above (the cast is findable);
+  ordinary wisps dim, names BELOW (emotions/alerts above — clean separation). (4) CRIME: Enforcer now
+  reliably reports robberies in range (+14 heat, it's their job); theft thresholds tightened (intg<28,
+  credits<8, addiction>30) + cooldown after each theft (no serial pickpocketing); steal triggers
+  witnessCrime. (5) UTILITIES: new Power Station (⚡) + Water Facility (💧) buildings — staffed = block
+  runs clean; absent = mood drag (no power) + gradual hygiene/health decline (no water, softened to
+  once-daily so it's not an instant epidemic). ST.utilPower/utilWater flags. (6) Cache event now runs
+  through the OPERATIVE (Tradecraft check shifts odds, names them in the log). (7) All RimWorld refs
+  stripped from comments (were never player-facing anyway). VERIFIED NON-BUGS: collision is solid (0%
+  wall-clip over 5029 samples — perceived clipping was wisps crossing walkable decor); roles DO spawn
+  + survive save/load (the "missing roles" was loading a pre-build save; "lost on load" test was a
+  false alarm counting ===6 after eviction deaths). Stable, all bounds valid. NOTE: probe_final.js +
+  correct.js now exceed in-container timeouts (POP 7→12 × their huge tick-batches) — game runs smooth
+  (0.35ms/tick); use trimmed ≤10-day runs. STILL PENDING from the 25-item request: camera lock-to-wisp
+  on events, flippable/rebalanced character panel, override-refusal button + thoughts display
+  (outliers/critical only), collapsible requests window, emotion-clarity review, further music chill
+  pass, utility-worker roles, and the DOCX mechanics document.
+- **Named ROLE-WISPS — the city's power structure** — DONE. 6 named characters spawn from turn one
+  (POP bumped 7→12 so roles + generic citizens coexist): Doctor (civic, clinic), Shopkeeper (civic,
+  store), Enforcer (REGIME force), Mayor (REGIME force), Informant (secret regime snitch), Fixer
+  (insurgent lever). `ROLES{}` defines each (title/fname/align/accent/desc/persLean/allegianceLean +
+  function flags regimeForce/secretInformant/insurgentLever). `mkRoleWisp(x,y,key)` spawns them —
+  ingrains the role's personality lean into pers stats (so behavior fits the role, keeping individual
+  variation), sets allegiance lean (regime roles start hostile), flags functions. Spawned first in
+  newGame, then generics fill to POP. Inspect panel shows role + alignment (REGIME/CIVIC/INSURGENT
+  color-coded). AI DIALOGUE: `wispSystemPrompt` extended with a ROLE CONTEXT block — station, regime/
+  informant/broker framing, and STAT-DRIVEN disposition (intg<40 = bribable, intg>65 = principled;
+  allegiance shapes their stance on resistance). ~527 tok/prompt. ACTIVE REGIME FORCES via
+  `roleForcesTick()` (in insurrectionTick): loyal Mayor props up grip (+0.1-0.2/day by ambition),
+  TURNED mayor undermines it (−0.3/day +support); loyal Enforcer raises exposure + halves your lie-low
+  fade rate + can bust a cell on a failed Nerve opsCheck, TURNED enforcer shields you; Informants raise
+  regime awareness. Probe-verified: spawn, stat-leaning, AI prompt, all force dynamics (grip up/down,
+  exposure pressure), save/load, stable 3/3. Perf fine (0.35ms/tick @ 14 pawns; roleForcesTick 0.005ms).
+  NOTE: correct.js now runs slow in-container (POP=12 × its 130k-tick batch exceeds the timeout) — game
+  itself is smooth; use trimmed (≤10-day) correctness runs in-container. NEXT: turn/bribe/expose role
+  actions via dialogue, deeper civic effects (Doctor heals faster, Shopkeeper prices).
+- **Music → melancholy lofi + UI/GUI consistency pass** — DONE (prior "proper test build").
   MUSIC: the BGM is PROCEDURAL Web Audio synth (no audio file — can't generate/host one). Re-composed
   the ambience engine from a dark sawtooth city-drone to melancholy lofi: soft TRIANGLE drone (was
   sawtooth), Am9 warm sine pad as the soothing core, gentle vinyl-hiss (lowpass noise, was harsh
