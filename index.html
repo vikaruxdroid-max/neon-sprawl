@@ -1338,7 +1338,7 @@ function placeBp(type,x,y){const d=DEF[type];
 function cancelBp(s){if(s.paid)ST.income+=s.paid;removeStruct(s);syncHUD()}
 function finishBuild(s){s.bp=false;s.hp=s.maxHp;s.prog=0;ST.stats.built++;
   if(DEF[s.type].furn&&s.qual===undefined)s.qual=1;
-  SFX.build();powerRecalc();
+  SFX.build();
   if(s.type==="housing"){
     // register a new home slot near the housing unit — uses struct location as virtual bed
     ST.cityHomes.push({x0:s.x-1,y0:s.y-1,w:3,h:3,bed:{x:s.x,y:s.y},door:{x:s.x,y:s.y+1},virtual:true});
@@ -1357,10 +1357,7 @@ function nudgeOff(x,y){const all=ST.pawns;
         if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;
         const X=x+dx,Y=y+dy;
         if(INB(X,Y)&&colCost(X,Y)>=0){e.px=X+.5;e.py=Y+.5;e.path=null;e.job=null;placed=true}}}}
-function deconFinish(s){removeStruct(s);powerRecalc();syncHUD();if(typeof drawTerrain==="function")drawTerrain()}
-
-/* ---------- power ---------- */
-function powerRecalc(){}  // city is always powered — no generator system
+function deconFinish(s){removeStruct(s);syncHUD();if(typeof drawTerrain==="function")drawTerrain()}
 
 /* ---------- map generation ---------- */
 function addBuilt(type,x,y,owner){if(!INB(x,y))return;
@@ -3815,7 +3812,6 @@ function gameOver(){ST.phase="over";
 /* ---------- master tick ---------- */
 function updateFlags(){}  // survival checklist retired — sandbox city has no win-objectives
 function tick(){ST.tick++;
-  if(ST.tick%10===0)powerRecalc();
   if(ST.tick%5===0){const P=ST.pawns;for(let i=0;i<P.length;i++)for(let j=i+1;j<P.length;j++)
     if(DIST(P[i].px,P[i].py,P[j].px,P[j].py)<5)relAdj(P[i].id,P[j].id,0.02)}
   // (roguelike vat-protein production + beacon-extraction win removed — the city has neither)
@@ -6182,7 +6178,14 @@ function expireRequests(){
         log(agent.name+" didn't wait for the word — moving on "+victim.name+".","warn")}
       continue}
     if(agent)agent.pers.soc=clamp(agent.pers.soc-1,0,100);
-    log((agent?agent.name:"Agent")+" got tired of waiting — acted on instinct.","warn")}}
+    log((agent?agent.name:"Agent")+" got tired of waiting — acted on instinct.","warn")}
+  // prune resolved/expired petitions so the list (and saves) don't grow unbounded — keep all pending + 8 most-recent resolved
+  if(ST.requests.length>16){
+    const keep=new Set(),resolved=[];
+    for(const r of ST.requests){if(r.status==="pending")keep.add(r);else resolved.push(r);}
+    for(const r of resolved.slice(-8))keep.add(r);
+    ST.requests=ST.requests.filter(r=>keep.has(r));
+  }}
 
 function applyDrift(p,deltas){
   const today=Math.floor(ST.tick/2400);
@@ -7156,8 +7159,7 @@ function applyState(d){
     }
   }
   ST.beams=[];ST.floats=[];ST.emotes=[];ST.tombs=[];ST.sel=[];ST.rooms=d.rooms||[];
-  ST.phase="run";ST.paused=false;ST.speed=1;
-  powerRecalc()}
+  ST.phase="run";ST.paused=false;ST.speed=1;}
 function saveToSlot(slot){
   if(ST.phase!=="run"){flashMsg("Nothing to save yet");return false}
   try{localStorage.setItem(slotKeyFor(slot),JSON.stringify(serializeState()));
@@ -7299,7 +7301,7 @@ function newGame(){
   $("log").innerHTML="";DIARY_ENTRIES.length=0;CHRONICLE.length=0;renderDiary();renderRoster();
   log("The sprawl wakes — citizens drifting to homes, jobs, and the night's vices.","info");
   log("You watch over the district. Build it out, steer who you can, and keep the block from tearing itself apart.","info");
-  powerRecalc();updateFlags();syncHUD();renderInspect();refreshSpd();hideModal();
+  updateFlags();syncHUD();renderInspect();refreshSpd();hideModal();
   banner("DAY 1 — THE SPRAWL","good")}
 
 // ── PERF HUD (press P) — self-contained DOM overlay; measures real frame rate in-browser, incl. fullscreen ──

@@ -51,6 +51,40 @@ done yet.
   O(n²) pawn-pair proximity loop (every 5 ticks) is trivial at pop ~13; spatial-bucket it only when pop
   scales past ~40 (premature now). BALANCE: unmanaged mid-40s mood confirmed as emergent equilibrium
   (soft floor only at m<10), not a bug — no tuning change. NEW save/load assertions: 10/10 pass.
+- **COMPREHENSIVE FUNCTIONAL VERIFICATION (2026-06-18, follow-up)** — DONE. Read the mechanics-reference
+  docx and cross-checked every documented system against code + runtime. Verified at runtime: 8 personality
+  traits, 6 operative attributes on the avatar, all 6 named roles spawn; an 8-day instrumented organic run
+  fired events (7), a disaster telegraph, a trade caravan, requests, sickness, tier progression (1→3),
+  milestones (5), and insurrection drift (support 5→17, grip 60→68, intel→16) with ZERO crashes and stable
+  survival. Player-gated systems (cells, exposure, gangs) correctly stay dormant in unmanaged play — gangs
+  have a single formation path (player sanction of a crew), by design. FORCE-TESTED those dormant paths:
+  injected a sanctioned gang (gangTick/crimeTick ran 3 days clean, gangHeat accrued), drove a robbery
+  (executed, produced effect), and ran the full investigation loop (informant case opened → investigate
+  revealed a lead → accuse resolved as solved). All clean. NEW FIX FOUND + SHIPPED: **`ST.requests` grew
+  unbounded** (expireRequests only flipped status, never spliced; reached 26 in 8d) — pre-existing, but
+  amplified into SAVE BLOAT by the audit's request-serialization. Fix: prune to pending + 8 most-recent
+  resolved in expireRequests. Verified bounded at 16. Open items (not bugs): births/conception, blackout
+  disaster, addiction escalation, and arrivals are rare/long-horizon and were not observed in 8 days; a
+  7-day×12-seed horizon and live render/FPS profiling remain unmeasured.
+- **HARDENING PASS — buildings, systems, long-horizon (2026-06-18, single-city scope)** — DONE.
+  BUILDINGS: every building + furniture in the mechanics doc maps to a DEF entry (50 total); 41 placeable
+  across 8 build-menu categories (utility-menu gap from earlier sessions resolved). Runtime-proven:
+  production accrues (data/food/scrap), 31/39 economy buildings work, refine outputs 0 only because
+  chemlab/workshop/stimlab/gearshop aren't in the starter set (player-built, by design), and the
+  power/water absence-penalty lands on 13/13 residents when facilities are absent. SYSTEMS: full
+  CLAUDE.md identifier sweep — 106/112 present; the 6 absent are test-harness names (spawnFoeAt),
+  tool names (str_replace/present_files), prose (tombstones→tickTombstones/ST.tombs), and tileInTurf
+  (doc marks it removed). AI DIALOGUE: gates on aiReady()=`!!AI_PROXY` — no TALK button / no crash
+  without a key; deterministic [ACT:] parse + verb-apply verified 7/7 (live LLM call needs a key, can't
+  test headless). LONG-HORIZON (unmanaged, 2 seeds × 7d + 1 × 8d): population stable (no death spiral;
+  one seed grew 13→14 via birth/arrival on d7), mood drops 60→mid-40s and PLATEAUS (stable equilibrium,
+  not decline), eviction fired (homeless 1), request-prune held (≤17), relationship map bounded (~80
+  keys). Per-tick timing in-harness is GC/Proxy-noisy (3-5ms, one 14ms spike) — NOT browser-representative;
+  use the in-game P-key FPS HUD for real numbers. CLEANUP: removed vestigial `powerRecalc()` no-op + all
+  6 call sites (real utility logic lives in the daily tick); save/load still 10/10. FLAGGED, NOT FIXED:
+  (1) `updateFlags(){}` is a second identical no-op — left to avoid pre-test churn; remove in a dedicated
+  pass. (2) docx production row "Logging Camp / Mine Shaft — Wood / Ore" is stale; fix in gendoc.js to
+  "Salvage Yard / Data Den — Scrap / Data" (not patched: docx is generated, edit would be overwritten).
 - **Character-creation screen** — DONE. NEW DISTRICT now routes through `showCharCreate()` before
   newGame: pick 1 of 5 backgrounds (live stat preview), distribute OPS_POINT_BUDGET(4) extra points
   via +/- per attribute (capped 0-10, remaining counter), enter a codename. BEGIN sets
