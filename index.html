@@ -11,11 +11,11 @@
 <style>
 :root{
   /* Cyberpunk + bioluminescent surreal palette */
-  --cy:#00d4ff; --mg:#e040fb; --yl:#ffc947; --gn:#39ff88; --rd:#ff3d5a; --or:#ff8c42;
-  --vi:#a259ff; --am:#ffb347; /* violet + amber for bioluminescence */
-  --bg:#010408; --panel:rgba(4,10,22,.94); --bd:#0d2040; --tx:#cce8ff; --dim:#5a7a9a;
+  --cy:#22ddff; --mg:#e85ffb; --yl:#ffd24a; --gn:#5cff9e; --rd:#ff5470; --or:#ff9a52;
+  --vi:#b478ff; --am:#ffc05a; /* violet + amber for bioluminescence */
+  --bg:#010408; --panel:rgba(6,13,26,.96); --bd:#16335c; --tx:#e4f4ff; --dim:#8aa8c8;
   --disp:"Chakra Petch",system-ui,sans-serif; --mono:"JetBrains Mono","Cascadia Mono",monospace;
-  --hud-h:44px;
+  --hud-h:46px;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
@@ -26,8 +26,8 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 /* ── PANELS ── */
 .panel{background:var(--panel);border:1px solid var(--bd);border-radius:6px;z-index:10;
   box-shadow:0 4px 24px rgba(0,0,0,.6)}
-.tb{background:rgba(8,18,36,.85);border:1px solid var(--bd);color:var(--tx);padding:6px 10px;
-  font:inherit;font-size:11px;letter-spacing:.07em;cursor:pointer;border-radius:4px;
+.tb{background:rgba(8,18,36,.85);border:1px solid var(--bd);color:var(--tx);padding:7px 12px;
+  font:inherit;font-size:12px;letter-spacing:.06em;cursor:pointer;border-radius:5px;
   white-space:nowrap;transition:border-color .12s,box-shadow .12s,color .12s}
 .tb:hover{border-color:var(--cy);color:#e8f6ff;box-shadow:0 0 10px rgba(0,212,255,.3)}
 .tb.on{border-color:var(--cy);color:var(--cy);background:rgba(0,212,255,.1);
@@ -42,14 +42,14 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 .hud-seg{display:flex;align-items:center;gap:8px;padding:0 14px;height:100%;
   border-right:1px solid rgba(13,32,64,.8)}
 .hud-seg:last-child{border-right:none}
-.hud-label{font-size:9px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase}
-.hud-val{font-family:var(--disp);font-size:13px;font-weight:600;color:#e8f6ff;letter-spacing:.04em}
+.hud-label{font-size:10px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase}
+.hud-val{font-family:var(--disp);font-size:14px;font-weight:600;color:#f0faff;letter-spacing:.04em}
 .hud-val.danger{color:var(--rd);animation:pulse-red 1s ease-in-out infinite}
 .hud-val.warn{color:var(--yl)}
-.hud-pip{display:inline-flex;align-items:center;gap:3px;font-size:10px;white-space:nowrap}
+.hud-pip{display:inline-flex;align-items:center;gap:3px;font-size:11px;white-space:nowrap}
 .hud-pip .dot{width:6px;height:6px;border-radius:1px;flex-shrink:0}
 .hud-goods{display:flex;align-items:center;gap:10px;padding:0 12px}
-.hud-day{font-family:var(--disp);font-size:11px;letter-spacing:.1em;color:var(--cy);
+.hud-day{font-family:var(--disp);font-size:12px;letter-spacing:.1em;color:var(--cy);
   text-shadow:0 0 10px rgba(0,212,255,.5)}
 @keyframes pulse-red{0%,100%{opacity:1}50%{opacity:.55}}
 #hud.crisis{border-bottom-color:rgba(255,61,90,.6);
@@ -69,11 +69,11 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 .dtag.health{color:#6bcfff}.dtag.district{color:var(--yl)}.dtag.info{color:var(--dim)}
 
 /* ── INSPECT ── */
-#inspect{position:fixed;left:8px;bottom:60px;width:310px;padding:14px 16px;
-  font-size:11px;display:none;line-height:1.55;z-index:30}
+#inspect{position:fixed;left:8px;bottom:60px;width:320px;padding:14px 16px;
+  font-size:12px;display:none;line-height:1.55;z-index:30}
 #inspect h3{margin:0 0 3px;font-family:var(--disp);font-weight:700;font-size:18px;
   color:#eafff4;letter-spacing:.02em}
-#inspect .sub{color:var(--dim);font-size:10px;margin-bottom:5px}
+#inspect .sub{color:var(--dim);font-size:11px;margin-bottom:5px;line-height:1.5}
 .bar{height:5px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);
   border-radius:3px;margin:2px 0 6px;overflow:hidden}
 .bar i{display:block;height:100%;border-radius:3px}
@@ -94,11 +94,11 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 .i-talk{background:rgba(162,89,255,.16)!important;border-color:rgba(162,89,255,.42)!important;color:#e7dcff!important}
 
 /* ── DISTRICT STATS (rendered inside overlay) ── */
-.ov-body h4{color:var(--cy);letter-spacing:.12em;font-size:9px;
+.ov-body h4{color:var(--cy);letter-spacing:.12em;font-size:11px;
   margin:10px 0 6px;text-transform:uppercase;
   display:flex;align-items:center;gap:6px}
 .ov-body h4::after{content:"";flex:1;height:1px;background:var(--bd)}
-.ov-body .srow{display:flex;justify-content:space-between;color:var(--dim);margin-bottom:4px;font-size:11px;line-height:1.5}
+.ov-body .srow{display:flex;justify-content:space-between;color:var(--dim);margin-bottom:4px;font-size:12px;line-height:1.55}
 .ov-body .srow b{color:var(--tx)}
 .ov-body .sbad{color:var(--rd)}
 .ov-body .sgood{color:var(--gn)}
@@ -325,7 +325,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   #hud{font-size:10px;gap:4px}
   .hud-seg{gap:4px;padding:0 7px}
   .hud-goods{gap:6px;padding:0 6px}
-  #inspect{width:220px;bottom:96px;font-size:10px}
+  #inspect{width:260px;bottom:96px;font-size:11px}
   #requests{width:220px;top:calc(var(--hud-h) + 28vh + 14px)}
   #toolbar{bottom:6px;padding:4px}
   .tb{padding:5px 7px;font-size:10px}
@@ -923,6 +923,17 @@ const DIRS=[[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,1.45],[1,-1,1.45],[-1,1,1.45]
 function astar(sx,sy,gx,gy,opt){opt=opt||{};const adj=opt.adj?1:0;const cf=opt.foe?foeCost:colCost;
   if(!INB(gx,gy)||!INB(sx,sy))return null;
   if(adj?CHEB(sx,sy,gx,gy)<=1:(sx===gx&&sy===gy))return [];
+  // PRIVATE PROPERTY: if a pawn is given, route AROUND homes they may not enter by adding a
+  // heavy (but finite) cost to those tiles — they'll detour if any path exists, but won't get
+  // stuck if the only route is through. The destination itself is exempt (going there on purpose).
+  const tp=opt.pawn;
+  const trespassCost=(X,Y)=>{
+    if(!tp)return 0;
+    if(X===gx&&Y===gy)return 0;            // the goal tile is an intended destination
+    const owner=homeOwnerAt(X,Y);
+    if(owner&&owner!==tp&&!canEnterHome(tp,owner))return 40;  // big detour incentive
+    return 0;
+  };
   const open=new Heap();const gS=new Float32Array(MW*MH).fill(Infinity);
   const par=new Int32Array(MW*MH).fill(-1);
   const si=sx+sy*MW;gS[si]=0;open.push({i:si,g:0,f:CHEB(sx,sy,gx,gy)});
@@ -935,7 +946,7 @@ function astar(sx,sy,gx,gy,opt){opt=opt||{};const adj=opt.adj?1:0;const cf=opt.f
       const X=nx+dx,Y=ny+dy;if(!INB(X,Y))continue;
       if(dx!==0&&dy!==0){if(cf(nx+dx,ny)<0||cf(nx,ny+dy)<0)continue}
       const c=cf(X,Y);if(c<0)continue;
-      const ng=gS[ni]+c*m;const ii=X+Y*MW;
+      const ng=gS[ni]+(c+trespassCost(X,Y))*m;const ii=X+Y*MW;
       if(ng<gS[ii]-1e-3){gS[ii]=ng;par[ii]=ni;open.push({i:ii,g:ng,f:ng+CHEB(X,Y,gx,gy)})}}}
   if(found<0)return null;
   const path=[];let cur=found;
@@ -1740,7 +1751,7 @@ function gotoCell(p,x,y,adj){
   const cx=p.px|0,cy=p.py|0;
   if(adj?CHEB(cx,cy,x,y)<=1:(cx===x&&cy===y)){p.path=null;return "arr"}
   if(!p.path||p.pTx!==x||p.pTy!==y||p.pi>=p.path.length){
-    const pa=astar(cx,cy,x,y,{adj:adj});
+    const pa=astar(cx,cy,x,y,{adj:adj,pawn:p});
     if(!pa)return "fail";
     p.path=pa;p.pi=0;p.pTx=x;p.pTy=y;
     if(pa.length===0){p.path=null;return "arr"}}
@@ -1773,6 +1784,8 @@ function homeFixture(p,type){if(!p.home)return null;const h=p.home;
 function nearestStruct(p,fn){let best=null,bd=1e9;
   for(const s of ST.structs.values()){if(!fn(s))continue;
     if(unre(p,s.x,s.y))continue;
+    // private property: don't target a fixture inside a home you're not welcome in
+    {const ho=homeOwnerAt(s.x,s.y);if(ho&&ho!==p&&!canEnterHome(p,ho))continue;}
     const d=DIST(p.px,p.py,s.x+.5,s.y+.5);if(d<bd){bd=d;best=s}}
   return best}
 function mkEat(p){
@@ -1798,6 +1811,8 @@ function scoreJobs(p){
   const funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar"||s.type==="park"||s.type==="arcade"||s.type==="couch")&&!s.bp&&!isBroken(s));
   let mate=null,_md=1e9;for(const q of ST.pawns){if(q.id===p.id)continue;
     if(relGet(p.id,q.id)<-40)continue;  // don't socialize toward rivals/enemies
+    // don't chase someone into a home you're not welcome in (no barging to socialize)
+    {const ho=homeOwnerAt(q.px|0,q.py|0);if(ho&&ho!==p&&!canEnterHome(p,ho))continue;}
     let dd=DIST(p.px,p.py,q.px,q.py);
     if(sameClique(p,q))dd*=0.5;          // strongly prefer your own clique
     else if(relGet(p.id,q.id)>35)dd*=0.75; // and friends generally
@@ -2425,6 +2440,8 @@ function pawnTick(p){
       break}
     case "socialize":{const o=ST.pawns.find(q=>q.id===j.oid);
       if(!o||o===p){p.job=null;break}
+      // if they ducked into a home you're not welcome in, don't follow them inside
+      {const ho=homeOwnerAt(o.px|0,o.py|0);if(ho&&ho!==p&&!canEnterHome(p,ho)){p.job=null;break}}
       const r=gotoCell(p,o.px|0,o.py|0,1);
       if(r==="fail"){p.job=null;break}
       if(r==="arr"){j.prog++;if(j.prog>=40){p.needs.socN=100;relAdj(p.id,o.id,3.5);

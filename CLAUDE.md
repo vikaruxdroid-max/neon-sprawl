@@ -215,6 +215,21 @@ Measured over managed 14-day runs (player keeps everyone ≥45 credits):
   across save/load as the district's history.
 - **Visual legibility (checkup)** — children render at 0.62 scale + flagged in inspect;
   watch-post coverage rings; blackout screen-darkening.
+- **UI readability pass** — DONE (CSS only, no logic touched). Priority was readability. Changes:
+  `--dim` #5a7a9a→#8aa8c8 (the big one — secondary text was too low-contrast everywhere); `--tx`
+  brighter (#e4f4ff); accent colors nudged brighter/more saturated for dark-bg contrast. Font
+  bumps: hud-label 9→10px, hud-pip 10→11px, hud-val 13→14px, hud-day 11→12px, inspect base
+  11→12px + .sub 10→11px, overlay h4 9→11px + srow 11→12px, buttons 11→12px w/ more padding.
+  Mobile inspect widened 220→260px (was cramped). All panels read clearer at a glance; cyberpunk
+  vibe intact. (ui_preview.html in container is a standalone HUD/inspect preview for eyeballing.)
+- **Private-property barging — FIXED (was incomplete)** — the earlier fix only gated `randNear`
+  (wandering); wisps still entered homes via job pathing. Now fixed at three layers: (1) A* adds
+  a heavy finite trespass cost (40) for tiles in homes the pawn can't enter, so paths route
+  AROUND them (the goal tile is exempt; `gotoCell` passes `{pawn:p}`); (2) `nearestStruct` skips
+  fixtures inside un-enterable homes (no pathing to a stranger's couch/tv); (3) socialize target
+  selection skips people standing in un-enterable homes, and the socialize execution ABANDONS if
+  the target ducks into one. Result: trespass went 0.31% → 0.00% over a 12-day sim; legit entries
+  (invited visits, family, crime jobs) still work. Perf unaffected (~0.4ms/path).
 - **Home visiting & private property** — DONE. Wisps know whose home is whose (`homeOwnerAt`)
   and respect it by relationship tier: `canEnterHome(p,owner)` — own/family(`areFamily`:
   partner or parent/child) → free; friend (rel>50) → ok; stranger → no (except crime). Property
