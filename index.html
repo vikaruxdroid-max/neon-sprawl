@@ -1105,6 +1105,10 @@ function finishBuild(s){s.bp=false;s.hp=s.maxHp;s.prog=0;ST.stats.built++;
     ST.cityHomes.push({x0:s.x-1,y0:s.y-1,w:3,h:3,bed:{x:s.x,y:s.y},door:{x:s.x,y:s.y+1},virtual:true});
     log("New home registered — district can now support one more citizen.","good");
     float(s.x+.5,s.y+.5,"HOME +1","#39ff88")}
+  // commerce auto-wrap: a player-placed vendor/refiner becomes a small walled store (if it fits)
+  if((DEF[s.type].vendor||DEF[s.type].refine)&&!s.inRoom&&!s.wrapped){
+    if(autoWrapStore(s)){float(s.x+.5,s.y+.5,"STORE","#22ddff");}
+  }
   if(DEF[s.type].blocks!==0)nudgeOff(s.x,s.y)}
 function nudgeOff(x,y){const all=ST.pawns;
   for(const e of all){if((e.px|0)!==x||(e.py|0)!==y)continue;
@@ -1147,6 +1151,53 @@ function placeRoom(x0,y0,w,h,door,furn){
   (ST.rooms||(ST.rooms=[])).push({x0,y0,w,h,theme});
   for(let x=x0;x<x0+w;x++)for(let y=y0;y<y0+h;y++){const st=structAt(x,y);if(st){st.inRoom=true;st.rth=theme}}
   if(typeof drawTerrain==="function")drawTerrain();  // keep static canvas in sync
+}
+// AUTO-WRAP a player-placed vendor/counter into a small walled STORE. Defensive: only builds
+// walls on tiles that are currently empty + walkable, so it never overwrites other structures or
+// walls off the counter. If the surrounding space is too crowded, leaves the bare counter.
+function autoWrapStore(s){
+  if(!s||s.bp)return false;
+  if(s.inRoom||s.wrapped)return false;             // already in a room (e.g. starter shop)
+  // already inside an existing room? (a wall/structure adjacent forming an enclosure) — skip
+  for(const rm of (ST.rooms||[]))
+    if(s.x>=rm.x0&&s.x<rm.x0+rm.w&&s.y>=rm.y0&&s.y<rm.y0+rm.h)return false;
+  // propose a 4x4 store with the counter on the interior back wall, door on the front (south).
+  // center the room so the counter sits one tile in from a wall.
+  const W=4,H=4;
+  const x0=s.x-1, y0=s.y-1;                         // counter at interior (1,1)
+  // the door is on the south edge, offset from the counter column
+  const door={x:x0+2,y:y0+H-1};
+  // validate: every WALL tile we'd add must be empty + in-bounds (don't clobber anything).
+  // interior tiles may contain the counter (ok) but nothing else blocking.
+  for(let x=x0;x<x0+W;x++)for(let y=y0;y<y0+H;y++){
+    if(!INB(x,y))return false;
+    const edge=(x===x0||x===x0+W-1||y===y0||y===y0+H-1);
+    const here=structAt(x,y);
+    if(edge){
+      if(x===door.x&&y===door.y){if(here)return false;continue;}  // door tile must be clear
+      if(here)return false;                         // wall tile occupied → abort (graceful)
+    }else{
+      // interior: only the counter itself may be here
+      if(here&&here!==s)return false;
+    }
+  }
+  // build walls + door (skip the counter tile, it's already placed)
+  for(let x=x0;x<x0+W;x++)for(let y=y0;y<y0+H;y++){
+    const edge=(x===x0||x===x0+W-1||y===y0||y===y0+H-1);
+    if(!edge)continue;
+    if(x===door.x&&y===door.y)addBuilt("door",x,y);else addBuilt("wall",x,y);
+  }
+  // a display fixture inside to make it feel like a store (a second counter-adjacent prop)
+  // place a 'rug' as a shop-floor accent on a free interior tile if available
+  for(let yy=y0+1;yy<y0+H-1;yy++)for(let xx=x0+1;xx<x0+W-1;xx++){
+    if(!structAt(xx,yy)&&!(xx===s.x&&yy===s.y)){addBuilt("rug",xx,yy);break;}
+  }
+  const theme=roomTheme([{t:s.type}]);
+  (ST.rooms||(ST.rooms=[])).push({x0,y0,w:W,h:H,theme,store:true});
+  for(let x=x0;x<x0+W;x++)for(let y=y0;y<y0+H;y++){const st=structAt(x,y);if(st){st.inRoom=true;st.rth=theme;}}
+  s.wrapped=true;
+  if(typeof drawTerrain==="function")drawTerrain();
+  return true;
 }
 function genCity(){
   ST.cityHomes=[];
@@ -1958,7 +2009,7 @@ function scoreJobs(p){
   // hospital preferred over medbed (better care); fall back to either
   const medStr=nearestStruct(p,s=>(s.type==="hospital"||s.type==="medbed")&&!s.bp);
   // school: citizens with spare time and ambition train skills
-  const schoolStr=nearestStruct(p,s=>(s.type==="school"||(s.type==="bookshelf"&&!isBroken(s)))&&!s.bp);
+  const schoolStr=nearestStruct(p,s=>(s.type==="school"||s.type==="bookshelf"||s.type==="workstation"||s.type==="gym")&&!isBroken(s)&&!s.bp);
   const dlrStr=nearestStruct(p,s=>s.type==="dealer"&&!s.bp);
   const robTgt=nearestStruct(p,s=>s.type==="counter"&&!s.bp);
   const gearStr=!p.hasGear&&(p.credits||0)>=15&&(ST.goods.gear||0)>0?
@@ -2092,7 +2143,7 @@ function jobLabel(p){
     case "burgle":return "Breaking in";
     case "homicide":return "Stalking someone";
     case "buygear":return "Getting kitted out";
-    case "learn":return "Studying";
+    case "learn":{const vt=j.s&&j.s.type;return vt==="gym"?"Drilling":vt==="workstation"?"Training":"Reading";}
     default:return "Idling"}}
 
 /* combat helpers (pawn side) */
@@ -2646,20 +2697,27 @@ function pawnTick(p){
       if(r==="fail"){markUnre(p,s.x,s.y);p.job=null;break}
       if(r==="arr"){j.prog++;
         if(j.prog>=60){
-          // train the citizen's weakest core skill — a focused session gives a real chunk of XP
-          const skills=["sal","bld","cook","sht"];
-          let weakest=skills[0];for(const k of skills)if((p.sk[k]||0)<(p.sk[weakest]||0))weakest=k;
+          // the VENUE determines what kind of study this is — and what it trains:
+          //   bookshelf/school → READING (general/cook/sal — knowledge work)
+          //   workstation       → TRAINING (bld — technical drilling)
+          //   gym               → PRACTICE (sht — physical/combat drilling)
+          let pool, verb, gly;
+          if(s.type==="gym"){pool=["sht"];verb="drilled at the gym";gly="practice";}
+          else if(s.type==="workstation"){pool=["bld"];verb="trained at the terminal";gly="train";}
+          else{pool=["sal","cook"];verb="read at the stacks";gly="read";}
+          // train the weakest skill in this venue's pool
+          let weakest=pool[0];for(const k of pool)if((p.sk[k]||0)<(p.sk[weakest]||0))weakest=k;
           const before=p.sk[weakest];
-          // award ~half a level worth of XP per session so a few trips visibly raise the skill
           const need=60*((p.sk[weakest]||0)+1);
           const batch=Math.max(20,Math.round(need*0.5));
           for(let i=0;i<batch;i++)gainXp(p,weakest);
-          p.needs.fun=Math.max(0,(p.needs.fun||0)-6); // studying isn't fun
+          p.needs.fun=Math.max(0,(p.needs.fun||0)-6);
           applyDrift(p,{amb:1});
           if(p.sk[weakest]>before)float(s.x+.5,s.y+.5,weakest.toUpperCase()+" "+p.sk[weakest],"#7aa2ff");
-          else float(s.x+.5,s.y+.5,"+STUDY","#7aa2ff");
-          addMod(p,"study","Studied at the hub",3,TPD*.4);
-          remember(p,"put in study time at the learning hub — sharpening up");
+          else float(s.x+.5,s.y+.5,gly==="read"?"+READ":gly==="train"?"+TRAIN":"+DRILL","#7aa2ff");
+          addMod(p,"study","Studied — "+verb,3,TPD*.4);
+          remember(p,"put in study time — "+verb);
+          p.studyKind=gly;   // remembered so the glyph reflects the most recent study type
           p.job=null;syncHUD()}}
       break}
     case "substance":{const s=j.s;
@@ -3308,8 +3366,9 @@ function tick(){ST.tick++;
       if(s.roboStaffed&&roboBroken(s))continue;   // broken robot → offline
       const clerk=robo?null:ST.pawns.find(p=>p.assigned===K(s.x,s.y)&&p.hp>0&&DIST(p.px,p.py,s.x,s.y)<3.5);
       const selfRun=DEF[s.type].selfRun;
-      if(!robo&&!clerk&&!selfRun){s.idle=true;continue;}
+      if(!robo&&!clerk&&!selfRun){s.idle=true;s.staffedBy=null;continue;}
       s.idle=false;
+      s.staffedBy=robo?"robot":(clerk?clerk.id:"self");   // who's behind the counter (for render)
       const sells=DEF[s.type].sells;
       let good=null;
       if(sells&&(ST.goods[sells]||0)>0)good=sells;
@@ -4204,6 +4263,19 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
     ctx.globalAlpha=pul;ctx.fillStyle="#ffb454";ctx.font="bold 9px monospace";ctx.textAlign="center";
     ctx.fillText("\u26A0",X+T/2,Y-3);ctx.globalAlpha=1;ctx.textAlign="left";
   }
+  // STAFFED store: a small badge above the counter shows who's behind it — a robot or a clerk.
+  // This makes "this store is working, and by whom" legible at a glance.
+  if(!s.bp&&s.staffedBy&&DEF[s.type]&&DEF[s.type].vendor){
+    ctx.textAlign="center";ctx.font="bold 8px monospace";
+    if(s.staffedBy==="robot"){ctx.fillStyle="#7aa2ff";ctx.fillText("\u2699",X+T/2,Y-3);}      // robot gear
+    else{
+      // human clerk (or self-run): a small head/shoulders glyph + a subtle "open" glow on the counter
+      ctx.fillStyle="#5cff9e";ctx.fillText("\u25D4",X+T/2,Y-3);                              // staffed marker
+      ctx.globalAlpha=0.18+0.10*Math.sin(ST.tick*0.08);ctx.fillStyle="#5cff9e";
+      ctx.fillRect(X+2,Y+2,T-4,T-4);ctx.globalAlpha=1;                                       // "open for business" tint
+    }
+    ctx.textAlign="left";
+  }
   if(s.decon){ctx.strokeStyle="#ff3d5a";ctx.lineWidth=1.2;
     ctx.beginPath();ctx.moveTo(X+3,Y+3);ctx.lineTo(X+T-3,Y+T-3);
     ctx.moveTo(X+T-3,Y+3);ctx.lineTo(X+3,Y+T-3);ctx.stroke();ctx.lineWidth=1;}
@@ -4239,7 +4311,7 @@ function animaColor(p){
   const hex="#"+((1<<24)+(qr<<16)+(qg<<8)+qb).toString(16).slice(1);
   return{col:"rgb("+r+","+g+","+b+")",core:"rgb("+Math.min(255,r+45)+","+Math.min(255,g+45)+","+Math.min(255,b+45)+")",hex:hex,glowA:(0.32+m*0.45)};}
 function drawTaskGlyph(x,y,t){
-  const C={eat:"#ffb454",sleep:"#6ad0ff",cook:"#ff9f4a",build:"#ffd84a",salvage:"#ff9f2d",haul:"#9aa7bd",hygiene:"#4ec3ff",recreate:"#ffd84a",socialize:"#8be0ff",work:"#5ad0ff",treat:"#39ff88",substance:"#c98bff",crime:"#ff4757",rob:"#ff4757",idle:"#6b7793",dazed:"#b06fff"};
+  const C={eat:"#ffb454",sleep:"#6ad0ff",cook:"#ff9f4a",build:"#ffd84a",salvage:"#ff9f2d",haul:"#9aa7bd",hygiene:"#4ec3ff",recreate:"#ffd84a",socialize:"#8be0ff",work:"#5ad0ff",treat:"#39ff88",substance:"#c98bff",crime:"#ff4757",rob:"#ff4757",idle:"#6b7793",dazed:"#b06fff",read:"#7aa2ff",train:"#5ad0ff",practice:"#ffd24a"};
   const c=C[t]||"#9aa7bd";ctx.strokeStyle=c;ctx.fillStyle=c;ctx.lineWidth=1;
   const L=(x1,y1,x2,y2)=>{ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke()};
   const RC=(X0,Y0,w,h)=>{L(X0,Y0,X0+w,Y0);L(X0+w,Y0,X0+w,Y0+h);L(X0+w,Y0+h,X0,Y0+h);L(X0,Y0+h,X0,Y0)};
@@ -4260,6 +4332,9 @@ function drawTaskGlyph(x,y,t){
     case"substance":dot(x-2,y,1.4);dot(x+2,y,1.4);ctx.fillRect(x-2,y-1.4,4,2.8);break;                   // pill
     case"crime":case"rob":tri(x-1.3,y-3,x+1.3,y-3,x,y+1);ctx.fillRect(x-1,y+1,2,2.5);break;              // knife
     case"dazed":ctx.beginPath();ctx.arc(x,y,2.4,.6,5.7);ctx.stroke();dot(x+2.2,y-1,.8);break;            // swirl
+    case"read":RC(x-3,y-2.5,3,5);RC(x,y-2.5,3,5);L(x,y-2.5,x,y+2.5);break;                              // open book
+    case"train":ctx.fillRect(x-3,y-2.5,6,4);L(x-1.5,y-.5,x+1.5,y-.5);L(x-1.5,y+.8,x+1.5,y+.8);break;     // terminal w/ code lines
+    case"practice":dot(x-2.5,y,1.6);dot(x+2.5,y,1.6);ctx.fillRect(x-2.5,y-.8,5,1.6);break;               // dumbbell
     default:dot(x-2.5,y,1);dot(x,y,1);dot(x+2.5,y,1);                                                    // idle ...
   }
 }
@@ -4473,7 +4548,10 @@ function drawPawn(p){
     for(let _i=0;_i<_bdg.length;_i++){ctx.fillStyle=_bdg[_i][1];ctx.fillText(_bdg[_i][0],_x0+_i*8,Y-14)}
     ctx.textAlign="left"}
   // task glyph below
-  if(!slp){const _t=p.dazed>ST.tick?"dazed":(p.job?p.job.t:"idle");drawTaskGlyph(X,Y+15,_t)}
+  if(!slp){let _t=p.dazed>ST.tick?"dazed":(p.job?p.job.t:"idle");
+    // studying shows a distinct glyph by venue (read/train/practice)
+    if(_t==="learn"&&p.job&&p.job.s){const vt=p.job.s.type;_t=vt==="gym"?"practice":vt==="workstation"?"train":"read";}
+    drawTaskGlyph(X,Y+15,_t)}
   // HP bar (always show when selected or recently hurt)
   if(sel||ST.tick-p.hurtT<60){
     ctx.fillStyle="rgba(0,0,0,0.6)";ctx.fillRect(X-8,Y+9,16,3);

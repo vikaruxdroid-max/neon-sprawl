@@ -7,6 +7,22 @@ Player fantasy: spymaster + revolutionary + generational long-game. Build order:
 skeleton, DONE) → Influence → Generational/education → Resource-leverage → full Goal/endgame.
 Regime pressure is the "cure"; player chooses to stay hidden or go loud.
 
+- **Commerce auto-wrap** — DONE. `autoWrapStore(s)` (after placeRoom): when a player-placed
+  vendor/refiner blueprint finishes, it auto-generates a 4×4 walled store around the counter
+  (walls + south door + counter inside + a rug display fixture). DEFENSIVE: only builds on
+  empty+in-bounds tiles, aborts gracefully (leaves bare counter) if the space is crowded; skips
+  if already in a room (starter shops are pre-wrapped via placeRoom in genCity). Idempotent
+  (s.wrapped flag). Hooked in finishBuild for `vendor||refine` defs. Floats "STORE".
+- **Visible store worker** — DONE. Vendor earning loop sets `s.staffedBy` = "robot" | clerk id |
+  "self" (cleared to null when idle). drawStruct draws a badge above operating stores: ⚙ blue for
+  robot, ◔ green + a pulsing "open" tint for a human clerk. Makes "this store works, by whom"
+  legible at a glance. Self-corrects in real time as clerks come/go.
+- **Studying → visible activities** — DONE. `learn` now branches by VENUE: bookshelf/school →
+  READING (trains sal/cook), workstation → TRAINING (trains bld), gym → PRACTICE (trains sht).
+  schoolStr selection widened to include workstation+gym. Each has its own glyph (open book /
+  code-terminal / dumbbell), color, float (+READ/+TRAIN/+DRILL), and inspect label
+  (Reading/Training/Drilling). p.studyKind remembers the last kind. drawTaskGlyph call routes the
+  learn sub-type from j.s.type.
 - **Insurrection foundation (Phase 1)** — DONE. `ST.mov{support,exposure,intel,cells,stance,
   doctrine}` + `ST.regime{grip,awareness,lastSweep,informants}`. Pawns gained `allegiance`
   (-100 loyalist .. +100 committed), `recruited`, `cellRole`, `informant`, `secret`.
