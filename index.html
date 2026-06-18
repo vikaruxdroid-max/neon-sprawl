@@ -434,7 +434,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
    ============================================================ */
 
 /* ---------- helpers ---------- */
-const T=16, MW=140, MH=100, TPD=2400, TPS=10, POP=7;   // tile px, map w/h, ticks/day, ticks/sec, starting agents
+const T=16, MW=140, MH=100, TPD=2400, TPS=10, POP=12;   // tile px, map w/h, ticks/day, ticks/sec, starting agents
 // Road arterials (2-tile wide). h:[x0,x1,topY]  v:[leftX,y0,y1]
 // Frame the central built-up core (x~38-95, y~28-78) with a loop + cross streets.
 const ROADS={
@@ -868,8 +868,48 @@ function radicalPotential(p){
 }
 // daily: passive intel from recruited wisps (your network's eyes/ears), support drift,
 // the regime's surveillance response, and recruitment spread.
+// the named regime cast acts as ACTIVE forces against your insurrection (runs daily within insurrectionTick).
+function roleForcesTick(){
+  const m=M(),reg=REG();
+  // MAYOR — sets policy: a living, un-turned Mayor reinforces the regime's grip on the district.
+  const mayor=ST.pawns.find(p=>p.role==="mayor"&&p.hp>0);
+  if(mayor){
+    if((mayor.allegiance||0)<-10){
+      // loyal mayor props up grip (scaled by their ambition/competence)
+      const eff=0.10+(mayor.pers.amb||50)/100*0.10;
+      reg.grip=clamp(reg.grip+eff,0,100);
+    }else if((mayor.allegiance||0)>30){
+      // a TURNED mayor instead undermines the regime from within — a major coup for you
+      reg.grip=clamp(reg.grip-0.30,0,100);
+      m.support=clamp((m.support||0)+0.12,0,100);
+    }
+  }
+  // ENFORCER — hunts dissent: a loyal Enforcer raises your exposure and can burn a cell member.
+  const enforcer=ST.pawns.find(p=>p.role==="enforcer"&&p.hp>0);
+  if(enforcer&&(enforcer.allegiance||0)<-10){
+    m.exposure=clamp((m.exposure||0)+0.18,0,100);
+    // occasional active bust attempt when exposure is already high
+    if(m.exposure>50&&ST.tick%TPD===0&&Math.random()<0.15){
+      const cell=ST.pawns.filter(p=>p.recruited&&!isChild(p)&&p!==theAvatar());
+      if(cell.length){const victim=CH(cell);
+        // your operative's Nerve can foil the bust
+        const foil=opsCheck("nerve",13);
+        if(!foil.pass){victim.recruited=false;victim.allegiance=clamp((victim.allegiance||0)-20,-100,100);
+          m.exposure=clamp(m.exposure+5,0,100);
+          log("⚠ The Enforcer burned "+victim.name+" out of your network.","warn");}
+        else log("You spotted the Enforcer's move and pulled "+victim.name+" out in time.","good");}
+    }
+  }else if(enforcer&&(enforcer.allegiance||0)>30){
+    // a turned Enforcer shields your network instead — exposure leaks more slowly
+    m.exposure=clamp((m.exposure||0)-0.10,0,100);
+  }
+  // INFORMANT — leaks: an active, un-flipped informant steadily raises regime awareness.
+  const informants=ST.pawns.filter(p=>p.informant&&p.hp>0&&!isChild(p));
+  if(informants.length){reg.awareness=clamp((reg.awareness||0)+informants.length*0.15,0,100);}
+}
 function insurrectionTick(){
   const m=M(),reg=REG();
+  roleForcesTick();   // the named regime cast (Mayor/Enforcer/Informant) act as active forces
   const recruited=ST.pawns.filter(p=>p.recruited&&!isChild(p));
   const adults=ST.pawns.filter(p=>!isChild(p));
   // INTEL sources (layered so the loop can BOOTSTRAP from nothing):
@@ -897,7 +937,12 @@ function insurrectionTick(){
   const tcShield=clamp(1-(tradecraft-5)*0.06,0.5,1.3);   // high Tradecraft keeps the network quieter
   if(recruited.length)m.exposure=clamp((m.exposure||0)+recruited.length*0.04*leakRate*tcShield,0,100);
   // natural cooldown if you lie low
-  if(ST.tick%50===0&&m.stance==="hidden")m.exposure=Math.max(0,m.exposure-1.5);
+  // lying low reduces exposure — but a hostile Enforcer's surveillance blunts how fast you can fade.
+  if(ST.tick%50===0&&m.stance==="hidden"){
+    const enf=ST.pawns.find(p=>p.role==="enforcer"&&p.hp>0&&(p.allegiance||0)<-10);
+    const fade=enf?0.7:1.5;   // enforcer presence halves your fade rate
+    m.exposure=Math.max(0,m.exposure-fade);
+  }
   // REGIME awareness tracks exposure; high awareness → investigative sweeps.
   reg.awareness=clamp(reg.awareness*0.96+m.exposure*0.05,0,100);
   if(reg.awareness>55&&ST.tick-reg.lastSweep>TPD*2){regimeSweep();reg.lastSweep=ST.tick;}
@@ -1555,6 +1600,51 @@ function mkAvatar(x,y,spec){
 // attribute accessor with a safe default for non-avatars (so checks never crash)
 function ops(p,k){return (p&&p.ops&&p.ops[k]!=null)?p.ops[k]:5;}
 function theAvatar(){return ST.pawns.find(p=>p.isAvatar)||null;}
+/* ============================================================
+   NAMED ROLE-WISPS — the city's power structure & civic pillars, spawned from turn one. Each has a
+   fixed identity + job + an insurrection ALIGNMENT (regime asset / civic / insurgent lever). Their
+   PERSONALITY stats (intg, emp, amb, etc.) drive behavior: a low-integrity Mayor can be bought; a
+   high-empathy Doctor shelters your cells. They are gameplay TARGETS — turn, bribe, expose, protect.
+   ============================================================ */
+const ROLES={
+  doctor:   {title:"Doctor",    fname:"Doc",   align:"civic",   workType:"hospital", accent:"#5cffd0",
+    desc:"runs the clinic — heals the block, sees who comes in bleeding",
+    persLean:{emp:80,intg:65,cau:55}, allegianceLean:10},
+  shopkeeper:{title:"Shopkeeper",fname:"Merchant",align:"civic",workType:"gearshop", accent:"#ffd24a",
+    desc:"runs the store — the block's commerce flows through their counter",
+    persLean:{amb:65,soc:60,intg:50}, allegianceLean:0},
+  enforcer: {title:"Enforcer",  fname:"Sergeant",align:"regime", workType:null,       accent:"#ff5470",
+    desc:"the regime's muscle — patrols the block, hunts dissent",
+    persLean:{intg:40,imp:55,cau:35,emp:30}, allegianceLean:-60, regimeForce:true},
+  mayor:    {title:"Mayor",     fname:"Administrator",align:"regime",workType:null,    accent:"#c77dff",
+    desc:"the regime's face — sets policy, keeps the district in line",
+    persLean:{amb:80,intg:35,soc:65,cau:60}, allegianceLean:-45, regimeForce:true},
+  informant:{title:"Informant", fname:"Citizen",align:"regime", workType:null,        accent:"#9aa7bd",
+    desc:"a hidden snitch — feeds the regime in exchange for safety",
+    persLean:{cau:75,intg:30,soc:45,imp:30}, allegianceLean:-20, secretInformant:true},
+  fixer:    {title:"Fixer",     fname:"Broker", align:"insurgent",workType:null,       accent:"#ff9f2d",
+    desc:"the black-market broker — knows everyone, owes no one, a natural ally",
+    persLean:{amb:70,soc:75,intg:40,cur:65}, allegianceLean:35, insurgentLever:true},
+};
+// create a named role-wisp at (x,y). role = key in ROLES.
+function mkRoleWisp(x,y,roleKey){
+  const R0=ROLES[roleKey];if(!R0)return mkPawn(x,y);
+  const p=mkPawn(x,y);
+  p.role=roleKey;
+  // distinctive name: a title-flavored handle
+  p.name=R0.fname+' "'+CH(NH)+'"';
+  p.accent=R0.accent;
+  // ingrain the role's personality lean into their stats (keeps individual variation though)
+  for(const k in R0.persLean)p.pers[k]=clamp(Math.round((p.pers[k]+R0.persLean[k]*2)/3),0,100);
+  // their starting allegiance leans per role (regime assets start hostile to your cause)
+  p.allegiance=clamp((p.allegiance||0)+(R0.allegianceLean||0),-100,100);
+  // regime roles + the informant carry their function flags
+  if(R0.secretInformant){p.informant=true;}
+  if(R0.regimeForce){p.regimeForce=true;}
+  if(R0.insurgentLever){p.insurgentLever=true;}
+  p.mem=[{d:0,h:6,t:"I'm the "+R0.title.toLowerCase()+" around here — everyone knows it"}];
+  return p;
+}
 // a stat CHECK: roll against a difficulty, modified by the attribute. returns {pass, roll, margin}.
 function opsCheck(attr,difficulty){
   const a=theAvatar();const stat=a?ops(a,attr):5;
@@ -6111,6 +6201,13 @@ function renderInspectCore(){const el=$("inspect");
         active.map(md=>"<span style='color:"+(md.v>=0?"#39ff88":"#ff6b6b")+"'>"+(md.v>=0?"+":"")+md.v+" "+md.l+"</span>").join(" · ")+"</div>";}
     }
     h+="<div class='sub'>TASK: "+jobLabel(e)+"</div>";
+    // ROLE identity — show the named character's role + alignment prominently
+    if(e.role&&ROLES[e.role]){const R0=ROLES[e.role];
+      const alignCol=R0.align==="regime"?"#ff5470":R0.align==="insurgent"?"#5cff9e":"#ffd24a";
+      const alignLbl=R0.align==="regime"?"REGIME":R0.align==="insurgent"?"INSURGENT LEVER":"CIVIC";
+      h+="<div class='sub' style='border-left:2px solid "+R0.accent+";padding-left:6px;margin:3px 0'>";
+      h+="<span style='color:"+R0.accent+";font-weight:600'>"+R0.title.toUpperCase()+"</span> · <span style='color:"+alignCol+";font-size:10px'>"+alignLbl+"</span>";
+      h+="<div style='font-size:10px;opacity:.7;margin-top:1px'>"+R0.desc+"</div></div>";}
     // AVATAR: show your Operative Attributes
     if(e.isAvatar){
       const bg=OPS_BACKGROUNDS.find(b=>b.k===e.background);
@@ -6362,10 +6459,23 @@ function wispSystemPrompt(p){
     if(allies.length)parts.push("you're tight with "+allies.map(q=>q.name).join(" and "));
     return parts.length?"On the block right now: "+parts.join("; ")+".":""};
   const gearLine=p.hasGear?"You're kitted out right now — gear gives you an edge.":"You're running unprotected.";
+  // ROLE CONTEXT — for named role-wisps, inject their station, allegiance, and stat-driven disposition.
+  let roleLine="";
+  if(p.role&&ROLES[p.role]){const R0=ROLES[p.role];
+    const intg=p.pers.intg||50,emp=p.pers.emp||50,amb=p.pers.amb||50;
+    const al=p.allegiance||0;
+    const bribe=intg<40?"Your integrity is thin — you can be bought, if the price or the angle is right.":
+      intg>65?"You hold your principles hard — bribes and threats don't move you easily.":"You're pragmatic — you'll bend if it's worth it, but you have some lines.";
+    const cause=al<-30?"You serve the regime's order here and distrust troublemakers and agitators.":
+      al>30?"You quietly sympathize with the idea of resistance, even if you're careful about it.":"You keep your head down and your politics to yourself.";
+    const fnc=R0.regimeForce?" You are the regime's instrument on this block — you answer to power, not the people.":
+      R0.secretInformant?" You secretly inform on dissidents to the regime, for your own safety — a fact you hide carefully.":
+      R0.insurgentLever?" You operate in the gray market and owe loyalty to no authority — you could be useful to the right person.":"";
+    roleLine="\n\nYour station: you are the "+R0.title+" of this district — "+R0.desc+"."+fnc+" "+bribe+" "+cause+"\n";}
   return "You ARE "+p.name+", a person scraping out a life on a dead block at the ragged edge of a neon megacity in 2087. "+
     "Scrap is currency, protein is life, gangs hunt after dark, and corp enforcers shake people down.\n\n"+
     "Your character: you come across as "+axTraits(p)+". You've got a streak of "+(p.tr.map(t=>t.n).join(" and ")||"hard sprawl grit")+" in you. "+
-    "Right now you are "+feltState(p)+". It is day "+dayN()+", around "+(hourN()|0)+":00. "+gearLine+"\n\n"+
+    "Right now you are "+feltState(p)+". It is day "+dayN()+", around "+(hourN()|0)+":00. "+gearLine+roleLine+"\n"+
     districtState()+"\n\nOn your mind lately:\n"+mem+"\n\n"+
     "You're hearing a voice — call it the operator, or your own gut; someone watching over this block who can talk to you. "+
     "Answer the way this person actually would: street-worn, clipped, in the moment, sprawl slang where it fits. "+
@@ -6970,6 +7080,15 @@ function newGame(){
   sta.mem=[{d:0,h:6,t:"settled into this block with Vex — somebody's got to keep it running straight"},{d:0,h:6,t:"I grind steady and careful; Vex thinks I'm too slow about it"}];
   ST.pawns.push(sta);
   // populace — scatter procedural agents near the core (not across the whole 140x100 map)
+  // NAMED ROLE-WISPS — the district's power structure & civic pillars, present from turn one.
+  {const roleKeys=["doctor","shopkeeper","enforcer","mayor","informant","fixer"];
+   for(const rk of roleKeys){let tries=0,placed=false;
+     while(tries<2000&&!placed){tries++;
+       const x=RI(44,92),y=RI(30,74);
+       if(colCost(x,y)<0)continue;
+       if(ST.pawns.some(q=>(q.px|0)===x&&(q.py|0)===y))continue;
+       ST.pawns.push(mkRoleWisp(x,y,rk));placed=true;}}}
+  // fill the rest of the starting population with procedural citizens
   {let tries=0;while(ST.pawns.length<POP&&tries<4000){tries++;
     const x=RI(40,96),y=RI(28,78);  // within the built-up core region
     if(colCost(x,y)<0)continue;

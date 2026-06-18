@@ -42,7 +42,26 @@ done yet.
   `ccStats/ccPointsUsed/ccRemaining/ccSyncName` helpers, wired in the #modal click handler
   (data-ccbg/ccinc/ccdec/cc-begin/cc-back). Default fallback intact if skipped. Probe-verified: base
   spreads, point math, 10-cap, bg-switch, full creation→spawn pipeline all correct.
-- **Music → melancholy lofi + UI/GUI consistency pass** — DONE (this is the "proper test build").
+- **Named ROLE-WISPS — the city's power structure** — DONE. 6 named characters spawn from turn one
+  (POP bumped 7→12 so roles + generic citizens coexist): Doctor (civic, clinic), Shopkeeper (civic,
+  store), Enforcer (REGIME force), Mayor (REGIME force), Informant (secret regime snitch), Fixer
+  (insurgent lever). `ROLES{}` defines each (title/fname/align/accent/desc/persLean/allegianceLean +
+  function flags regimeForce/secretInformant/insurgentLever). `mkRoleWisp(x,y,key)` spawns them —
+  ingrains the role's personality lean into pers stats (so behavior fits the role, keeping individual
+  variation), sets allegiance lean (regime roles start hostile), flags functions. Spawned first in
+  newGame, then generics fill to POP. Inspect panel shows role + alignment (REGIME/CIVIC/INSURGENT
+  color-coded). AI DIALOGUE: `wispSystemPrompt` extended with a ROLE CONTEXT block — station, regime/
+  informant/broker framing, and STAT-DRIVEN disposition (intg<40 = bribable, intg>65 = principled;
+  allegiance shapes their stance on resistance). ~527 tok/prompt. ACTIVE REGIME FORCES via
+  `roleForcesTick()` (in insurrectionTick): loyal Mayor props up grip (+0.1-0.2/day by ambition),
+  TURNED mayor undermines it (−0.3/day +support); loyal Enforcer raises exposure + halves your lie-low
+  fade rate + can bust a cell on a failed Nerve opsCheck, TURNED enforcer shields you; Informants raise
+  regime awareness. Probe-verified: spawn, stat-leaning, AI prompt, all force dynamics (grip up/down,
+  exposure pressure), save/load, stable 3/3. Perf fine (0.35ms/tick @ 14 pawns; roleForcesTick 0.005ms).
+  NOTE: correct.js now runs slow in-container (POP=12 × its 130k-tick batch exceeds the timeout) — game
+  itself is smooth; use trimmed (≤10-day) correctness runs in-container. NEXT: turn/bribe/expose role
+  actions via dialogue, deeper civic effects (Doctor heals faster, Shopkeeper prices).
+- **Music → melancholy lofi + UI/GUI consistency pass** — DONE (prior "proper test build").
   MUSIC: the BGM is PROCEDURAL Web Audio synth (no audio file — can't generate/host one). Re-composed
   the ambience engine from a dark sawtooth city-drone to melancholy lofi: soft TRIANGLE drone (was
   sawtooth), Am9 warm sine pad as the soothing core, gentle vinyl-hiss (lowpass noise, was harsh
