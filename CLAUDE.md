@@ -39,7 +39,59 @@ done yet.
 
 ## ⚡ LATEST STATE (read this first — reconciled from the live VM, June 2026) ⚡
 
-**DEBUG + STUCK-LOOP PASS (most recent session) — found + fixed real bugs:**
+**ELECTION SYSTEM + CAFETERIA + REQUESTS-OFF + READABILITY (most recent session):**
+
+- **ELECTIONS (big new system):** when a public role-holder DIES, that seat opens and the block elects a
+  replacement. Design choices (Carlo): trigger ONLY on death; the seat sits EMPTY during the campaign
+  (~0.6 day) so the loss is felt; candidates self-nominate by ambition OR role-fit; the PLAYER can propose/
+  back a candidate (who competes, doesn't auto-win). Voters score each candidate by role-fit (`roleFit()`
+  = closeness of pers to the role's `persLean`) + relationship + a small pitch-bump + the player's
+  endorsement (weighted by the voter's allegiance), colored by voter empathy (empathetic voters weigh
+  relationships, pragmatic weigh fit). Winner installed via `installRole()`; ambitious losers take a mood
+  hit + a grudge toward the victor; backing the winner/loser nudges the avatar's standing. Functions:
+  `openElection`, `proposeCandidate`, `tallyElection`, `resolveElection`, `installRole`, `electableRole`,
+  `roleFit`. State in `ST.election` (reset on newGame/load). Triggered from `killPawn`; resolved in the
+  tick loop when `ST.tick>=election.voteAt`. AUTO-FILL fallback: if nobody runs, the best-fit wisp is
+  pressed into the role so the city isn't crippled. The secret informant never holds elections.
+  - **AI showcase layer (`tickElectionPitches`, gated like NPC convos):** each candidate generates a short
+    in-character campaign PITCH via the cheap model (revealing personality), and a couple of swing voters
+    voice their reasoning ("I'd back X but Y shows up when it matters"). Pitches show as `sayLine` bubbles +
+    log entries. Self-gated: only spends while an election is active + when player is watching the speaker.
+    AI can't fire headless (no proxy) but all machinery validated; the non-AI vote works fully on its own.
+  - **UI:** an election ALERT in the tasks panel (shows the role, candidates, days-left, who you're
+    backing); a "BACK FOR <ROLE>" button on the pawn inspect panel (when a vote's underway and the wisp is
+    eligible). Verified end-to-end: doctor dies → election opens → seat empty → 4 candidates self-nominate →
+    player backs one → vote resolves after the campaign → winner installed as the new doctor. Stable through
+    full election cycles, no stuck-loops.
+- **Cafeteria building (`cafeteria`, 🍽, Commerce menu):** a public canteen serving communal food
+  (`canteen:true`). Added as an eat source in `mkEat` (now `fridge||counter||bar||cafeteria`). This is the
+  FIX for the death-spiral: homeless pawns can't use home fridges, so without a public food source they
+  starve after eviction — the cafeteria gives them somewhere to eat. Verified: a homeless hungry pawn
+  correctly targets the cafeteria.
+- **Death cadence — investigated:** deaths are RARE at baseline (2 full days = 0 deaths, pop stable at 13).
+  Starvation requires food→0 THEN ~1.25 days of continuous starving to kill (slow, from prolonged neglect).
+  Five causes: combat, starvation, untreated infection, murder. The real risk is the eviction→homeless→
+  can't-reach-food→starve spiral — which the cafeteria addresses. No pathological fast-death found.
+- **Agent requests REMOVED (reversibly):** all 4 generators (`genRequests`, `maybeCliquePetition`,
+  `genWorkPetitions`, `genExpansionPetition`) gated behind `const REQUESTS_ENABLED=false;` (near AI_CAP_USD).
+  They were too intrusive; flip the flag to restore once tied into the game properly (e.g. via the planned
+  weekly council / quests). Verified: zero requests generate.
+- **Wisp area readability cleanup:** names render BELOW the wisp with visibility scaled to ZOOM — your
+  operative + named roles + the selected wisp are always legible; ordinary wisps' names fade in only as you
+  zoom in (`ordinaryVis=clamp((cam.z-1.0)/0.6,0,1)`), so a busy map isn't a wall of overlapping labels.
+  Every visible name now gets a consistent dark backing. Emotes SKIP a pawn that has an active speech
+  bubble, so they don't stack/overlap above the head. Emotions above, names below — clean separation.
+
+---
+
+## ═══ STILL PENDING (from Carlo's batch) ═══
+- **Critical infrastructure + SABOTAGE** (wisps sabotage power/water — BIG, ties to insurrection). NOT started.
+- **Real rain/thunder AUDIO** when the weather toggles are on (moderate; Claude can't hear to verify).
+- **The requests proper game integration** (Carlo deferred — "put in work later").
+
+---
+
+## ⚡ DEBUG STATE (prior session) ⚡
 - **Social-lock infinite loop (SELF-INFLICTED by last session's side-by-side feature):** a stuck-loop
   detector caught pawns holding the `socWith` lock for 184t→1052t (design was 45t). Root cause traced via
   tick-by-tick logging: the SOCIAL HOLD path (`p.job=null` to freeze the partner) was ALSO firing on the

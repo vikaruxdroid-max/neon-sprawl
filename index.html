@@ -656,6 +656,7 @@ const DEF={
   rug:        {name:"Woven Rug",    cost:{income:25}, hp:40, blocks:0, work:70, cat:"b", desc:"Ambiance — a small steady comfort underfoot.", furn:true, furnEffect:"ambient"},
   workstation:{name:"Workstation",  cost:{}, hp:60, blocks:1, work:140, cat:"b", desc:"Corp terminal — produces Data.", prod:"data", prodRate:180, wage:9},
   counter:    {name:"Shop Counter", cost:{}, hp:80, blocks:1, work:120, cat:"b", desc:"Vendor — sells goods, earns district income.", vendor:true},
+  cafeteria:  {name:"Cafeteria", cost:{income:90}, hp:90, blocks:1, work:160, cat:"b", desc:"A communal canteen serving the food the block grows and processes. Anyone can eat here — keeps the hungry and the homeless fed, so people aren't driven to starve or steal.", canteen:true, wage:8},
   bar:        {name:"Bar Counter",  cost:{}, hp:80, blocks:1, work:120, cat:"b", desc:"Drinks, food, socializing, sells Stims.", vendor:true, sells:"stims"},
   medbed:     {name:"Med Bay",      cost:{}, hp:80, blocks:0, work:160, cat:"b", desc:"Treat injury and disease."},
   dealer:     {name:"Dealer Spot",  cost:{}, hp:40, blocks:0, work:100, cat:"b", desc:"Sells Stims off the books, earns district income.", vendor:true, sells:"stims", illegal:true, selfRun:true},
@@ -693,13 +694,13 @@ const DEF={
   vendmachine:{name:"Vending Machine",nat:1,hp:50,blocks:1},
   planter:    {name:"Planter",     nat:1, hp:30, blocks:0}
 };
-const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","streetvendor","bar","medbed","dealer","farmplot","sporevat","loggingcamp","mineshaft","fixercorner","park","arcade","hospital","school","nursery","market","hall","mayorhouse","furnstore","housing","powerstation","waterfac","watchpost","copstation"];
+const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","cafeteria","streetvendor","bar","medbed","dealer","farmplot","sporevat","loggingcamp","mineshaft","fixercorner","park","arcade","hospital","school","nursery","market","hall","mayorhouse","furnstore","housing","powerstation","waterfac","watchpost","copstation"];
 // Build menu: curated minimal categories (start small, expand later). Each entry: type.
 const BUILD_CATS=[
   {name:"Home",     items:["wall","door","pod","lamp","fridge","shower","toilet"]},
   {name:"Comfort",  items:["tv","gym","couch","bookshelf","art","rug"]},
   {name:"Work",     items:["workstation","chemlab","workshop","stimlab","gearshop","farmplot","sporevat","loggingcamp","mineshaft","fixercorner"]},
-  {name:"Commerce", items:["counter","streetvendor","bar","market","furnstore","dealer"]},
+  {name:"Commerce", items:["counter","cafeteria","streetvendor","bar","market","furnstore","dealer"]},
   {name:"Civic",    items:["medbed","hospital","park","arcade","school","nursery","hall","mayorhouse"]},
   {name:"Order",    items:["watchpost","copstation"]},
   {name:"Utility",  items:["powerstation","waterfac"]},
@@ -715,7 +716,7 @@ const VAT_TIERS=[
 function vatTier(s){return VAT_TIERS[clamp((s.tier||1)-1,0,2)];}
 const BUILD_ICON={wall:"▦",door:"⌷",pod:"☖",lamp:"✦",fridge:"❄",shower:"♒",toilet:"⊡",tv:"▭",gym:"⛏",
   workstation:"⌨",chemlab:"⚗",workshop:"⚙",stimlab:"⚕",gearshop:"⛭",counter:"▤",bar:"♨",medbed:"✚",
-  dealer:"☠",farmplot:"❀",sporevat:"🍄",loggingcamp:"♻",mineshaft:"⌬",park:"❦",arcade:"►",hospital:"✚",school:"✎",nursery:"⊙",market:"⇄",hall:"⌂",furnstore:"🛋",housing:"⌂",watchpost:"◈",powerstation:"⚡",waterfac:"💧",copstation:"⚖",streetvendor:"🍜",mayorhouse:"♔",fixercorner:"⟁",couch:"⌗",bookshelf:"▤",art:"◳",rug:"▢"};
+  dealer:"☠",farmplot:"❀",sporevat:"🍄",loggingcamp:"♻",mineshaft:"⌬",park:"❦",arcade:"►",hospital:"✚",school:"✎",nursery:"⊙",market:"⇄",hall:"⌂",furnstore:"🛋",housing:"⌂",watchpost:"◈",powerstation:"⚡",waterfac:"💧",copstation:"⚖",streetvendor:"🍜",mayorhouse:"♔",fixercorner:"⟁",cafeteria:"🍽",couch:"⌗",bookshelf:"▤",art:"◳",rug:"▢"};
 
 
 // weapons removed — city sim mode
@@ -786,6 +787,9 @@ const AI_MODEL_TALK="claude-sonnet-4-6";    // quality dialogue for direct TALK
 const AI_MODEL_AMBIENT="claude-haiku-4-5";  // cheap/fast for background musings
 const AI_MODEL=AI_MODEL_TALK;               // back-compat default
 let AI_CAP_USD=1.00;          // session spend ceiling (0 = no cap); override via localStorage "neonSprawlAICap"
+// AGENT REQUESTS temporarily DISABLED — they were too intrusive; will re-enable once tied into the game
+// properly (e.g. via the planned weekly council / quest system). Flip to true to restore them.
+const REQUESTS_ENABLED=false;
 const AI_RATES={"claude-sonnet-4-6":{in:3.0,out:15.0},"claude-haiku-4-5":{in:1.0,out:5.0}};
 const AI_COST_IN=3.0, AI_COST_OUT=15.0;  // legacy fallback (Sonnet)
 try{const _o=localStorage.getItem("neonSprawlAIProxy");if(_o)AI_PROXY=_o}catch(e){}
@@ -1321,6 +1325,7 @@ function cliqueTick(){
   }
 }
 function maybeCliquePetition(){
+  if(!REQUESTS_ENABLED)return;
   if(ST.requests&&ST.requests.some(r=>r.status==="pending"&&r.kind==="clique"))return;
   const c=ST.cliques.find(c=>c.members.length>=4&&c.loyalty>=65);
   if(!c)return;
@@ -1739,7 +1744,7 @@ const ROLES={
     desc:"the black-market broker — knows everyone, owes no one, a natural ally",
     persLean:{amb:70,soc:75,intg:40,cur:65}, allegianceLean:35, insurgentLever:true},
 };
-// create a named role-wisp at (x,y). role = key in ROLES.
+// a named role-wisp at (x,y). role = key in ROLES.
 function mkRoleWisp(x,y,roleKey){
   const R0=ROLES[roleKey];if(!R0)return mkPawn(x,y);
   const p=mkPawn(x,y);
@@ -1757,6 +1762,99 @@ function mkRoleWisp(x,y,roleKey){
   if(R0.insurgentLever){p.insurgentLever=true;}
   p.mem=[{d:0,h:6,t:"I'm the "+R0.title.toLowerCase()+" around here — everyone knows it"}];
   return p;
+}
+/* ═══════════ ELECTIONS — when a role-holder dies, the seat opens and the block elects a replacement.
+   Candidates self-nominate by ambition (+ the player may propose one); voters weigh role-fit +
+   relationship + the candidate's pitch. The role sits EMPTY during the campaign, so the loss is felt. */
+function electableRole(rk){return !!ROLES[rk]&&!ROLES[rk].secretInformant;}
+// how well a wisp FITS a role by personality (0..1) — closeness of their pers to the role's persLean.
+function roleFit(p,rk){
+  const lean=ROLES[rk]&&ROLES[rk].persLean;if(!lean)return 0.5;
+  let tot=0,n=0;for(const k in lean){const diff=Math.abs((p.pers[k]||50)-lean[k]);tot+=1-diff/100;n++;}
+  return n?clamp(tot/n,0,1):0.5;
+}
+// open an election for a vacated role. Gathers self-nominated candidates (ambitious or well-suited wisps).
+function openElection(rk,deadName){
+  if(!electableRole(rk))return;
+  if(ST.election&&ST.election.role===rk)return;   // one at a time per role
+  const pool=ST.pawns.filter(p=>p.hp>0&&!isChild(p)&&!p.role&&!p.isAvatar);
+  let field=pool.filter(p=>{const amb=p.pers.amb||50,fit=roleFit(p,rk);return amb>58||fit>0.62;}).map(p=>p.id);
+  field.sort((a,b)=>{const pa=ST.pawns.find(p=>p.id===a),pb=ST.pawns.find(p=>p.id===b);
+    return ((pb.pers.amb||50)/100+roleFit(pb,rk))-((pa.pers.amb||50)/100+roleFit(pa,rk));});
+  field=field.slice(0,4);
+  if(field.length<1){
+    const best=pool.sort((a,b)=>roleFit(b,rk)-roleFit(a,rk))[0];
+    if(best){installRole(best,rk);log("No one ran for "+ROLES[rk].title+" — "+best.name+" was pressed into the role.","warn");}
+    return;
+  }
+  ST.election={role:rk,openedT:ST.tick,voteAt:ST.tick+Math.floor(TPD*0.6),
+    candidates:field,pitches:{},playerPick:null,votes:{},resolved:false,deadName:deadName||null};
+  log("\u2696 The "+ROLES[rk].title+" seat is empty. "+field.length+" candidate"+(field.length>1?"s have":" has")+" stepped forward — the block will vote.","info");
+  banner("ELECTION: "+ROLES[rk].title.toUpperCase(),"info");
+}
+// the player proposes/backs a candidate (adds them to the field if eligible).
+function proposeCandidate(pid){
+  const e=ST.election;if(!e||e.resolved)return false;
+  const p=ST.pawns.find(q=>q.id===pid);
+  if(!p||p.hp<=0||isChild(p)||p.role)return false;
+  if(!e.candidates.includes(pid))e.candidates.push(pid);
+  e.playerPick=pid;
+  log("You're backing "+p.name+" for "+ROLES[e.role].title+".","good");
+  return true;
+}
+// each voter scores candidates (fit + relationship + pitch + your endorsement) and votes for their top.
+function tallyElection(){
+  const e=ST.election;if(!e)return null;const rk=e.role;
+  const tally={};e.candidates.forEach(id=>tally[id]=0);
+  for(const v of ST.pawns){
+    if(v.hp<=0||isChild(v)||e.candidates.includes(v.id))continue;
+    let bestId=null,bestScore=-1e9;
+    for(const cid of e.candidates){
+      const c=ST.pawns.find(p=>p.id===cid);if(!c)continue;
+      const fit=roleFit(c,rk),rel=relGet(v.id,cid)/100;
+      const pitchSway=e.pitches[cid]?0.12:0;
+      const endorse=(e.playerPick===cid)?(0.15*(1+(v.allegiance||0)/200)):0;
+      const emp=(v.pers.emp||50)/100;
+      const score=fit*(1.1-emp*0.4)+rel*(0.6+emp*0.5)+pitchSway+endorse+(Math.random()*0.12);
+      if(score>bestScore){bestScore=score;bestId=cid;}
+    }
+    if(bestId){tally[bestId]++;e.votes[v.id]=bestId;}
+  }
+  let winId=e.candidates[0],winV=-1;
+  for(const cid of e.candidates){const c=ST.pawns.find(p=>p.id===cid);
+    const v=(tally[cid]||0)+(c?roleFit(c,rk)*0.01:0);if(v>winV){winV=v;winId=cid;}}
+  e.tally=tally;return winId;
+}
+// give a wisp a role (election win or auto-fill).
+function installRole(p,rk){
+  if(!p||!ROLES[rk])return;
+  p.role=rk;p.accent=ROLES[rk].accent;const R0=ROLES[rk];
+  if(R0.regimeForce)p.regimeForce=true;
+  if(R0.insurgentLever)p.insurgentLever=true;
+  if(R0.workType){for(const s of ST.structs.values()){if(s.type===R0.workType&&!s.bp){p.assigned=K(s.x,s.y);break;}}}
+  remember(p,"took office as "+R0.title+" — the block chose me");
+}
+// resolve the active election: install the winner, salt the losers, surface the result.
+function resolveElection(){
+  const e=ST.election;if(!e||e.resolved)return;
+  const winId=tallyElection();const winner=ST.pawns.find(p=>p.id===winId);
+  if(winner){
+    installRole(winner,e.role);
+    const wasPlayerPick=(e.playerPick===winId);
+    log("\u2696 "+winner.name+" wins the "+ROLES[e.role].title+" seat"+(wasPlayerPick?" — your candidate took it.":".")+" ("+(e.tally[winId]||0)+" votes)","good");
+    banner((winner.name.split(" ")[0])+" ELECTED","good");
+    addMod(winner,"elected","Won the people's mandate",10,TPD*2);
+    for(const cid of e.candidates){
+      if(cid===winId)continue;const c=ST.pawns.find(p=>p.id===cid);if(!c)continue;
+      if((c.pers.amb||50)>62){addMod(c,"lostrace","Lost the election I wanted",-12,TPD*1.5);applyDrift(c,{amb:3});
+        if(relGet(c.id,winId)>-40)relAdj(c.id,winId,-15);
+        remember(c,"lost the "+ROLES[e.role].title+" race to "+winner.name+". next time.");}
+    }
+    if(e.playerPick){const av=theAvatar();
+      if(e.playerPick===winId){if(av)addMod(av,"kingmaker","Backed the winning candidate",6,TPD);}
+      else{if(av)addMod(av,"backedloser","My candidate lost the race",-4,TPD);}}
+  }
+  e.resolved=true;ST.lastElection=ST.tick;ST.election=null;
 }
 // a stat CHECK: roll against a difficulty, modified by the attribute. returns {pass, roll, margin}.
 function opsCheck(attr,difficulty){
@@ -2232,6 +2330,7 @@ function careerTick(p){
   else if(c.sat<18)addMod(p,"badwork","Hates the grind",-3,TPD);
 }
 function genWorkPetitions(){
+  if(!REQUESTS_ENABLED)return;
   // at most one work petition per day, from the most aggrieved ambitious pawn
   if(ST.requests&&ST.requests.some(r=>r.status==="pending"&&r.kind==="work"))return;
   let worst=null;
@@ -2266,6 +2365,7 @@ function genWorkPetitions(){
 // a wealthy resident whose home is packed (no free tiles) petitions for more space.
 // the player approves (district funds an expansion) or denies. NPC then furnishes the new room.
 function genExpansionPetition(){
+  if(!REQUESTS_ENABLED)return;
   if(ST.requests&&ST.requests.some(r=>r.status==="pending"&&r.kind==="expand"))return;
   for(const p of ST.pawns){
     if(isChild(p)||p.homeless||!p.home)continue;
@@ -2422,7 +2522,7 @@ function nearestStruct(p,fn){let best=null,bd=1e9;
   return best}
 function mkEat(p){
   const home=(!p.homeless)&&homeFixture(p,"fridge");
-  const src=home||nearestStruct(p,s=>(s.type==="fridge"||s.type==="counter"||s.type==="bar")&&!s.bp&&!isBroken(s));
+  const src=home||nearestStruct(p,s=>(s.type==="fridge"||s.type==="counter"||s.type==="bar"||s.type==="cafeteria")&&!s.bp&&!isBroken(s));
   if(!src)return null;
   return{t:"eat",x:src.x,y:src.y,adj:1,prog:0,home:!!home};}
 function mkSleep(p){let pod=null;
@@ -2664,6 +2764,8 @@ function killPawn(p,why){const i=ST.pawns.indexOf(p);if(i<0)return;
     const o=ST.pawns.find(q=>q.id===id);if(o)addMod(o,"cliqueloss","We lost one of ours",-12,TPD*2.5);}
     c.loyalty=clamp(c.loyalty-8,0,100);}}
   ST.sel=ST.sel.filter(e=>e!==p);renderInspect();
+  // a vacated public role triggers an election — the block votes for a replacement (seat sits empty meanwhile)
+  if(p.role&&electableRole(p.role)){openElection(p.role,p.name);}
   if(ST.pawns.length===0&&ST.phase==="run")gameOver()}
 // comedic mini-tombstone that lingers then fades
 function spawnTombstone(x,y){
@@ -4088,6 +4190,8 @@ function tick(){ST.tick++;
   if(ST.tick%120===0)checkTier(); // district tier progression
   if(ST.tick%100===0)tickAmbient(); // background AI musings (rate-limited internally)
   if(ST.tick%40===0)tickNpcConvo(); // NPC-to-NPC dialogue when player is watching (self-gated, cheap)
+  if(ST.election&&!ST.election.resolved&&ST.tick>=ST.election.voteAt)resolveElection(); // election day
+  if(ST.election&&!ST.election.resolved&&ST.tick%30===0)tickElectionPitches(); // candidates campaign (AI, gated)
   if(ST.tick%100===0)driveAmbience();
   if(ST.tick%50===0)checkContextualHints();
   if(ST.tick%200===0&&ST.gangs.length)gangTick();
@@ -5192,6 +5296,8 @@ function drawEmotes(x0,y0,x1,y1){
   ctx.textAlign="center";
   for(const em of ST.emotes){
     if(em.x<x0-2||em.x>x1+2||em.y<y0-2||em.y>y1+2)continue;
+    // if this pawn has an active speech bubble, skip the emote so they don't stack/overlap above the head
+    if(ST.says&&ST.says.length){const sp=ST.pawns.find(q=>Math.abs(q.px-em.x)<0.6&&Math.abs(q.py-em.y)<0.6);if(sp&&ST.says.some(s=>s.id===sp.id))continue;}
     const def=EMOTES[em.kind]||EMOTES.happy;
     const prog=1-em.ttl/em.t0;
     const a=clamp(em.ttl<8?em.ttl/8:1,0,1); // fade out at end
@@ -5345,21 +5451,33 @@ function drawPawn(p){
     ctx.fillStyle="rgba(0,0,0,0.6)";ctx.fillRect(X-8,Y+9,16,3);
     const hpCol=p.hp>60?"#39ff88":p.hp>30?"#ffc947":"#ff3d5a";
     ctx.fillStyle=hpCol;ctx.fillRect(X-8,Y+9,16*clamp(p.hp/100,0,1),3)}
-  // NAME — always shown, BELOW the wisp. The player's operative is bold+cyan; named roles use their
-  // role accent; ordinary wisps are dim. (Emotions/alerts render ABOVE; names below — clear separation.)
+  // NAME — shown BELOW the wisp, with readability scaled to zoom so a busy map doesn't turn into a wall
+  // of overlapping labels. Your operative + named roles + the selected wisp are ALWAYS legible; ordinary
+  // wisps' names fade in only as you zoom in close enough to read them. (Emotions/alerts render ABOVE the
+  // wisp, names BELOW — clean separation.)
   {const isRole=!!p.role,isYou=!!p.isAvatar;
    const nm=p.name.split(" ")[0];
-   ctx.textAlign="center";
-   if(isYou){ctx.font="bold 8px monospace";ctx.fillStyle="#22ddff";}
-   else if(isRole){ctx.font="bold 7px monospace";ctx.fillStyle=p.accent;}
-   else if(sel){ctx.font="7px monospace";ctx.fillStyle=p.accent;}
-   else{ctx.font="7px monospace";ctx.fillStyle="rgba(170,190,210,.55)";}
-   // a subtle dark backing for legibility
-   const ny=Y+22;
-   if(isYou||isRole||sel){const w=ctx.measureText(nm).width;
-     ctx.fillStyle="rgba(2,8,20,.55)";ctx.fillRect(X-w/2-2,ny-7,w+4,9);
-     ctx.fillStyle=isYou?"#22ddff":isRole?p.accent:p.accent;}
-   ctx.fillText(nm,X,ny);ctx.textAlign="left";}
+   // ordinary wisps: name visibility ramps with zoom (invisible when zoomed out, clear when zoomed in)
+   const ordinaryVis=clamp((cam.z-1.0)/0.6,0,1);   // 0 at z<=1.0, full by z>=1.6
+   const show=isYou||isRole||sel||ordinaryVis>0.05;
+   if(show){
+     ctx.textAlign="center";
+     const ny=Y+22;
+     let col,fnt,alpha=1;
+     if(isYou){fnt="bold 8px monospace";col="#22ddff";}
+     else if(isRole){fnt="bold 7px monospace";col=p.accent;}
+     else if(sel){fnt="7px monospace";col=p.accent;}
+     else{fnt="7px monospace";col="rgba(190,205,225,1)";alpha=ordinaryVis*0.8;}
+     ctx.font=fnt;
+     const w=ctx.measureText(nm).width;
+     // consistent dark backing for EVERY visible name (was only role/you/selected before) — legibility
+     ctx.globalAlpha=alpha*(isYou||isRole||sel?0.6:0.5*ordinaryVis);
+     ctx.fillStyle="rgba(2,8,20,.85)";
+     ctx.fillRect(X-w/2-2,ny-7,w+4,9);
+     ctx.globalAlpha=alpha;ctx.fillStyle=col;
+     ctx.fillText(nm,X,ny);
+     ctx.globalAlpha=1;ctx.textAlign="left";
+   }}
   // ROLE marker — a small colored diamond above named role-wisps so the cast is findable at a glance
   if(p.role&&!p.isAvatar){const R0=ROLES[p.role];if(R0){
     ctx.fillStyle=R0.accent;ctx.globalAlpha=0.9;
@@ -6253,6 +6371,11 @@ function collectAlerts(){
       alerts.push({sev:"info",ic:"\u25C8",t:"Caravan buying "+cv.good.toUpperCase(),s:"Pays "+cv.rate+"c/unit on departure. You have "+have+" in stock — produce more to cash in."});}
     else alerts.push({sev:"info",ic:"\u25C8",t:"Caravan selling "+cv.good.toUpperCase(),s:"Cheap "+cv.good.toUpperCase()+" available while they're here."});}
   if(ST.debtDays)alerts.push({sev:"crit",ic:"\u26a0",t:"Debt: day "+ST.debtDays+"/6",s:"The district is condemned at day 6 of debt."});
+  // active election — surface it so the player can watch + back a candidate
+  if(ST.election&&!ST.election.resolved){const e=ST.election;
+    const cnames=e.candidates.map(id=>{const p=ST.pawns.find(q=>q.id===id);return p?p.name.split(" ")[0]:"";}).filter(Boolean).join(", ");
+    const daysLeft=Math.max(0,(e.voteAt-ST.tick)/TPD).toFixed(1);
+    alerts.push({sev:"warn",ic:"\u2696",t:ROLES[e.role].title+" election underway",s:"The seat is empty. Candidates: "+cnames+". Vote in ~"+daysLeft+" days. Select a citizen to back them."+(e.playerPick?" (Backing: "+(ST.pawns.find(p=>p.id===e.playerPick)||{}).name+")":"")});}
   // gang recruitment risk — unaffiliated, desperate, disaffected citizens near a gang (AGGREGATED)
   if(ST.gangs&&ST.gangs.length){
     const atRiskPawns=[];
@@ -6667,6 +6790,7 @@ function canGenRequest(p){
   return !ST.requests.some(r=>r.agentId===p.id&&r.status==="pending")}
 
 function genRequests(){
+  if(!REQUESTS_ENABLED)return;   // agent requests disabled for now
   if(ST.phase!=="run"||!ST.requests)return;
   // PACING: keep petitions occasional, not a flood. A global cooldown spaces them out, and a cap on
   // simultaneous pending requests prevents pile-up. (Routine flashpoints surface in the weekly council.)
@@ -6901,6 +7025,11 @@ function renderInspectCore(){const el=$("inspect");
     }
     h+="<div class='ordsec'>DIRECT ORDERS</div><div class='ordgrid'><button class='ob' data-o='work'><span>\u2692</span>Work</button><button class='ob' data-o='sleep'><span>\u263e</span>Rest</button><button class='ob' data-o='eat'><span>\u2295</span>Feed</button><button class='ob' data-o='hygiene'><span>\u2248</span>Cleanse</button><button class='ob' data-o='recreate'><span>\u25c8</span>Wander</button><button class='ob' data-o='socialize'><span>\u2687</span>Commune</button></div>";
     if(aiReady())h+="<button class='tb i-talk' id='i-talk'>\u25c6 TALK</button>";
+    // ELECTION: if a vote is underway and this wisp could hold the seat, let the player back them
+    if(ST.election&&!ST.election.resolved&&!e.isAvatar&&!e.role&&!e.child&&e.hp>0){
+      const backing=ST.election.playerPick===e.id;
+      h+="<button class='tb' id='i-back' style='border-color:rgba(255,210,74,.6);color:#ffe066;margin-top:4px'>\u2696 "+(backing?"BACKING FOR "+ROLES[ST.election.role].title.toUpperCase():"BACK FOR "+ROLES[ST.election.role].title.toUpperCase())+"</button>";
+    }
     h+="<button class='tb' id='i-follow'>"+(cam.follow===e.id?"\u25c9 FOLLOWING":"\u25ce FOLLOW")+"</button>";
     h+="<button class='tb' id='i-profile'>\u2630 FULL PROFILE</button>";
     el.innerHTML=h}
@@ -6979,6 +7108,7 @@ $("inspect").addEventListener("click",e=>{
     renderInspect();syncHUD();return;
   }
   if(id==="i-talk"&&sel&&sel.kind==="pawn")openChat(sel);
+  else if(id==="i-back"&&sel&&sel.kind==="pawn"){if(proposeCandidate(sel.id)){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
   else if(id==="i-recruit"&&sel&&sel.kind==="pawn"){if(recruitWisp(sel)){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
   else if(id==="i-follow"&&sel&&sel.kind==="pawn"){
     if(cam.follow===sel.id)stopFollow();else setFollow(sel);
@@ -7138,6 +7268,51 @@ async function tickNpcConvo(){
     }
   }catch(e){/* best-effort */}
   NPCCONVO.inFlight=false;
+}
+
+/* ELECTION AI — candidates generate short campaign pitches and a couple of swing voters explain their
+   reasoning, all via the cheap ambient model. Gated like the NPC convos (only spends when there's an
+   active election) so an election feels like a real political moment without burning budget. */
+const ELECTAI={inFlight:false,lastTick:-1e9};
+async function tickElectionPitches(){
+  const e=ST.election;if(!e||e.resolved)return;
+  if(ELECTAI.inFlight||!aiReady()||!AMBIENT.enabled)return;
+  if(ST.tick-ELECTAI.lastTick<90)return;
+  if(AI_CAP_USD>0&&aiCostUSD()>=AI_CAP_USD*0.85)return;
+  // find a candidate who hasn't pitched yet
+  const need=e.candidates.find(cid=>!e.pitches[cid]);
+  if(!need){
+    // all pitched — occasionally have a swing voter voice their reasoning (color, not required)
+    if(Math.random()<0.5)return;
+    const voter=ST.pawns.find(p=>p.hp>0&&!isChild(p)&&!e.candidates.includes(p.id)&&playerWatching(p.px,p.py)&&!p._votedAloud);
+    if(!voter)return;
+    ELECTAI.lastTick=ST.tick;ELECTAI.inFlight=true;
+    try{
+      const lead=e.candidates.map(cid=>ST.pawns.find(p=>p.id===cid)).filter(Boolean);
+      const names=lead.map(c=>c.name+" ("+axTraits(c)+")").join(" vs ");
+      const sys="You write ONE short line of an ordinary slum resident saying who they'll vote for in a local election and why. Under 16 words, in-character, plainspoken. No quotes, no names of the speaker.";
+      const line=await aiChat(sys,[{role:"user",content:voter.name+" ("+axTraits(voter)+") is deciding between: "+names+" for "+ROLES[e.role].title+". What do they mutter about their choice?"}],AI_MODEL_AMBIENT);
+      const c=(line||"").replace(/^[\s"'\u201c\u201d]+|[\s"'\u201c\u201d]+$/g,"").replace(/\[.*?\]/g,"").trim();
+      if(c){sayLine(voter,c);voter._votedAloud=true;}
+    }catch(e2){}
+    ELECTAI.inFlight=false;return;
+  }
+  const cand=ST.pawns.find(p=>p.id===need);if(!cand){e.pitches[need]="(withdrew)";return;}
+  ELECTAI.lastTick=ST.tick;ELECTAI.inFlight=true;
+  try{
+    const fit=roleFit(cand,e.role);
+    const angle=fit>0.66?"genuinely suited to it":(cand.pers.amb||50)>66?"hungry for the power more than the work":"a long shot making their case";
+    const sys="You write ONE short campaign pitch line from a candidate for a local slum-district office. Under 16 words, in-character, revealing their personality. No quotes, no stage directions — just the spoken pitch.";
+    const line=await aiChat(sys,[{role:"user",content:cand.name+" ("+axTraits(cand)+", "+angle+") is running for "+ROLES[e.role].title+" — "+ROLES[e.role].desc+". Their pitch to the block:"}],AI_MODEL_AMBIENT);
+    const c=(line||"").replace(/^[\s"'\u201c\u201d]+|[\s"'\u201c\u201d]+$/g,"").replace(/\[.*?\]/g,"").trim();
+    if(c){
+      e.pitches[need]=c;
+      log("\uD83D\uDDF3 "+cand.name+": \u201c"+c+"\u201d","info");
+      if(playerWatching(cand.px,cand.py))sayLine(cand,c);
+      remember(cand,"campaigned for "+ROLES[e.role].title+": "+c);
+    } else {e.pitches[need]="(stayed quiet)";}
+  }catch(e2){e.pitches[need]="(stayed quiet)";}
+  ELECTAI.inFlight=false;
 }
 
 /* ---------- wisp conversation (Phase 1) ---------- */
@@ -7716,7 +7891,7 @@ function applyState(d){
       }
     }
   }
-  ST.beams=[];ST.floats=[];ST.emotes=[];ST.tombs=[];ST.says=[];ST.sel=[];ST.rooms=d.rooms||[];
+  ST.beams=[];ST.floats=[];ST.emotes=[];ST.tombs=[];ST.says=[];ST.election=null;ST.sel=[];ST.rooms=d.rooms||[];
   ST.phase="run";ST.paused=false;ST.speed=1;}
 function saveToSlot(slot){
   if(ST.phase!=="run"){flashMsg("Nothing to save yet");return false}
@@ -7803,7 +7978,7 @@ function openLoadSlots(){
    ============================================================ */
 function newGame(){
   ST.phase="run";ST.tick=0;ST.speed=1;ST.paused=false;
-  ST.pawns.length=0;ST.beams.length=0;ST.floats.length=0;ST.says=[];
+  ST.pawns.length=0;ST.beams.length=0;ST.floats.length=0;ST.says=[];ST.election=null;
   ST.grp={};ST.sel=[];ST.goods={data:0,chem:0,parts:0,stims:0,gear:0,food:0,scrap:0};ST.income=200;ST.debtDays=0;ST.crisis=false;ST.gangs=[];
   ST.stats={built:0,deaths:0};ST.milestones=[];ST.tierReached=1;
   ST.mov={support:5,exposure:0,intel:0,cells:0,stance:"hidden",doctrine:null,foundedTick:0};
