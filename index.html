@@ -367,6 +367,12 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
     <span class="hud-pip" title="Stims"><span class="dot" style="background:#c98bff"></span><span id="g-stims" style="color:var(--dim)">0</span></span>
     <span class="hud-pip" title="Gear"><span class="dot" style="background:#7aa2ff"></span><span id="g-gear" style="color:var(--dim)">0</span></span>
   </div>
+  <div class="hud-seg" id="mov-seg" title="The Movement — support · intel · exposure" style="gap:7px">
+    <span class="hud-pip" title="Support — share of the district behind your cause"><span style="color:#5cff9e">✊</span><span class="hud-val" id="m-support" style="font-size:12px;color:#5cff9e">5</span></span>
+    <span class="hud-pip" title="Intel — espionage resource, spend on ops"><span style="color:#22ddff">◆</span><span class="hud-val" id="m-intel" style="font-size:12px;color:#22ddff">0</span></span>
+    <span class="hud-pip" title="Exposure — how much the regime suspects you"><span style="color:#ff5470">◎</span><span class="hud-val" id="m-exposure" style="font-size:12px;color:#ff5470">0</span></span>
+    <span class="hud-pip" title="Regime grip on the district — drive it down"><span style="color:var(--dim)">⛓</span><span class="hud-val" id="m-grip" style="font-size:12px;color:var(--dim)">60</span></span>
+  </div>
   <div class="gap"></div>
   <!-- Right: controls -->
   <div class="hud-seg" style="border-right:none;gap:4px">
@@ -657,7 +663,23 @@ const ST={
   debtDays:0,
   crisis:false,
   gangs:[],
-  milestones:[]
+  milestones:[],
+  // ── INSURRECTION layer ── you're building an underground movement vs. the oligarch regime.
+  mov:{
+    support:5,        // 0-100: how much of the district backs your cause (starts as a seed)
+    exposure:0,       // 0-100: how much the regime suspects your network (your "cure" pressure)
+    intel:0,          // espionage resource — gathered passively + via ops, spent on actions
+    cells:0,          // number of clandestine cells established
+    stance:"hidden",  // "hidden" (stay invisible) | "open" (overt insurrection) — player choice
+    doctrine:null,    // chosen ideological lean (set later)
+    foundedTick:0,
+  },
+  regime:{
+    grip:60,          // 0-100: how firmly the oligarchs control this district (your target: reduce it)
+    awareness:0,      // regime's active investigation level (rises with exposure)
+    lastSweep:0,      // last time the regime ran a crackdown sweep
+    informants:[],    // pawn ids the regime has turned against you
+  }
 };
 function dayN(){return Math.floor(ST.tick/TPD)+1}
 function hourN(){return ((ST.tick%TPD)/100+6)%24}   // day starts 06:00
@@ -818,6 +840,111 @@ function rebuildCliques(){
 }
 function cliqueOf(p){if(!ST.cliques)return null;return ST.cliques.find(c=>c.members.includes(p.id))||null;}
 function sameClique(a,b){const ca=cliqueOf(a);return ca&&ca.members.includes(b.id);}
+/* ============================================================
+   INSURRECTION — the movement layer. You build an underground cause vs. the oligarch regime
+   through intelligence (intel), influence (support), and recruitment (cells). The regime pushes
+   back via exposure → awareness → sweeps. Reframes heat/cliques into resistance mechanics.
+   ============================================================ */
+const M=()=>ST.mov, REG=()=>ST.regime;
+// a wisp's openness to the cause: blends their allegiance with discontent (the regime's victims
+// radicalize). Broke, evicted, low-mood, ungoverned wisps are the most recruitable.
+function radicalPotential(p){
+  if(isChild(p))return -999;
+  let r=p.allegiance||0;
+  if((p.credits||0)<10)r+=15;
+  if(p.homeless)r+=18;
+  if((p.mood||50)<35)r+=12;
+  if((p.pers&&p.pers.intg||50)<40)r+=8;       // the disaffected
+  if(p.informant)r-=60;                        // turned against you
+  return r;
+}
+// daily: passive intel from recruited wisps (your network's eyes/ears), support drift,
+// the regime's surveillance response, and recruitment spread.
+function insurrectionTick(){
+  const m=M(),reg=REG();
+  const recruited=ST.pawns.filter(p=>p.recruited&&!isChild(p));
+  // INTEL: each recruited wisp quietly gathers a trickle; cells amplify it.
+  const intelGain=recruited.length*0.4+m.cells*0.6;
+  m.intel=Math.min(999,(m.intel||0)+intelGain);
+  // SUPPORT drifts toward the share of the population that leans your way.
+  const adults=ST.pawns.filter(p=>!isChild(p));
+  if(adults.length){
+    const leanAvg=adults.reduce((s,p)=>s+(p.allegiance||0),0)/adults.length;
+    const target=clamp(50+leanAvg*0.5+recruited.length*2,0,100);
+    m.support=clamp((m.support||0)+Math.sign(target-m.support)*Math.min(1.5,Math.abs(target-m.support)),0,100);
+  }
+  // EXPOSURE feeds regime awareness; staying "hidden" leaks slowly, "open" leaks fast.
+  const leakRate=m.stance==="open"?1.4:0.3;
+  if(recruited.length)m.exposure=clamp((m.exposure||0)+recruited.length*0.04*leakRate,0,100);
+  // natural cooldown if you lie low
+  if(ST.tick%50===0&&m.stance==="hidden")m.exposure=Math.max(0,m.exposure-1.5);
+  // REGIME awareness tracks exposure; high awareness → investigative sweeps.
+  reg.awareness=clamp(reg.awareness*0.96+m.exposure*0.05,0,100);
+  if(reg.awareness>55&&ST.tick-reg.lastSweep>TPD*2){regimeSweep();reg.lastSweep=ST.tick;}
+  // GRIP erodes as your support climbs and cells spread — the long game.
+  reg.grip=clamp(reg.grip+(40-m.support)*0.004-m.cells*0.02,0,100);
+  // RECRUITMENT spread: recruited wisps slowly radicalize discontented neighbors.
+  if(ST.tick%30===0&&recruited.length){
+    for(const r of recruited){
+      const near=ST.pawns.find(q=>!q.recruited&&!isChild(q)&&q.id!==r.id&&!q.informant&&
+        DIST(r.px,r.py,q.px,q.py)<6&&relGet(r.id,q.id)>20&&radicalPotential(q)>30);
+      if(near&&Math.random()<0.3){near.allegiance=clamp((near.allegiance||0)+8,-100,100);}
+    }
+  }
+}
+// the regime runs a crackdown sweep: tries to identify + burn your cells, turn informants.
+function regimeSweep(){
+  const reg=REG(),m=M();
+  log("\u26A0 The regime is running a surveillance sweep — your network is exposed.","warn");
+  const recruited=ST.pawns.filter(p=>p.recruited&&!isChild(p));
+  // chance to burn each cell member scales with exposure
+  for(const p of recruited){
+    const burnChance=clamp(m.exposure/180+(m.stance==="open"?0.12:0),0,0.5);
+    if(Math.random()<burnChance){
+      p.recruited=false;p.cellRole=null;
+      p.allegiance=clamp((p.allegiance||0)-30,-100,100);
+      if(Math.random()<0.4){p.informant=true;reg.informants.push(p.id);
+        remember(p,"was turned by the regime — now informing against the cause");
+        log(p.name+" was turned into a regime informant.","warn");}
+      else{remember(p,"was burned in a sweep and went to ground");
+        log(p.name+" was burned and pulled out of the network.","warn");}
+      m.cells=Math.max(0,m.cells-(p.cellRole==="leader"?1:0));
+    }
+  }
+  m.exposure=Math.max(0,m.exposure-15);  // a sweep "resolves" some heat but costs you
+}
+// PLAYER ACTIONS (called from UI):
+// recruit a wisp into the movement — costs intel, succeeds based on their potential.
+function recruitWisp(p){
+  const m=M();
+  if(!p||p.recruited||isChild(p))return false;
+  const cost=8;
+  if((m.intel||0)<cost){flashMsg&&flashMsg("Need "+cost+" intel to attempt recruitment");return false;}
+  m.intel-=cost;
+  const pot=radicalPotential(p);
+  const chance=clamp(0.3+pot/120,0.05,0.92);
+  if(Math.random()<chance){
+    p.recruited=true;p.allegiance=clamp((p.allegiance||0)+25,-100,100);
+    p.cellRole=ST.pawns.filter(x=>x.recruited).length%4===0?"leader":"member";
+    if(p.cellRole==="leader")m.cells=(m.cells||0)+1;
+    remember(p,"joined the cause — there's something worth fighting for now");
+    log(p.name+" joined your movement.","good");
+    return true;
+  }else{
+    m.exposure=clamp((m.exposure||0)+5,0,100);  // a failed pitch risks exposure
+    if(pot<-20&&Math.random()<0.3){p.informant=true;REG().informants.push(p.id);
+      log(p.name+" rejected the pitch — and may talk.","warn");}
+    else log(p.name+" wasn't ready to commit.","info");
+    return false;
+  }
+}
+// spend intel to lie low — actively reduce exposure (go to ground)
+function goToGround(){
+  const m=M();const cost=12;
+  if((m.intel||0)<cost){flashMsg&&flashMsg("Need "+cost+" intel");return false;}
+  m.intel-=cost;m.exposure=Math.max(0,m.exposure-25);REG().awareness=Math.max(0,REG().awareness-15);
+  log("The network goes quiet — exposure drops.","good");return true;
+}
 // daily: clique loyalty effects + rivalry + group petitions
 function cliqueTick(){
   rebuildCliques();
@@ -1171,6 +1298,11 @@ function mkPawn(x,y,spec){const t1=CH(TRAITS);let t2=CH(TRAITS);while(t2===t1)t2
     birthDay:null,                // null = arrived as adult; set for the colony-born
     surname:CH(NL),               // family line
     parents:null,child:false,
+    // INSURRECTION: where this wisp leans. allegiance -100 (regime loyalist) .. +100 (committed
+    // to your cause). Most start near neutral, nudged by personality. recruited=in a cell.
+    allegiance:clamp(RI(-25,25)+Math.round((TP.nerve-50)*0.2),-100,100),
+    recruited:false, cellRole:null, informant:false,
+    secret:null,            // a secret this wisp knows (espionage target) — assigned lazily
     mem:[{d:0,h:6,t:"ended up on this dead block after the last squat got torched"}],
     homeless:false}}
 /* ============================================================
@@ -3238,6 +3370,7 @@ function tick(){ST.tick++;
     // daily career update (vocation satisfaction, aspiration, gripes)
     for(const p of ST.pawns)careerTick(p);
     cliqueTick();
+    insurrectionTick();   // the movement vs. regime layer
     ageTick();          // children grow toward adulthood
     tryConception();    // stable partnered pairs may have a child
     furnitureDecayTick(); // furniture slowly wears down, occasionally breaks
@@ -5465,6 +5598,13 @@ function syncHUD(){
   inc.textContent=(ST.crisis?"⚠ ":"")+Math.round(ST.income||0);
   inc.className="hud-val"+(ST.crisis?" danger":(ST.income||0)<0?" warn":"");
   $("h-home").textContent=ST.pawns.filter(p=>p.homeless).length;
+  // INSURRECTION movement readout
+  {const m=ST.mov||{},reg=ST.regime||{};
+   const setM=(id,v)=>{const el=$(id);if(el)el.textContent=Math.round(v);};
+   setM("m-support",m.support||0);setM("m-intel",m.intel||0);
+   const ex=$("m-exposure");if(ex){ex.textContent=Math.round(m.exposure||0);
+     ex.style.color=(m.exposure||0)>60?"#ff5470":(m.exposure||0)>30?"#ffd24a":"#8aa8c8";}
+   setM("m-grip",reg.grip!=null?reg.grip:60);}
   // crisis HUD border
   const hudEl=$("hud");if(hudEl)hudEl.classList.toggle("crisis",!!ST.crisis);
   // goods pips — color when stocked
@@ -5561,6 +5701,19 @@ function renderInspectCore(){const el=$("inspect");
          const lbl=v>=50?"ally":v>=15?"warm":v<=-50?"hostile":v<=-15?"rival":"·";
          h+="<div class='sub' style='display:flex;justify-content:space-between;gap:8px'><span style='color:"+tie.o.accent+"'>"+tie.o.name+"</span><span style='color:"+col+"'>"+lbl+" "+(v>0?"+":"")+(v|0)+"</span></div>"}}}
     if(e.mem&&e.mem.length)h+="<div class='sub' style='font-style:italic;opacity:.78'>\u201c"+e.mem[e.mem.length-1].t+"\u201d</div>";
+    // INSURRECTION: allegiance + recruitment
+    if(!isChild(e)){
+      const al=e.allegiance||0;
+      const alC=al>30?"#5cff9e":al<-30?"#ff5470":"var(--dim)";
+      const alLbl=e.informant?"REGIME INFORMANT":e.recruited?("CELL "+(e.cellRole||"member").toUpperCase()):
+        al>30?"sympathetic":al<-30?"loyalist":"undecided";
+      h+="<div class='sub'>ALLEGIANCE <span style='color:"+alC+"'>"+alLbl+"</span> ("+(al>0?"+":"")+al+")</div>";
+      if(!e.recruited&&!e.informant){
+        const pot=radicalPotential(e);
+        const ch=Math.round(clamp(0.3+pot/120,0.05,0.92)*100);
+        h+="<button class='tb' id='i-recruit' style='border-color:rgba(92,255,158,.4);color:#5cff9e'>\u270A RECRUIT (8 intel · "+ch+"%)</button>";
+      }
+    }
     h+="<div class='ordsec'>DIRECT ORDERS</div><div class='ordgrid'>"+
       "<button class='ob' data-o='work'><span>⚒</span>Work</button>"+
       "<button class='ob' data-o='sleep'><span>☾</span>Rest</button>"+
@@ -5621,6 +5774,7 @@ $("inspect").addEventListener("click",e=>{
   const id=e.target.id;if(!id)return;
   const sel=ST.sel[0];SFX.ui();
   if(id==="i-talk"&&sel&&sel.kind==="pawn")openChat(sel);
+  else if(id==="i-recruit"&&sel&&sel.kind==="pawn"){if(recruitWisp(sel)){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
   else if(id==="i-follow"&&sel&&sel.kind==="pawn"){
     if(cam.follow===sel.id)stopFollow();else setFollow(sel);
     renderInspect();}
@@ -5854,6 +6008,21 @@ function renderCommandMenu(){
   const sel=ST.sel.filter(e=>e.kind==="pawn");
   let h="<div class='sm-head'><span class='sm-title'>COMMAND</span>"+
     "<button class='tb' id='cmd-all' style='padding:3px 8px;font-size:9px'>SELECT ALL</button></div>";
+  // ── THE MOVEMENT — always shown: status + cause-level actions ──
+  {const m=ST.mov||{},reg=ST.regime||{};
+   const recruited=ST.pawns.filter(p=>p.recruited&&!isChild(p)).length;
+   h+="<div class='ordsec' style='margin-top:2px'>THE MOVEMENT</div>";
+   h+="<div class='cmd-sel' style='line-height:1.7'>"+
+      "<span style='color:#5cff9e'>✊ Support "+Math.round(m.support||0)+"%</span> · "+
+      "<span style='color:#22ddff'>◆ Intel "+Math.round(m.intel||0)+"</span><br>"+
+      "<span style='color:"+((m.exposure||0)>50?"#ff5470":"#ffd24a")+"'>◎ Exposure "+Math.round(m.exposure||0)+"%</span> · "+
+      "<span style='color:var(--dim)'>⛓ Regime grip "+Math.round(reg.grip!=null?reg.grip:60)+"%</span><br>"+
+      "<span style='opacity:.8'>Cells: "+(m.cells||0)+" · Recruited: "+recruited+" · Posture: "+(m.stance||"hidden")+"</span></div>";
+   h+="<div class='cmd-grid'>";
+   h+="<button class='cmd-b' id='mv-ground'><span class='ci'>◎</span>Go to Ground<br><span style='font-size:8px;opacity:.7'>−exposure · 12 intel</span></button>";
+   h+="<button class='cmd-b' id='mv-stance'><span class='ci'>"+((m.stance==="open")?"⚑":"◑")+"</span>"+((m.stance==="open")?"Go Quiet":"Go Loud")+"<br><span style='font-size:8px;opacity:.7'>"+((m.stance==="open")?"hide the network":"open insurrection")+"</span></button>";
+   h+="</div>";
+  }
   if(!sel.length){
     h+="<div class='cmd-sel'>No citizens selected. Tap a wisp on the map, marquee-drag to select several, or hit <b>SELECT ALL</b>.</div>";
     return h;}
@@ -5890,6 +6059,10 @@ $("submenu").addEventListener("click",e=>{
     for(const p of sel){clearJob(p);p.job=null;p.cmd=o}
     renderInspect();return;}
   if(e.target.id==="cmd-all"){SFX.ui();ST.sel=ST.pawns.slice();renderInspect();syncHUD();renderSub();return;}
+  if(e.target.closest("#mv-ground")){SFX.ui();goToGround();renderSub();syncHUD();return;}
+  if(e.target.closest("#mv-stance")){SFX.ui();const m=ST.mov;m.stance=m.stance==="open"?"hidden":"open";
+    log(m.stance==="open"?"The movement goes LOUD — open insurrection. Exposure will climb fast.":"The movement goes quiet — back to the shadows.",m.stance==="open"?"warn":"info");
+    renderSub();syncHUD();return;}
   if(e.target.id==="cmd-talk"){const sel=ST.sel.filter(x=>x.kind==="pawn");
     if(sel.length===1){SFX.ui();openChat(sel[0])}return;}
 });
@@ -6083,6 +6256,7 @@ function serializeState(){
     savedAt:Date.now(),
     gangs:(ST.gangs||[]).map(g=>({...g,turf:[...g.turf]})),
     stats:ST.stats,flags:ST.flags,milestones:ST.milestones||[],tierReached:ST.tierReached||1,contrabandPolicy:ST.contrabandPolicy||"crackdown",hintsSeen:ST.hintsSeen||{},pendingDisaster:ST.pendingDisaster||null,blackoutUntil:ST.blackoutUntil||0,caravan:ST.caravan||null,chronicle:CHRONICLE.slice(0,80),
+    mov:ST.mov,regime:ST.regime,
     ter:Array.from(ST.ter),
     structs:[...ST.structs.values()].map(snapStruct),
     pawns:ST.pawns.map(snapPawn),
@@ -6094,6 +6268,8 @@ function applyState(d){
   ST.debtDays=d.debtDays||0;ST.crisis=d.crisis||false;
   ST.gangs=(d.gangs||[]).map(g=>({...g,turf:new Set(g.turf||[])}));
   ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];ST.tierReached=d.tierReached||1;ST.contrabandPolicy=d.contrabandPolicy||"crackdown";ST.hintsSeen=d.hintsSeen||{};ST.pendingDisaster=d.pendingDisaster||null;ST.blackoutUntil=d.blackoutUntil||0;ST.caravan=d.caravan||null;CHRONICLE.length=0;if(Array.isArray(d.chronicle))for(const e of d.chronicle)CHRONICLE.push(e);
+  ST.mov=d.mov||{support:5,exposure:0,intel:0,cells:0,stance:"hidden",doctrine:null,foundedTick:0};
+  ST.regime=d.regime||{grip:60,awareness:0,lastSweep:0,informants:[]};
   ST.ter=new Uint8Array(d.ter||[]);
   ST.structs=new Map((d.structs||[]).map(s=>[K(s.x,s.y),s]));
   for(const s of ST.structs.values())if(DEF[s.type]&&DEF[s.type].furn&&s.qual===undefined)s.qual=1; // backfill furniture quality
@@ -6196,6 +6372,8 @@ function newGame(){
   ST.pawns.length=0;ST.beams.length=0;ST.floats.length=0;
   ST.grp={};ST.sel=[];ST.goods={data:0,chem:0,parts:0,stims:0,gear:0,food:0,wood:0,materials:0};ST.income=200;ST.debtDays=0;ST.crisis=false;ST.gangs=[];
   ST.stats={built:0,deaths:0};ST.milestones=[];ST.tierReached=1;
+  ST.mov={support:5,exposure:0,intel:0,cells:0,stance:"hidden",doctrine:null,foundedTick:0};
+  ST.regime={grip:60,awareness:0,lastSweep:0,informants:[]};
   setTimeout(showTutorialHints,500); // show after render
   ST.flags={};setTool(null);closeSub();
   genMap();drawTerrain();

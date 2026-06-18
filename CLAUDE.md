@@ -1,5 +1,25 @@
 # NEON SPRAWL — Colony Protocol · Developer Handoff
 
+## ⚡ DIRECTION SHIFT (current arc): becoming an INSURRECTION SIMULATOR
+The player is the hidden architect of an underground movement vs. an oligarch regime that controls
+the governments/AI/world. Reframing the existing crime/gang conflict layer into intrigue/influence.
+Player fantasy: spymaster + revolutionary + generational long-game. Build order: Espionage(+regime
+skeleton, DONE) → Influence → Generational/education → Resource-leverage → full Goal/endgame.
+Regime pressure is the "cure"; player chooses to stay hidden or go loud.
+
+- **Insurrection foundation (Phase 1)** — DONE. `ST.mov{support,exposure,intel,cells,stance,
+  doctrine}` + `ST.regime{grip,awareness,lastSweep,informants}`. Pawns gained `allegiance`
+  (-100 loyalist .. +100 committed), `recruited`, `cellRole`, `informant`, `secret`.
+  `insurrectionTick()` (daily): recruited wisps generate INTEL (0.4 each + cells), SUPPORT drifts
+  toward population's allegiance lean, EXPOSURE leaks (slow if hidden / fast if open) → regime
+  AWARENESS → `regimeSweep()` burns cells + turns informants when awareness>55. `radicalPotential(p)`
+  (broke/evicted/low-mood/low-integrity radicalize). Actions: `recruitWisp(p)` (8 intel, %=f(potential),
+  failure risks exposure), `goToGround()` (12 intel, −exposure). UI: HUD readout (✊support ◆intel
+  ◎exposure ⛓grip), RECRUIT button + allegiance line in pawn inspect, COMMAND-menu MOVEMENT panel
+  (status + Go to Ground + Go Loud/Quiet stance toggle). Full serialize/restore + newGame reset; old
+  saves default safely. NEXT: deepen espionage (secrets/agents/ops) → Influence → Generational →
+  Resource-leverage → endgame.
+
 A single-file, vanilla-JS, canvas-rendered cyberpunk colony sim (RimWorld-flavored). No
 frameworks, no build step. The entire game is `index.html` (~4,700 lines: one `<style>`
 block, the DOM scaffold, and one `<script>`).
