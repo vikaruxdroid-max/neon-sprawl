@@ -39,7 +39,66 @@ done yet.
 
 ## ⚡ LATEST STATE (read this first — reconciled from the live VM, June 2026) ⚡
 
-**ELECTION SYSTEM + CAFETERIA + REQUESTS-OFF + READABILITY (most recent session):**
+**AUDIT + CORE-FABRIC ENHANCEMENTS + CUTER EMOTES (most recent session):**
+
+- **Cafeteria death-spiral — VERIFIED end-to-end:** simulated an eviction wave (5 pawns forced homeless +
+  broke + hungry) WITH vs WITHOUT a cafeteria. With it, hungry victims kept avg food 58 vs 37 without;
+  pawns actively eat at the cafeteria (26 eat-ticks/day) and it consumes the communal farm stockpile (so it
+  genuinely "serves the grown food"). HONEST nuance: the death-spiral was never catastrophic at baseline
+  (the counter/bar already serve as fallback food + a subsistence-income mechanic exists), but the cafeteria
+  measurably improves food access and gives a dedicated thematic place. Verdict: working as intended.
+- **Election crowd stuck-loop hunt — CLEAN:** the election is purely ABSTRACT — it does NOT send pawns to
+  city hall or make them congregate (no `chooseJob`/`scoreJobs` changes), so there's no crowd-jam risk. Max
+  stuck-streak during a full campaign = 6t (cap is 140t). Candidates live normally during the campaign
+  (12–40 job changes). NOTE the tradeoff: the election is mechanically clean but less VISUALLY present
+  (nobody walks anywhere) — a future enhancement could stage a physical gathering if desired.
+- **Sabotage system — PRE-INVESTIGATED (design note written to SABOTAGE_DESIGN.md):** mapped exactly how a
+  power/water sabotage system hooks into the existing utility computation (~line 4251: `hasPower`/`hasWater`
+  = building exists + not blueprint + has a worker — so 3 ways to knock it out), the blackout mechanic
+  (`strikeBlackout` ~3982 is the model), building damage (`hp`/`isBroken`/`surgeT`), and the insurrection
+  layer (`ST.mov`, `allegiance`, `insurgentLever`). Minimal first version + exact lines-to-touch documented
+  so the build goes fast. Not built yet — it's the blueprint.
+- **CUTER EMOTES (your "cute even if evil" ask):** redesigned the emote set — 21 emotes now (was 17). Every
+  emote gets a SOFT GLOW BLOOM behind it (`glowSprite`, per-emote `bloom` factor) + a CUTE bounce-in pop
+  (spring up past full size, overshoot, settle). Upgraded glyphs to rounder/softer forms (florettes,
+  sparkles, rounded heavy !/?, heart-! for anger so even mad reads cute). Added an "EVIL BUT CUTE" set:
+  `scheme` (smug dark smiley), `evil` (violet heart — cute menace), `smug` (pleased spark), `greed`
+  (sparkle-eyes for $$). Wired them: a content-but-crooked wisp (low intg / gang / addicted) shows
+  scheme/evil instead of plain cheer; an ambitious flush wisp shows greed; a low-intg high-amb wisp preens
+  with smug even when neutral. All render validated.
+- **CORE FABRIC — attribute influence deepened (audit found `cur`/`emp`/`cau` underused):** mapped how much
+  each personality attribute drives behavior — `intg`(23 refs), `amb`(19) well-used; `cur` was barely used
+  (3 refs), `emp`(8), `cau`(7) thin. Enhancements: CURIOSITY now strongly drives learning (`learn` weight
+  `cur/150` + base scaled by cur) and reduces idling (curious wisps would rather DO something) — but EASES
+  when a need is critical (a bored wisp still picks fun over a textbook, preserving smoke test F2). EMPATHY
+  now drives `treat` (empathetic wisps rush to tend the sick, `emp/120`) and `visit` (warm wisps check on
+  friends). VERIFIED: curious wisps now learn ~32% more per capita than incurious ones (1761 vs 1332
+  learn-ticks/2d) — a real, measurable behavioral difference where before `cur` did almost nothing. Tuning
+  lesson (recurring): boosting an attribute's job-weight can break the personality-fidelity smoke tests
+  (F1/F2/F3) — scale the boost so a CRITICAL need still wins; don't let a trait override survival/pressing
+  needs. No stuck-loops introduced (max 62t, cap 140t).
+
+---
+
+## ⚡ ELECTION HARDENING (prior session) ⚡
+- **Concurrent elections (bug):** `ST.election` was singular, so if a 2nd role-holder died while an election
+  ran, the 2nd vacancy OVERWROTE the first — the first seat would sit empty forever. FIX: added an
+  `ST.electionQueue`; a vacancy that arrives mid-election is queued, and the next queued election kicks off
+  when the current one resolves. Verified: kill doctor + shopkeeper together → both seats refill, all 6
+  roles restored. (Matters in real play when a fire/raid kills multiple role-holders at once.)
+- **Save/load (bug):** `ST.election`/`ST.electionQueue` were NOT in the save payload, and load explicitly
+  reset them to null — so saving mid-campaign LOST the election (seat empty forever on reload). FIX: added
+  both to the save payload + restore them on load; removed the stale null-reset in `applyState` that was
+  wiping the restored value. Verified: election is in the save payload + survives reload.
+- **Endorsement balance (tuning):** measured how often the player's backed candidate wins when backing the
+  WEAKEST (lowest-fit) candidate — was 63% (too close to a rubber stamp). Reduced the endorsement weight
+  from `0.15` to `0.10` per voter → now 38%, the ideal range: your backing clearly MATTERS, but the block
+  can override a genuinely-poor pick most of the time. Makes the "can you override the wisps' judgment?"
+  tension feel right — real influence, but not a dictator; backing a bad candidate is a gamble.
+
+---
+
+## ⚡ ELECTION SYSTEM (same session — the feature itself) ⚡
 
 - **ELECTIONS (big new system):** when a public role-holder DIES, that seat opens and the block elects a
   replacement. Design choices (Carlo): trigger ONLY on death; the seat sits EMPTY during the campaign

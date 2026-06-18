@@ -1776,7 +1776,13 @@ function roleFit(p,rk){
 // open an election for a vacated role. Gathers self-nominated candidates (ambitious or well-suited wisps).
 function openElection(rk,deadName){
   if(!electableRole(rk))return;
-  if(ST.election&&ST.election.role===rk)return;   // one at a time per role
+  if(ST.election&&ST.election.role===rk)return;   // already electing this role
+  if(ST.election&&!ST.election.resolved){          // an election is in progress — QUEUE this vacancy
+    ST.electionQueue=ST.electionQueue||[];
+    if(!ST.electionQueue.some(q=>q.role===rk)){ST.electionQueue.push({role:rk,deadName:deadName||null});
+      log("\u2696 The "+ROLES[rk].title+" seat is also empty — that election will follow the current one.","info");}
+    return;
+  }
   const pool=ST.pawns.filter(p=>p.hp>0&&!isChild(p)&&!p.role&&!p.isAvatar);
   let field=pool.filter(p=>{const amb=p.pers.amb||50,fit=roleFit(p,rk);return amb>58||fit>0.62;}).map(p=>p.id);
   field.sort((a,b)=>{const pa=ST.pawns.find(p=>p.id===a),pb=ST.pawns.find(p=>p.id===b);
@@ -1813,7 +1819,7 @@ function tallyElection(){
       const c=ST.pawns.find(p=>p.id===cid);if(!c)continue;
       const fit=roleFit(c,rk),rel=relGet(v.id,cid)/100;
       const pitchSway=e.pitches[cid]?0.12:0;
-      const endorse=(e.playerPick===cid)?(0.15*(1+(v.allegiance||0)/200)):0;
+      const endorse=(e.playerPick===cid)?(0.10*(1+(v.allegiance||0)/200)):0;  // your backing sways, but the block can still reject a poor candidate
       const emp=(v.pers.emp||50)/100;
       const score=fit*(1.1-emp*0.4)+rel*(0.6+emp*0.5)+pitchSway+endorse+(Math.random()*0.12);
       if(score>bestScore){bestScore=score;bestId=cid;}
@@ -1855,6 +1861,11 @@ function resolveElection(){
       else{if(av)addMod(av,"backedloser","My candidate lost the race",-4,TPD);}}
   }
   e.resolved=true;ST.lastElection=ST.tick;ST.election=null;
+  // if other seats opened during this campaign, kick off the next queued election now
+  if(ST.electionQueue&&ST.electionQueue.length){
+    const next=ST.electionQueue.shift();
+    if(next&&!ST.pawns.some(p=>p.role===next.role))openElection(next.role,next.deadName);
+  }
 }
 // a stat CHECK: roll against a difficulty, modified by the attribute. returns {pass, roll, margin}.
 function opsCheck(attr,difficulty){
@@ -2623,19 +2634,22 @@ function scoreJobs(p){
     visit:visitTgt?clamp(58-socN*0.5+(relGet(p.id,visitTgt.id)>60?12:0),0,75):0,
     burgle:burgleTgt?clamp(40-cred*1.0+turfBonus+nightBonus,0,100):0,
     homicide:killTgt?clamp(55+nightBonus+turfBonus,0,100):0,
-    learn:(schoolStr&&food>40&&rest>35&&!p.sick)?clamp(18+cur*0.15+ind*0.1,0,45):0};
+    learn:(schoolStr&&food>40&&rest>35&&!p.sick)?clamp(14+cur*0.28+ind*0.1,0,55):0};  // curious wisps learn eagerly (but a pressing need still wins)
   const pw={
     eat:0.5+cau/100,sleep:0.5+cau/100,build:0.5+ind/100,
-    idle:0.5+(100-ind)/100,
-    hygiene:1,recreate:0.5+cur/100,socialize:0.5+soc/100,work:0.5+ind/100,treat:0.5+cau/100,
+    idle:0.5+(100-ind)/100-cur/200,                          // the curious idle less (they'd rather DO something)
+    hygiene:1,recreate:0.5+cur/100,socialize:0.5+soc/100,work:0.5+ind/100,
+    // empathetic wisps prioritize TENDING the sick — a high-empathy citizen practically rushes to help
+    treat:0.5+cau/100+(p.pers.emp||50)/120,
     substance:0.3+p.pers.imp/150+(100-p.pers.intg)/200,
     crime:(100-p.pers.intg)/100*(0.4+p.pers.imp/150),
     steal:(100-p.pers.intg)/100*(0.3+p.pers.imp/120),
     buygear:0.5+p.pers.ind/150,
-    visit:0.5+soc/100,
+    visit:0.5+soc/100+(p.pers.emp||50)/200,                  // warm wisps check in on friends more
     burgle:(100-p.pers.intg)/100*(0.35+p.pers.imp/120),
     homicide:(100-p.pers.intg)/100*(0.25+p.pers.imp/110),
-    learn:0.4+p.pers.amb/150+cur/200};
+    // curiosity drives learning, but EASES when fun is critically low (a bored wisp wants fun, not a textbook)
+    learn:(0.4+p.pers.amb/150+cur/150)*(fun<25?0.55:1)};                       // curiosity drives learning harder
   const sm={eat:1,sleep:1,build:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1,treat:1,substance:1,crime:1,steal:1,buygear:1,learn:1,visit:1,burgle:1,homicide:1};
   if(p.sched){const S=p.sched,hr=hourN();
     sm.sleep*=inWin(hr,S.sleepAt,S.wake)?1.9:(rest<18?0.7:0.12);
@@ -2990,8 +3004,17 @@ function pawnTick(p){
     else if(p.dazed>ST.tick){tryEmote(p,"dizzy",100);}
     else if((p.stress||0)>65){tryEmote(p,"sweat",100);}
     else if(p.sick){if(Math.random()<0.5)tryEmote(p,"gross",140);}
-    else if((p.mood||50)>72){tryEmote(p,Math.random()<0.4?"music":"happy",110);}
+    else if((p.mood||50)>72){
+      // a content wisp who's also up to no good shows a cute-evil tell instead of plain cheer
+      const crooked=(p.pers.intg||50)<35||pawnGang(p)||(p.addiction||0)>40;
+      const greedy=(p.pers.amb||50)>70&&(p.credits||0)>40;
+      if(crooked&&Math.random()<0.5)tryEmote(p,Math.random()<0.5?"scheme":"evil",120);
+      else if(greedy&&Math.random()<0.4)tryEmote(p,"greed",120);
+      else tryEmote(p,Math.random()<0.4?"music":"happy",110);
+    }
     else if((p.mood||50)<28){tryEmote(p,"cry",140);}
+    // a smug, satisfied schemer occasionally preens even in a neutral mood
+    else if((p.pers.intg||50)<32&&(p.pers.amb||50)>60&&Math.random()<0.18){tryEmote(p,"smug",120);}
     // gossip: two friendly wisps near each other trade ! and ? bubbles
     else if(Math.random()<0.3){
       for(const q of ST.pawns){if(q===p||q.hp<=0||q.sleeping)continue;
@@ -5211,23 +5234,28 @@ function faceExpr(p){
    ============================================================ */
 // floating emote bubbles above pawns. kind drives the symbol + color + motion.
 const EMOTES={
-  heart:   {s:"\u2665", c:"#ff6fae", rise:14, life:46, wob:1},
-  love:    {s:"\u2661", c:"#ff8fc4", rise:14, life:46, wob:1.4},
-  music:   {s:"\u266a", c:"#7ad0ff", rise:13, life:44, wob:1.6},
-  happy:   {s:"\u2727", c:"#ffd700", rise:12, life:38, wob:1},
-  party:   {s:"\u2736", c:"#ffc947", rise:16, life:50, wob:2},
-  sweat:   {s:"\u00b0", c:"#9fd8ff", rise:8,  life:34, wob:.4},
-  shock:   {s:"\u2049", c:"#ffe066", rise:10, life:40, wob:.6}, // interrobang-ish
-  excl:    {s:"\uff01", c:"#ffe066", rise:11, life:34, wob:.5},
-  ques:    {s:"\uff1f", c:"#aec6ff", rise:11, life:36, wob:.7},
-  anger:   {s:"\u2762", c:"#ff5a5a", rise:9,  life:34, wob:.5}, // anger puff
-  cry:     {s:"\u2767", c:"#7ec8ff", rise:7,  life:38, wob:.5},
-  sleepy:  {s:"z", c:"#aef3ff", rise:9, life:40, wob:.5},
-  ghost:   {s:"\u2620", c:"#cdd6ff", rise:20, life:64, wob:2.2}, // skull/ghost puff for KO
-  dizzy:   {s:"\u204b", c:"#c98bff", rise:8, life:40, wob:1.8},
-  idea:    {s:"\u273c", c:"#fff1a8", rise:12, life:38, wob:.8},
-  gross:   {s:"\u2754", c:"#a8ff78", rise:8, life:34, wob:.6},
-  chat:    {s:"\u201c", c:"#bfe8ff", rise:11, life:34, wob:.6}, // speech mark — conversation
+  heart:   {s:"\u2665", c:"#ff6fae", rise:14, life:46, wob:1,   bloom:1.3},  // heart
+  love:    {s:"\u2661", c:"#ff8fc4", rise:14, life:46, wob:1.4, bloom:1.3},  // open heart
+  music:   {s:"\u266a", c:"#7ad0ff", rise:13, life:44, wob:1.6, bloom:1.1},  // note
+  happy:   {s:"\u273f", c:"#ffe14d", rise:12, life:40, wob:1,   bloom:1.4},  // black florette — cheery bloom
+  party:   {s:"\u2740", c:"#ffc947", rise:16, life:52, wob:2,   bloom:1.5},  // white florette burst
+  sweat:   {s:"\u2235", c:"#9fd8ff", rise:8,  life:34, wob:.4,  bloom:.9},   // little drops
+  shock:   {s:"\u2757", c:"#ffe066", rise:11, life:40, wob:.6,  bloom:1.2},  // rounded heavy !
+  excl:    {s:"\u2757", c:"#ffe066", rise:11, life:34, wob:.5,  bloom:1.1},  // rounded heavy !
+  ques:    {s:"\u2753", c:"#aec6ff", rise:11, life:36, wob:.7,  bloom:1.1},  // rounded heavy ?
+  anger:   {s:"\u2763", c:"#ff7a8c", rise:9,  life:36, wob:.7,  bloom:1.2},  // heart-! — even mad it's cute
+  cry:     {s:"\u2767", c:"#7ec8ff", rise:7,  life:40, wob:.5,  bloom:1.0},  // rotated bud — teary
+  sleepy:  {s:"z", c:"#aef3ff", rise:9, life:42, wob:.5, bloom:1.0},          // zzz
+  ghost:   {s:"\u2727", c:"#dfe6ff", rise:20, life:64, wob:2.2, bloom:1.3},  // soft sparkle puff for KO
+  dizzy:   {s:"\u2733", c:"#c98bff", rise:8, life:42, wob:1.9,  bloom:1.1},   // swirly spark
+  idea:    {s:"\u273c", c:"#fff1a8", rise:12, life:40, wob:.8,  bloom:1.5},   // teardrop-spoked star — idea!
+  gross:   {s:"\u2235", c:"#a8ff78", rise:8, life:34, wob:.6,  bloom:.9},     // queasy drops
+  chat:    {s:"\u266c", c:"#bfe8ff", rise:11, life:36, wob:.7,  bloom:1.0},   // chatty notes
+  // ── "evil but cute" set — scheming, smug, mischievous — rounded & appealing, never harsh ──
+  scheme:  {s:"\u263b", c:"#c77dff", rise:10, life:44, wob:.9,  bloom:1.5},   // filled smiley — smug little schemer
+  evil:    {s:"\u2665", c:"#b15cff", rise:11, life:42, wob:1.0, bloom:1.5},   // violet heart — cute menace
+  smug:    {s:"\u2734", c:"#ff9f4a", rise:9,  life:40, wob:.7,  bloom:1.3},   // eight-point — pleased
+  greed:   {s:"\u2742", c:"#ffd24a", rise:10, life:42, wob:.8,  bloom:1.5},   // circled star — $$ sparkle-eyes
 };
 function emote(p,kind){
   if(!p||p.hp<=0&&kind!=="ghost")return;
@@ -5303,11 +5331,22 @@ function drawEmotes(x0,y0,x1,y1){
     const a=clamp(em.ttl<8?em.ttl/8:1,0,1); // fade out at end
     const rise=prog*def.rise;
     const wob=Math.sin(prog*7+em.seed)*def.wob;
-    const sz=Math.round((em.kind==="ghost"?11:9)+prog*2);
+    // CUTE bounce-in: pop slightly past full size in the first ~18% of life, then settle (squash-stretch feel)
+    let pop=1;
+    if(prog<0.18){const t=prog/0.18;pop=0.3+1.1*t;}      // spring up from small
+    else if(prog<0.30){const t=(prog-0.18)/0.12;pop=1.4-0.4*t;} // overshoot settles back
+    const sz=Math.round(((em.kind==="ghost"?11:9)+prog*1.5)*pop);
     const X=em.x*T+wob, Y=em.y*T-10-rise;
     ctx.globalAlpha=a;
+    // SOFT GLOW BLOOM behind the symbol — makes it pop & feel rounded/cute rather than flat text
+    const bloom=(def.bloom||1.1);
+    if(typeof glowSprite==="function"){
+      ctx.globalAlpha=a*0.5;
+      const gr=sz*bloom*0.9;
+      ctx.drawImage(glowSprite(def.c),X-gr,Y-gr*0.75-2,gr*2,gr*2);
+      ctx.globalAlpha=a;
+    }
     ctx.font="bold "+sz+"px monospace";
-    // soft glow behind the symbol
     ctx.fillStyle=def.c;
     ctx.fillText(def.s,X,Y);
     ctx.globalAlpha=1;
@@ -7841,7 +7880,7 @@ function serializeState(){
     goods:ST.goods,income:ST.income,debtDays:ST.debtDays||0,crisis:ST.crisis||false,
     savedAt:Date.now(),
     gangs:(ST.gangs||[]).map(g=>({...g,turf:[...g.turf]})),
-    stats:ST.stats,flags:ST.flags,milestones:ST.milestones||[],tierReached:ST.tierReached||1,contrabandPolicy:ST.contrabandPolicy||"crackdown",hintsSeen:ST.hintsSeen||{},pendingDisaster:ST.pendingDisaster||null,blackoutUntil:ST.blackoutUntil||0,caravan:ST.caravan||null,chronicle:CHRONICLE.slice(0,80),
+    stats:ST.stats,flags:ST.flags,milestones:ST.milestones||[],tierReached:ST.tierReached||1,contrabandPolicy:ST.contrabandPolicy||"crackdown",hintsSeen:ST.hintsSeen||{},pendingDisaster:ST.pendingDisaster||null,blackoutUntil:ST.blackoutUntil||0,caravan:ST.caravan||null,election:ST.election||null,electionQueue:ST.electionQueue||[],chronicle:CHRONICLE.slice(0,80),
     mov:ST.mov,regime:ST.regime,cases:ST.cases||[],caseSeq:ST.caseSeq||0,
     ter:Array.from(ST.ter),
     structs:[...ST.structs.values()].map(snapStruct),
@@ -7856,7 +7895,7 @@ function applyState(d){
   ST.goods=d.goods||{data:0,chem:0,parts:0,stims:0,gear:0,food:0,scrap:0};ST.income=d.income||0;
   ST.debtDays=d.debtDays||0;ST.crisis=d.crisis||false;
   ST.gangs=(d.gangs||[]).map(g=>({...g,turf:new Set(g.turf||[])}));
-  ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];ST.tierReached=d.tierReached||1;ST.contrabandPolicy=d.contrabandPolicy||"crackdown";ST.hintsSeen=d.hintsSeen||{};ST.pendingDisaster=d.pendingDisaster||null;ST.blackoutUntil=d.blackoutUntil||0;ST.caravan=d.caravan||null;CHRONICLE.length=0;if(Array.isArray(d.chronicle))for(const e of d.chronicle)CHRONICLE.push(e);
+  ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];ST.tierReached=d.tierReached||1;ST.contrabandPolicy=d.contrabandPolicy||"crackdown";ST.hintsSeen=d.hintsSeen||{};ST.pendingDisaster=d.pendingDisaster||null;ST.blackoutUntil=d.blackoutUntil||0;ST.caravan=d.caravan||null;ST.election=d.election||null;ST.electionQueue=d.electionQueue||[];CHRONICLE.length=0;if(Array.isArray(d.chronicle))for(const e of d.chronicle)CHRONICLE.push(e);
   ST.mov=d.mov||{support:5,exposure:0,intel:0,cells:0,stance:"hidden",doctrine:null,foundedTick:0};
   ST.cases=d.cases||[];ST.caseSeq=d.caseSeq||0;
   ST.regime=d.regime||{grip:60,awareness:0,lastSweep:0,informants:[]};
@@ -7891,7 +7930,7 @@ function applyState(d){
       }
     }
   }
-  ST.beams=[];ST.floats=[];ST.emotes=[];ST.tombs=[];ST.says=[];ST.election=null;ST.sel=[];ST.rooms=d.rooms||[];
+  ST.beams=[];ST.floats=[];ST.emotes=[];ST.tombs=[];ST.says=[];ST.sel=[];ST.rooms=d.rooms||[];
   ST.phase="run";ST.paused=false;ST.speed=1;}
 function saveToSlot(slot){
   if(ST.phase!=="run"){flashMsg("Nothing to save yet");return false}
@@ -7978,7 +8017,7 @@ function openLoadSlots(){
    ============================================================ */
 function newGame(){
   ST.phase="run";ST.tick=0;ST.speed=1;ST.paused=false;
-  ST.pawns.length=0;ST.beams.length=0;ST.floats.length=0;ST.says=[];ST.election=null;
+  ST.pawns.length=0;ST.beams.length=0;ST.floats.length=0;ST.says=[];ST.election=null;ST.electionQueue=[];
   ST.grp={};ST.sel=[];ST.goods={data:0,chem:0,parts:0,stims:0,gear:0,food:0,scrap:0};ST.income=200;ST.debtDays=0;ST.crisis=false;ST.gangs=[];
   ST.stats={built:0,deaths:0};ST.milestones=[];ST.tierReached=1;
   ST.mov={support:5,exposure:0,intel:0,cells:0,stance:"hidden",doctrine:null,foundedTick:0};
