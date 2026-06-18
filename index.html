@@ -438,17 +438,17 @@ const T=16, MW=140, MH=100, TPD=2400, TPS=10, POP=12;   // tile px, map w/h, tic
 // Frame the central built-up core (x~38-95, y~28-78) with a loop + cross streets.
 const ROADS={
   h:[
-    [10,130,26],   // north arterial (farm NW ↔ woods NE)
-    [30,110,48],   // mid arterial (between residential and production)
-    [10,130,64],   // south arterial (mine SW ↔ civic SE wide)
-    [30,110,80],   // far-south arterial (below crime corner)
+    [10,130,22],   // north arterial — reaches farm/woods corners
+    [28,112,46],   // mid lane — underclass housing | labor divide
+    [28,112,62],   // lower lane — labor | civic divide
+    [10,130,82],   // south arterial — reaches mine/civic corners
   ],
   v:[
-    [22,14,88],    // far-west arterial (serves farm + mine zones)
-    [34,26,82],    // west arterial
-    [68,26,82],    // central spine (through plaza)
-    [102,26,82],   // east arterial
-    [118,14,90],   // far-east arterial (serves woods + civic zones)
+    [20,14,88],    // far-west — serves farm + mine zones
+    [28,22,82],    // core west edge
+    [70,22,82],    // THE DIVIDE — underclass (west) | corporate sector (east)
+    [112,22,82],   // core east edge
+    [120,14,88],   // far-east — serves woods + civic zones
   ]
 };
 function R(a,b){return a+Math.random()*(b-a)}
@@ -507,6 +507,13 @@ const SFX=(()=>{let ac=null,mut=false;
       const a=ctx();if(!a)return;
       if(this._amb)return;
       const master=a.createGain();master.gain.value=mut?0:0.0;master.connect(a.destination);
+      // gentle space echo (C418-style air) — piano notes send here for a soft, roomy tail
+      const echo=a.createDelay();echo.delayTime.value=0.30;
+      const echoFb=a.createGain();echoFb.gain.value=0.32;
+      const echoLp=a.createBiquadFilter();echoLp.type="lowpass";echoLp.frequency.value=2200;
+      echo.connect(echoLp);echoLp.connect(echoFb);echoFb.connect(echo);
+      const echoOut=a.createGain();echoOut.gain.value=0.5;echo.connect(echoOut);echoOut.connect(master);
+      const pianoIn=a.createGain();pianoIn.gain.value=1;pianoIn.connect(master);pianoIn.connect(echo);
       // base drone: two softly-detuned LOW TRIANGLE oscillators (warm, rounded — no harsh sawtooth)
       // tuned to A1 (~55Hz) as the tonal root for a melancholy A-minor feel
       const droneG=a.createGain();droneG.gain.value=0.42;
@@ -539,7 +546,34 @@ const SFX=(()=>{let ac=null,mut=false;
       // very slow LFO on the drone filter for gentle organic movement
       const lfo=a.createOscillator();lfo.frequency.value=0.035;
       const lfoG=a.createGain();lfoG.gain.value=55;lfo.connect(lfoG);lfoG.connect(lp.frequency);lfo.start();
-      this._amb={master,lp,L1,L2,L3,o1,o2,intensity:0,night:0};
+      // ── GENTLE GENERATIVE PIANO — sparse, warm, lots of space (C418 / Minecraft feel) ──
+      // soft electric-piano note: sine + bell-ish 2nd harmonic, soft attack, long decay, sent through the echo for air
+      const pno=(freq,vel)=>{ if(mut)return; const t0=a.currentTime;
+        const o=a.createOscillator();o.type="sine";o.frequency.value=freq;
+        const oh=a.createOscillator();oh.type="triangle";oh.frequency.value=freq*2.001;
+        const ohg=a.createGain();ohg.gain.value=0.22;oh.connect(ohg);
+        const g=a.createGain();g.gain.setValueAtTime(0.0001,t0);
+        g.gain.exponentialRampToValueAtTime(vel,t0+0.03);
+        g.gain.exponentialRampToValueAtTime(0.0001,t0+2.8);
+        o.connect(g);ohg.connect(g);g.connect(pianoIn);
+        o.start(t0);oh.start(t0);o.stop(t0+2.9);oh.stop(t0+2.9); };
+      // C major pentatonic, C3..C5 — warm, never dissonant over the Am pad
+      const SCALE=[130.81,146.83,164.81,196.00,220.00,261.63,293.66,329.63,392.00,440.00,523.25];
+      let _mi=5, _melodyOn=true, _mTimer=null;
+      const _phrase=()=>{ if(!_melodyOn)return;
+        if(!mut){
+          const notes=1+(Math.random()<0.42?1:0)+(Math.random()<0.16?1:0);   // mostly 1, sometimes 2–3
+          for(let n=0;n<notes;n++){
+            _mi=Math.max(0,Math.min(SCALE.length-1,_mi+(Math.floor(Math.random()*5)-2)));  // gentle stepwise drift
+            const vel=0.05+Math.random()*0.035, f=SCALE[_mi];
+            setTimeout(()=>pno(f,vel), n*(360+Math.random()*240));
+          }
+        }
+        _mTimer=setTimeout(_phrase, 2600+Math.random()*4400);   // 2.6–7.0s of space between phrases
+      };
+      _mTimer=setTimeout(_phrase, 1800);
+      const stopMelody=()=>{_melodyOn=false;if(_mTimer)clearTimeout(_mTimer);};
+      this._amb={master,lp,L1,L2,L3,o1,o2,intensity:0,night:0,stopMelody};
     },
     ambientSet(intensity,nightAmt){
       // intensity 0..1 (district activity+heat); nightAmt 0..1 (darkness)
@@ -591,6 +625,7 @@ const DEF={
   gearshop:   {name:"Gear Shop",    cost:{income:100},hp:80, blocks:1, work:160, cat:"b", desc:"Refines Parts + Data → Gear. Steady, clean income.", refine:{in:["parts","data"],out:"gear"}, vendor:true, wage:10},
   // ── RESOURCE PRODUCTION (outer-ring economy) ──
   farmplot:   {name:"Farm Plot",    cost:{income:30}, hp:40, blocks:0, work:110, cat:"b", desc:"Grows Food. Feeds the block cheaply, cuts the credit drain.", prod:"food", prodRate:200, wage:7},
+  sporevat:   {name:"Spore Vat",     cost:{income:40}, hp:50, blocks:0, work:120, cat:"b", desc:"Cultivates the glowing mushrooms for Food. Upgrade: Spore Vat \u2192 Algae Bloom \u2192 Bio-Reactor.", prod:"food", prodRate:200, wage:7, tiered:1},
   loggingcamp:{name:"Salvage Yard",  cost:{income:40}, hp:60, blocks:1, work:130, cat:"b", desc:"Strip scrap from the dead sectors — low pay, no questions asked.", prod:"scrap", prodRate:240, wage:8},
   mineshaft:  {name:"Data Den",      cost:{income:60}, hp:80, blocks:1, work:150, cat:"b", desc:"Grey-market terminals — run hacks and sell stolen data. High margin, draws heat.", prod:"data", prodRate:300, wage:9, illicit:true},
   // ── CIVIC BUILDINGS ──
@@ -618,12 +653,12 @@ const DEF={
   vendmachine:{name:"Vending Machine",nat:1,hp:50,blocks:1},
   planter:    {name:"Planter",     nat:1, hp:30, blocks:0}
 };
-const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","streetvendor","bar","medbed","dealer","farmplot","loggingcamp","mineshaft","fixercorner","park","arcade","hospital","school","nursery","market","hall","mayorhouse","furnstore","housing","powerstation","waterfac","watchpost","copstation"];
+const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","streetvendor","bar","medbed","dealer","farmplot","sporevat","loggingcamp","mineshaft","fixercorner","park","arcade","hospital","school","nursery","market","hall","mayorhouse","furnstore","housing","powerstation","waterfac","watchpost","copstation"];
 // Build menu: curated minimal categories (start small, expand later). Each entry: type.
 const BUILD_CATS=[
   {name:"Home",     items:["wall","door","pod","lamp","fridge","shower","toilet"]},
   {name:"Comfort",  items:["tv","gym","couch","bookshelf","art","rug"]},
-  {name:"Work",     items:["workstation","chemlab","workshop","stimlab","gearshop","farmplot","loggingcamp","mineshaft","fixercorner"]},
+  {name:"Work",     items:["workstation","chemlab","workshop","stimlab","gearshop","farmplot","sporevat","loggingcamp","mineshaft","fixercorner"]},
   {name:"Commerce", items:["counter","streetvendor","bar","market","furnstore","dealer"]},
   {name:"Civic",    items:["medbed","hospital","park","arcade","school","nursery","hall","mayorhouse"]},
   {name:"Order",    items:["watchpost","copstation"]},
@@ -631,9 +666,16 @@ const BUILD_CATS=[
   {name:"Growth",   items:["housing"]},
 ];
 // glyph per fixture for the build cards
+// Spore Vat upgrade chain — start as mushrooms, upgrade up the bio-tech ladder
+const VAT_TIERS=[
+  {name:"Spore Vat",   food:1, glow:"#c084fc", core:"#a259ff", up:{income:60, scrap:6}},
+  {name:"Algae Bloom", food:2, glow:"#5cffd0", core:"#39ffd0", up:{income:120, data:6}},
+  {name:"Bio-Reactor", food:3, glow:"#39d4ff", core:"#7af7ff", up:null},
+];
+function vatTier(s){return VAT_TIERS[clamp((s.tier||1)-1,0,2)];}
 const BUILD_ICON={wall:"▦",door:"⌷",pod:"☖",lamp:"✦",fridge:"❄",shower:"♒",toilet:"⊡",tv:"▭",gym:"⛏",
   workstation:"⌨",chemlab:"⚗",workshop:"⚙",stimlab:"⚕",gearshop:"⛭",counter:"▤",bar:"♨",medbed:"✚",
-  dealer:"☠",farmplot:"❀",loggingcamp:"♻",mineshaft:"⌬",park:"❦",arcade:"►",hospital:"✚",school:"✎",nursery:"⊙",market:"⇄",hall:"⌂",furnstore:"🛋",housing:"⌂",watchpost:"◈",powerstation:"⚡",waterfac:"💧",copstation:"⚖",streetvendor:"🍜",mayorhouse:"♔",fixercorner:"⟁",couch:"⌗",bookshelf:"▤",art:"◳",rug:"▢"};
+  dealer:"☠",farmplot:"❀",sporevat:"🍄",loggingcamp:"♻",mineshaft:"⌬",park:"❦",arcade:"►",hospital:"✚",school:"✎",nursery:"⊙",market:"⇄",hall:"⌂",furnstore:"🛋",housing:"⌂",watchpost:"◈",powerstation:"⚡",waterfac:"💧",copstation:"⚖",streetvendor:"🍜",mayorhouse:"♔",fixercorner:"⟁",couch:"⌗",bookshelf:"▤",art:"◳",rug:"▢"};
 
 
 // weapons removed — city sim mode
@@ -1462,24 +1504,36 @@ function genCity(){
     ST.cityHomes.push({x0,y0,w:6,h:5,bed:{x:x0+(pod?pod.x:1),y:y0+(pod?pod.y:1)},door:{x:x0+2,y:y0+4}});}
   function decor(t,x,y){if(INB(x,y)&&!structAt(x,y))addBuilt(t,x,y);}
 
-  // ── RESIDENTIAL QUARTER (upper-center) — two rows of homes with a lane between ──
-  const resY1=30, resY2=40, resX0=46;
-  for(let i=0;i<4;i++)home(resX0+i*9, resY1);
-  for(let i=0;i<3;i++)home(resX0+5+i*9, resY2);
+  // ── UNDERCLASS HOUSING (west of the divide) — dense, uniform, aligned rows ──
+  const resY1=25, resY2=33, resX0=31;
+  for(let i=0;i<4;i++)home(resX0+i*9, resY1);   // row 1: x 31,40,49,58
+  for(let i=0;i<3;i++)home(resX0+i*9, resY2);   // row 2: aligned under row 1 (no stagger)
 
-  // ── PRODUCTION CLUSTER (center-left) ──
-  placeRoom(40,52,10,6,{x:44,y:57},[{t:"workstation",x:1,y:1},{t:"workstation",x:3,y:1},{t:"workstation",x:5,y:1},{t:"workstation",x:7,y:1},{t:"gym",x:1,y:4},{t:"fridge",x:8,y:4}]);   // corp office
-  placeRoom(53,52,8,6,{x:56,y:57},[{t:"counter",x:1,y:1},{t:"counter",x:2,y:1},{t:"counter",x:3,y:1},{t:"fridge",x:6,y:1},{t:"fridge",x:6,y:3}]);   // shop
+  // ── LABOR TIER (west of divide, below housing) — where the masses work ──
+  placeRoom(31,50,10,6,{x:35,y:55},[{t:"workstation",x:1,y:1},{t:"workstation",x:3,y:1},{t:"workstation",x:5,y:1},{t:"workstation",x:7,y:1},{t:"gym",x:1,y:4},{t:"fridge",x:8,y:4}]);   // corp labor office
+  placeRoom(44,50,8,6,{x:47,y:55},[{t:"counter",x:1,y:1},{t:"counter",x:2,y:1},{t:"counter",x:3,y:1},{t:"fridge",x:6,y:1},{t:"fridge",x:6,y:3}]);   // bodega
 
-  // ── COMMERCIAL / SOCIAL STRIP (center-right) ──
-  placeRoom(72,52,8,6,{x:75,y:57},[{t:"bar",x:1,y:1},{t:"bar",x:2,y:1},{t:"bar",x:3,y:1},{t:"tv",x:6,y:1},{t:"tv",x:6,y:4}]);   // bar
-  placeRoom(84,52,9,6,{x:88,y:57},[{t:"medbed",x:1,y:1},{t:"medbed",x:3,y:1},{t:"medbed",x:5,y:1},{t:"medbed",x:7,y:1}]);   // clinic
+  // ── CORPORATE SECTOR (east of divide) — leisure + private medical for the haves ──
+  placeRoom(74,26,8,6,{x:77,y:31},[{t:"bar",x:1,y:1},{t:"bar",x:2,y:1},{t:"bar",x:3,y:1},{t:"tv",x:6,y:1},{t:"tv",x:6,y:4}]);   // chrome bar
+  placeRoom(86,26,9,6,{x:90,y:31},[{t:"medbed",x:1,y:1},{t:"medbed",x:3,y:1},{t:"medbed",x:5,y:1},{t:"medbed",x:7,y:1}]);   // med center
 
-  // ── CENTRAL PLAZA (open space between residential and production) ──
-  // left intentionally empty around x58-70, y44-50 as a gathering plaza
+  // ── CRIME CORNER (west, below the labor tier, set apart) ──
+  placeRoom(40,68,7,5,{x:43,y:72},[{t:"dealer",x:1,y:1},{t:"dealer",x:5,y:1},{t:"counter",x:3,y:1},{t:"pod",x:1,y:3},{t:"pod",x:5,y:3}]);
 
-  // ── CRIME CORNER (lower-center, set apart) ──
-  placeRoom(60,70,7,5,{x:63,y:74},[{t:"dealer",x:1,y:1},{t:"dealer",x:5,y:1},{t:"counter",x:3,y:1},{t:"pod",x:1,y:3},{t:"pod",x:5,y:3}]);
+  // ── SURVEILLANCE: a watch post on the divide, overlooking the housing ──
+  addBuilt("watchpost",68,34);
+
+  // ── HYDRO FARM (west labor tier) — furnished farm building: spore vats + cold storage ──
+  placeRoom(56,49,12,8,{x:62,y:56},[{t:"sporevat",x:1,y:1},{t:"sporevat",x:3,y:1},{t:"sporevat",x:5,y:1},{t:"sporevat",x:7,y:1},{t:"fridge",x:10,y:1},{t:"fridge",x:10,y:4},{t:"workstation",x:1,y:5}]);
+
+  // ── FIXER ROW (west underbelly) — the broker's rough joint beside the den ──
+  placeRoom(50,67,11,6,{x:55,y:72},[{t:"fixercorner",x:1,y:1},{t:"dealer",x:3,y:1},{t:"counter",x:5,y:1},{t:"streetvendor",x:8,y:1},{t:"pod",x:1,y:4},{t:"pod",x:9,y:4}]);
+
+  // ── CITY HALL (corporate sector) — the seat of district power ──
+  placeRoom(76,49,11,7,{x:81,y:55},[{t:"counter",x:1,y:1},{t:"counter",x:2,y:1},{t:"workstation",x:4,y:1},{t:"workstation",x:6,y:1},{t:"workstation",x:8,y:1},{t:"lamp",x:5,y:1},{t:"bookshelf",x:1,y:4},{t:"couch",x:3,y:4},{t:"rug",x:4,y:4},{t:"art",x:9,y:4}]);
+
+  // ── POLICE PRECINCT (east of the divide, overlooking the housing) ──
+  placeRoom(72,37,9,6,{x:76,y:42},[{t:"counter",x:1,y:1},{t:"workstation",x:3,y:1},{t:"workstation",x:5,y:1},{t:"pod",x:7,y:1},{t:"pod",x:7,y:3},{t:"gym",x:1,y:3},{t:"lamp",x:4,y:1}]);
 
   // ── RESERVED OUTER-RING ZONES (markers only for now; filled next pass) ──
   // farms NW, woods NE, mines SW, civic SE — left as open ground intentionally
@@ -1506,24 +1560,27 @@ function genCity(){
   [[4,3],[11,5],[17,4],[6,11],[14,12]].forEach(([dx,dy])=>
     addBuilt("mineshaft", mz.x+dx, mz.y+dy));
 
-  // Civic Zone (SE): park, arcade, hospital, school as standalone civic structures
+  // ── CIVIC DISTRICT (SE) — a furnished regime authority quarter laid into the cells carved by
+  //    the x112 / x120 vertical arterials and the y82 horizontal. Every room is road-clean. ──
   const cz=ST.zones.civic;
-  // park is a cluster of green tiles
-  for(let py=0;py<3;py++)for(let px=0;px<4;px++)
-    decor("park", cz.x+2+px*2, cz.y+2+py*2);
-  addBuilt("arcade",   cz.x+12, cz.y+3);
-  addBuilt("hospital", cz.x+18, cz.y+3);
-  addBuilt("school",   cz.x+12, cz.y+10);
-  addBuilt("arcade",   cz.x+18, cz.y+10); // second entertainment node
+  // small green frontage on the open ground just west of the district
+  for(let py=0;py<3;py++)for(let px=0;px<2;px++)decor("park", 100+px, 73+py*2);
 
-  // ── ROLE WORKPLACES — the named cast's posts, so they work where citizens can reach them ──
-  // placed in/near the core so the Doctor's clinic, the store, the precinct etc. are central.
-  addBuilt("medbed",      cz.x+4,  cz.y+3);   // Doctor's clinic
-  addBuilt("counter",     cz.x+4,  cz.y+9);   // Shopkeeper's store
-  addBuilt("copstation",  cz.x+24, cz.y+3);   // Enforcer's precinct
-  addBuilt("mayorhouse",  cz.x+24, cz.y+10);  // Mayor's villa
-  addBuilt("streetvendor",cz.x+8,  cz.y+14);  // a street food cart
-  addBuilt("fixercorner", cz.x+15, cz.y+16);  // Fixer's back-alley node
+  // NW cell — LEARNING HUB (skills training; school fixture keeps the civic function)
+  placeRoom(104,71,7,9,{x:110,y:75},[{t:"school",x:3,y:1},{t:"workstation",x:1,y:1},{t:"workstation",x:5,y:1},{t:"bookshelf",x:1,y:3},{t:"bookshelf",x:1,y:5},{t:"bookshelf",x:5,y:3},{t:"rug",x:3,y:4},{t:"art",x:5,y:6}]);
+
+  // NMID cell — ADMIN VILLA (Mayor's fortified seat; mayorhouse keeps the roleHome)
+  placeRoom(114,71,6,9,{x:116,y:79},[{t:"mayorhouse",x:2,y:1},{t:"art",x:4,y:1},{t:"workstation",x:1,y:3},{t:"counter",x:4,y:3},{t:"rug",x:2,y:4},{t:"couch",x:2,y:5},{t:"pod",x:1,y:6},{t:"fridge",x:4,y:6}]);
+
+  // NE cell — HOSPITAL (north) over PRECINCT (south); copstation keeps the Enforcer's roleHome
+  placeRoom(122,71,9,5,{x:122,y:73},[{t:"hospital",x:4,y:1},{t:"medbed",x:1,y:1},{t:"medbed",x:7,y:1},{t:"counter",x:1,y:3},{t:"medbed",x:7,y:3},{t:"pod",x:3,y:3}]);
+  placeRoom(122,77,9,4,{x:122,y:78},[{t:"copstation",x:4,y:1},{t:"counter",x:1,y:1},{t:"workstation",x:7,y:1},{t:"pod",x:1,y:2},{t:"gym",x:7,y:2}]);
+
+  // SW cell — ENTERTAINMENT COMPLEX (recreation; vendors earn the regime a cut)
+  placeRoom(104,84,15,6,{x:111,y:84},[{t:"arcade",x:2,y:1},{t:"arcade",x:5,y:1},{t:"tv",x:8,y:1},{t:"tv",x:11,y:1},{t:"counter",x:13,y:1},{t:"couch",x:2,y:3},{t:"couch",x:5,y:3},{t:"streetvendor",x:9,y:3},{t:"rug",x:7,y:2}]);
+
+  // SE cell — MARKET HALL (Shopkeeper's counters + the Fixer's back-alley node)
+  placeRoom(122,84,9,6,{x:126,y:84},[{t:"counter",x:1,y:1},{t:"counter",x:2,y:1},{t:"streetvendor",x:4,y:1},{t:"counter",x:6,y:1},{t:"workstation",x:7,y:1},{t:"fixercorner",x:1,y:3},{t:"art",x:7,y:3},{t:"rug",x:4,y:3}]);
 
   // ── STREET FURNITURE — computed relative to rooms, not hardcoded ──
   // street lamps around the core perimeter and plaza
@@ -3824,14 +3881,18 @@ function tick(){ST.tick++;
   if(ST.tick%30===0)caravanTick();
   // passive crop growth — farm plots slowly yield food on their own (tended or not)
   if(ST.tick%200===0){
-    let farms=0,logs=0,mines=0;
+    let farms=0,logs=0,mines=0,vatFood=0,vat3=0;
     for(const s of ST.structs.values()){if(s.bp)continue;
       if(s.type==="farmplot")farms++;
+      else if(s.type==="sporevat"){vatFood+=vatTier(s).food;if((s.tier||1)>=3)vat3++;}
       else if(s.type==="loggingcamp")logs++;
       else if(s.type==="mineshaft")mines++;}
-    // food: farms yield, but stop piling up past a sensible reserve (~3 days of meals)
-    if(farms>0&&(ST.goods.food||0)<ST.pawns.length*12)
-      ST.goods.food=(ST.goods.food||0)+Math.max(1,Math.round(farms/5));
+    // food: farms + spore vats yield (vats scale with tier), capped at a sensible reserve
+    const foodUnits=Math.round(farms/5)+vatFood;
+    if(foodUnits>0&&(ST.goods.food||0)<ST.pawns.length*14)
+      ST.goods.food=(ST.goods.food||0)+Math.max(1,foodUnits);
+    // tier-3 Bio-Reactors also trickle a little chem
+    if(vat3>0&&ST.tick%600===0)ST.goods.chem=(ST.goods.chem||0)+vat3;
     // logging + mining trickle slowly when idle; dedicated workers (via assign/hire) produce faster through the work job
     if(logs>0&&ST.tick%400===0)ST.goods.scrap=(ST.goods.scrap||0)+Math.max(1,Math.round(logs/3));
     if(mines>0&&ST.tick%600===0)ST.goods.data=(ST.goods.data||0)+Math.max(1,Math.round(mines/3));}
@@ -4111,7 +4172,18 @@ function driveAmbience(){
 }
 
 function drawTerrain(){const g=tctx;
-  g.fillStyle="#010408";g.fillRect(0,0,MW*T,MH*T);
+  // deep-ocean abyss backdrop — teal gradient + depth fog + edge vignette
+  {const og=g.createLinearGradient(0,0,0,MH*T);
+   og.addColorStop(0,"#0c2226");og.addColorStop(.45,"#07141c");og.addColorStop(1,"#02080e");
+   g.fillStyle=og;g.fillRect(0,0,MW*T,MH*T);
+   // soft radial fog — sense of immense downward depth
+   const fg=g.createRadialGradient(MW*T*.5,MH*T*.42,0,MW*T*.5,MH*T*.42,MW*T*.62);
+   fg.addColorStop(0,"rgba(24,72,78,.12)");fg.addColorStop(1,"rgba(0,0,0,0)");
+   g.fillStyle=fg;g.fillRect(0,0,MW*T,MH*T);
+   // vignette — darken the far edges, pull the eye inward
+   const vg=g.createRadialGradient(MW*T*.5,MH*T*.5,MH*T*.32,MW*T*.5,MH*T*.5,MW*T*.6);
+   vg.addColorStop(0,"rgba(0,0,0,0)");vg.addColorStop(1,"rgba(0,4,8,.55)");
+   g.fillStyle=vg;g.fillRect(0,0,MW*T,MH*T);}
   // bioluminescent palette for surreal nature elements
   const SPORE=["#a259ff","#6b3fa8","#ff47c8","#5c2d9c"]; // violet/magenta spores
   const MUSH_CAP=["#c084fc","#f0abfc","#e879f9","#7c3aed"]; // mushroom caps
@@ -4119,9 +4191,8 @@ function drawTerrain(){const g=tctx;
   for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){
     const t=ST.ter[x+y*MW],X=x*T,Y=y*T;
     const h=hash2(x*3,y*7),h2=hash2(x*7,y*13),h3=hash2(x*11,y*5);
-    // base concrete — slightly varied darkness
-    const shade=t===3?"#010305":t===1?"#020509":"#030710";
-    g.fillStyle=shade;g.fillRect(X,Y,T,T);
+    // float on the abyss: open ground left to the gradient; roads get only a faint darker wash
+    if(t===3){g.globalAlpha=.45;g.fillStyle="#04090f";g.fillRect(X,Y,T,T);g.globalAlpha=1;}
     // cracked concrete texture — thin fracture lines
     if(t!==3){
       if(h>.72){g.strokeStyle="rgba(0,8,20,.9)";g.lineWidth=.5;
@@ -4139,9 +4210,9 @@ function drawTerrain(){const g=tctx;
       // glowing pixel at the brightest point
       g.fillStyle="rgba(200,150,255,.6)";g.fillRect(sx,sy,1,1)}
     // subtle grid lines — infrastructure feel
-    if((x+y)%2===0){g.fillStyle="rgba(0,0,0,.12)";g.fillRect(X,Y,T,1)}
+    // (grid seam removed — open abyss has no visible tile grid)
     // mushroom clusters — surreal nature on walkable tiles
-    if(t!==3&&hash2(x*17,y*19)>.88){
+    if(t!==3&&hash2(x*17,y*19)>.80){
       const cx=X+T/2,cy=Y+T/2;
       const count=2+((h3*3)|0); // 2-4 mushrooms per cluster
       for(let i=0;i<count;i++){
@@ -4163,11 +4234,8 @@ function drawTerrain(){const g=tctx;
         gg.addColorStop(1,"rgba(0,0,0,0)");
         g.fillStyle=gg;g.beginPath();g.ellipse(mx,my-mh+2,capW*.8,capW*.3,0,0,7);g.fill();
         g.globalAlpha=1}}}
-  // infrastructure grid overlay — very faint
-  g.strokeStyle="rgba(0,20,50,.25)";g.lineWidth=.4;
-  for(let x=0;x<=MW;x++){g.beginPath();g.moveTo(x*T,0);g.lineTo(x*T,MH*T);g.stroke()}
-  for(let y=0;y<=MH;y++){g.beginPath();g.moveTo(0,y*T);g.lineTo(MW*T,y*T);g.stroke()}
-  g.strokeStyle="rgba(0,212,255,.06)";g.strokeRect(.5,.5,MW*T-1,MH*T-1);
+  // infrastructure grid overlay removed — abyss stays open; faint world-edge only
+  g.strokeStyle="rgba(0,212,255,.05)";g.lineWidth=.4;g.strokeRect(.5,.5,MW*T-1,MH*T-1);
 
   // ── ROAD NETWORK (procedural, scales with map) ──
   // Arterials defined once in ROADS (module-level) so streets line up with the core.
@@ -4220,19 +4288,8 @@ function drawTerrain(){const g=tctx;
       g.globalAlpha=.5+hv*.3;g.fillStyle=rg;
       g.beginPath();g.ellipse(X+T*.4,Y+T*.3,T*.6,T*.2,0,0,7);g.fill();g.globalAlpha=1}});
 
-  // ── GRAFFITI BASE LAYER on exterior walls (positioned near core buildings) ──
-  const grafSpots=[
-    {x:38,y:53,tag:"CORP LIES",col:"#ff3d5a",angle:-.08},
-    {x:38,y:56,tag:"RESIST",col:"#e040fb",angle:.05},
-    {x:94,y:53,tag:"MEDS=CREDS",col:"#00d4ff",angle:-.04},
-    {x:94,y:56,tag:"FREE THEM",col:"#39ff88",angle:.06},
-    {x:59,y:69,tag:"THE DEN",col:"#e040fb",angle:0},
-    {x:63,y:76,tag:"SPRAWL LIFE",col:"#ffc947",angle:-.05},
-    {x:45,y:35,tag:"HOME BLOCK",col:"#39ff88",angle:.03},
-    {x:72,y:50,tag:"CHROME",col:"#00d4ff",angle:-.02},
-    {x:50,y:62,tag:"NO CORP",col:"#ff3d5a",angle:.04},
-    {x:80,y:62,tag:"STAY UP",col:"#e040fb",angle:-.03},
-  ];
+  // ── GRAFFITI removed for the clean suspended look ──
+  const grafSpots=[];
   grafSpots.forEach(({x,y,tag,col,angle})=>{
     const X=x*T,Y=y*T+T*.6;
     g.save();g.translate(X,Y);g.rotate(angle);
@@ -4319,37 +4376,30 @@ function drawPod(rm){const th=PODTH[rm.theme]||PODTH.den;
   const q=roomQuality(rm);const qt=roomQTier(q);
   const qf=clamp(q/100,0,1);                 // 0..1 quality factor drives richness
   ctx.save();
-  // floor fill — darker base
-  ctx.fillStyle="rgba(0,0,0,.38)";ctx.fillRect(X,Y,W,H);
-  // richer floor: themed tile grid with quality-scaled brightness + panel seams
-  for(let fy=0;fy<rm.h;fy++)for(let fx=0;fx<rm.w;fx++){
-    const cx=X+fx*T,cy=Y+fy*T;
-    // alternating tile shade
-    ctx.globalAlpha=((fx+fy)%2===0)?0.05+qf*0.04:0.02;
-    ctx.fillStyle=th.c;ctx.fillRect(cx,cy,T,T);
-    // tile seam lines (subtle grid) — cleaner-looking in higher quality rooms
-    ctx.globalAlpha=0.05+qf*0.05;ctx.strokeStyle=th.c;ctx.lineWidth=0.5;
-    ctx.strokeRect(cx+0.5,cy+0.5,T-1,T-1);
-  }
-  ctx.globalAlpha=1;ctx.lineWidth=1;
-  // room glow border — brighter & blurrier the higher the quality
-  ctx.shadowColor=th.c;ctx.shadowBlur=7+qf*9;ctx.fillStyle=th.fill;
-  rrect(X,Y,W,H,8);ctx.fill();ctx.shadowBlur=0;
-  // inner accent line along walls (quality boosts opacity)
-  ctx.strokeStyle=th.c;ctx.globalAlpha=0.45+qf*0.4;ctx.lineWidth=1.4;
-  rrect(X,Y,W,H,8);ctx.stroke();
+  // faint themed wash — glass pane over the abyss
+  ctx.globalAlpha=0.05+qf*0.06;ctx.fillStyle=th.c;rrect(X,Y,W,H,8);ctx.fill();ctx.globalAlpha=1;
+  // INNER LUMINANCE — soft radial glow rising from the room's heart, tinted to theme
+  stampGlow(th.c,X+W/2,Y+H/2,Math.max(W,H)*0.55,0.05+qf*0.06);
+  // LAYERED NEON BORDER — wide soft halo, then a tight bright line (glossier with quality)
+  ctx.strokeStyle=th.c;ctx.shadowColor=th.c;
+  ctx.shadowBlur=13+qf*9;ctx.globalAlpha=.42;ctx.lineWidth=2.4;rrect(X,Y,W,H,8);ctx.stroke();
+  ctx.shadowBlur=5+qf*5;ctx.globalAlpha=.95;ctx.lineWidth=1.6;rrect(X,Y,W,H,8);ctx.stroke();
+  ctx.shadowBlur=0;ctx.globalAlpha=1;ctx.lineWidth=1;
   // inner secondary line
-  ctx.globalAlpha=.18;ctx.lineWidth=.8;
+  ctx.globalAlpha=.2;ctx.lineWidth=.8;
   rrect(X+3,Y+3,W-6,H-6,6);ctx.stroke();
-  // corner accent nodes — small neon studs at the four corners (luxe detail)
-  if(q>=45){ctx.globalAlpha=0.5+qf*0.5;ctx.fillStyle=qt.c;
-    const r=1.5;
-    for(const [cx,cy] of [[X,Y],[X+W,Y],[X,Y+H],[X+W,Y+H]]){
-      ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.fill();}}
+  // animated corner accent nodes — pulsing neon studs with a glow (animated trim)
+  {const tt=performance.now()*0.001, pls=0.5+0.5*Math.sin(tt*2.4+X*0.05+Y*0.03);
+   const r=1.3+pls*0.7;ctx.fillStyle=qt.c;
+   for(const [cx,cy] of [[X,Y],[X+W,Y],[X,Y+H],[X+W,Y+H]]){
+     if(q>=45){ctx.globalAlpha=(.3+.45*pls);ctx.drawImage(glowSprite(qt.c),cx-5,cy-5,10,10);}
+     ctx.globalAlpha=(.45+qf*.4)*(0.55+0.45*pls);ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.fill();}}
   ctx.globalAlpha=1;ctx.lineWidth=1;ctx.restore()}
 function drawRoomStruct(s){
   // walls are drawn by the room outline already — skip them
   if(s.type==="wall")return;
+  // subtle emissive lift so fixtures read as luminous (richer furniture)
+  if(DEF[s.type]&&DEF[s.type].furn){const gX=s.x*T,gY=s.y*T;stampGlow("#3aa0c8",gX+T/2,gY+T/2,T*.5,.07);}
   // draw full fixture art for everything else
   // temporarily clear inRoom flag so drawStruct renders the full sprite
   s.inRoom=false;
@@ -4455,16 +4505,31 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
         ctx.beginPath();ctx.moveTo(X+T*.3,Y+T*.2);ctx.lineTo(X+T*.55,Y+T*.7);ctx.stroke();ctx.lineWidth=1;}
       break;}
     case "door":{
-      rr(X,Y,T,T,"#0e1428");rr(X+2,Y+2,T-4,T-4,"#080c18");
-      const isOpen=ST.pawns.some(p=>DIST(p.px,p.py,s.x+.5,s.y+.5)<2.2);
-      const pulse=0.5+0.5*Math.sin(t*2.2);
-      const iCol=isOpen?"#00d4ff":"#1a3560";
-      ctx.globalAlpha=isOpen?(0.65+0.35*pulse):0.3;
-      for(let r=5;r>1;r--){ctx.strokeStyle=iCol;ctx.lineWidth=1.1;
-        ctx.beginPath();ctx.arc(X+T/2,Y+T/2,r*1.3,0,7);ctx.stroke();}
-      if(isOpen){ctx.fillStyle=iCol;ctx.globalAlpha=.25;
-        ctx.beginPath();ctx.arc(X+T/2,Y+T/2,2,0,7);ctx.fill();}
-      ctx.globalAlpha=1;ctx.lineWidth=1;break;}
+      // futuristic sliding blast door — parts from the centre when a citizen nears, glowing portal behind
+      const cx=X+T/2, innerX=X+2, innerY=Y+3, innerW=T-4, innerH=T-6, half=innerW/2;
+      const near=ST.pawns.some(p=>DIST(p.px,p.py,s.x+.5,s.y+.5)<2.4);
+      const tgt=near?1:0;
+      s._do=(s._do==null)?tgt:s._do+(tgt-s._do)*0.16;       // smooth open/close each frame
+      const o=clamp(s._do,0,1), ease=o*o*(3-2*o);            // smoothstep panel travel
+      const aCol=near?"#00e5ff":"#0c3a5a";
+      rr(X,Y,T,T,"#0a1322");                                  // housing
+      // glowing portal core revealed as the panels part
+      if(o>0.02){const pg=ctx.createRadialGradient(cx,Y+T/2,0,cx,Y+T/2,half+1);
+        pg.addColorStop(0,"rgba(130,242,255,"+(0.55*o).toFixed(3)+")");
+        pg.addColorStop(1,"rgba(0,40,70,0)");
+        ctx.fillStyle=pg;ctx.fillRect(innerX,innerY,innerW,innerH);}
+      // two sliding panels parting from the centre
+      const gap=ease*half, pw=Math.max(0,half-gap);
+      if(pw>0){ctx.fillStyle="#13243c";
+        ctx.fillRect(innerX,innerY,pw,innerH);               // left panel
+        ctx.fillRect(cx+gap,innerY,pw,innerH);               // right panel
+        ctx.strokeStyle=aCol;ctx.lineWidth=1;ctx.globalAlpha=.55+.45*o;
+        ctx.beginPath();ctx.moveTo(cx-gap,innerY);ctx.lineTo(cx-gap,innerY+innerH);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(cx+gap,innerY);ctx.lineTo(cx+gap,innerY+innerH);ctx.stroke();
+        ctx.globalAlpha=1;}
+      // housing frame glow — brighter when open
+      ctx.strokeStyle=aCol;ctx.lineWidth=1.3;ctx.globalAlpha=.45+.45*o;
+      rrect(X+1.5,Y+1.5,T-3,T-3,3);ctx.stroke();ctx.globalAlpha=1;ctx.lineWidth=1;break;}
     case "pod":
       rr(X+1,Y+3,T-2,T-6,"#0e1826");rr(X+2,Y+4,T-4,T-8,"#070c16");
       rr(X+3,Y+5,4,T-10,"#1a2e48");
@@ -4583,6 +4648,32 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
       ctx.fillStyle="#7aa2ff";ctx.fillRect(X+6,Y+5,5,2);
       ctx.fillStyle="#39ff88";ctx.fillRect(X+11,Y+9,2,2);break;}
     // ── RESOURCE PRODUCTION ──
+    case "sporevat":{
+      const vt=vatTier(s),tier=s.tier||1;
+      rr(X+2,Y+2,T-4,T-4,"#0c0f1a");                          // tank housing
+      ctx.strokeStyle=vt.core;ctx.globalAlpha=.7;ctx.lineWidth=1.2;
+      rrect(X+2.5,Y+2.5,T-5,T-5,2);ctx.stroke();ctx.globalAlpha=1;ctx.lineWidth=1;
+      const vpulse=0.6+0.4*Math.sin(t*2+s.x);
+      if(tier===1){          // glowing mushroom caps cultivated in the vat
+        for(let i=0;i<3;i++){const mx=X+5+i*4,my=Y+T-4;
+          ctx.fillStyle=vt.core;ctx.globalAlpha=.55+.3*vpulse;
+          ctx.beginPath();ctx.ellipse(mx,my-3,2,1.3,0,0,7);ctx.fill();
+          ctx.fillRect(mx-.4,my-3,.8,3);}
+        ctx.globalAlpha=1;
+      }else if(tier===2){    // hydroponic algae racks
+        for(let i=0;i<4;i++){const bx=X+4+i*3;
+          ctx.fillStyle=vt.core;ctx.globalAlpha=.4+.35*vpulse;
+          ctx.fillRect(bx,Y+5,1.6,T-9);}
+        ctx.globalAlpha=1;
+      }else{                 // engineered bio-reactor — glowing core + ring
+        ctx.fillStyle=vt.core;ctx.globalAlpha=.55+.4*vpulse;
+        ctx.beginPath();ctx.arc(X+T/2,Y+T/2,3,0,7);ctx.fill();
+        ctx.strokeStyle=vt.core;ctx.globalAlpha=.4;ctx.lineWidth=.8;
+        ctx.beginPath();ctx.arc(X+T/2,Y+T/2,5,0,7);ctx.stroke();ctx.globalAlpha=1;ctx.lineWidth=1;
+      }
+      stampGlow(vt.glow,X+T/2,Y+T/2,T*.6,(0.14+0.10*vpulse)*(0.7+tier*0.15));
+      for(let i=0;i<tier;i++){ctx.fillStyle=vt.glow;ctx.fillRect(X+2+i*2.4,Y+1.5,1.8,1.8);}  // tier pips
+      break;}
     case "farmplot":{
       // tilled soil base
       rr(X+1,Y+1,T-2,T-2,"#1a1208");
@@ -5133,7 +5224,16 @@ function menuBg(){ctx.setTransform(dpr,0,0,dpr,0,0);
   for(let x=-140+o;x<VW+40;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x-100,VH);ctx.stroke()}}
 
 let MOTES=null;
-function initMotes(){const SPORE=["#a259ff","#d946ef","#7c3aed","#e879f9","#ff47c8"],a=[];
+let BLOBS=null;
+function initBlobs(){const COL=["#39d4ff","#7af7ff","#a259ff","#5cffd0"],a=[];
+  const N=10;
+  for(let i=0;i<N;i++){
+    const orbs=2+RI(0,2),cl=[];                       // 2-4 orbs per cluster
+    for(let k=0;k<orbs;k++)cl.push({dx:(Math.random()-.5)*9,dy:(Math.random()-.5)*9,r:1.3+Math.random()*1.7});
+    a.push({x:RI(3,MW-3)*T,y:RI(3,MH-3)*T,c:COL[i%COL.length],ph:Math.random()*6.28,
+      vx:(Math.random()-.5)*.05,vy:(Math.random()-.5)*.05,orbs:cl});}
+  return a;}
+function initMotes(){const SPORE=["#39ff88","#5cffd0","#7affb0","#a259ff","#5cffd0"],a=[];
   const N=12; // wisp count — kept low per design (8-15 range)
   for(let i=0;i<N;i++){
     // bias spawn toward map edges (nature outskirts), away from built core
@@ -5191,37 +5291,46 @@ function drawStreetLayer(x0,y0,x1,y1){
     ctx.strokeRect(X,Y,T-2,T-2);}
 
   // ── BUILDING NEON SIGNS (positioned above new core buildings) ──
-  // Production cluster (corp office x40-49 y52, shop x53-60 y52)
-  neonSign(40,51,"▲ NEXUS CORP",  "#00d4ff",54,10);
-  neonSign(53,51,"BODEGA",          "#ffc947",46,10);
-  // Commercial strip (bar x72-79 y52, clinic x84-92 y52)
+  // Labor tier (corp office x31-40 y50, bodega x44-51 y50)
+  neonSign(31,49,"▲ NEXUS CORP",  "#00d4ff",54,10);
+  neonSign(44,49,"BODEGA",          "#ffc947",46,10);
+  // Corporate sector (chrome bar x74-81 y26, med center x86-94 y26)
   const barCol=`hsl(${((t*.4)%1*360)|0},100%,65%)`;
-  neonSign(72,51,"CHROME BAR",      barCol,   48,10);
-  neonSign(84,51,"✚ MEDCENTER",  "#39ff88",54,10);
-  // Crime corner (dealer x60-66 y70)
-  neonSign(59,69,"THE DEN",         "#a259ff",40,9);
+  neonSign(74,25,"CHROME BAR",      barCol,   48,10);
+  neonSign(86,25,"✚ MEDCENTER",  "#39ff88",54,10);
+  // Crime corner (dealer x40-46 y68)
+  neonSign(40,67,"THE DEN",         "#a259ff",40,9);
+  // new districts
+  neonSign(57,48,"HYDRO FARM",      "#39ff88",52,9);
+  neonSign(50,66,"FIXER ROW",       "#ff8c42",46,9);
+  neonSign(76,48,"⌂ CITY HALL",   "#7af7ff",54,10);
+  neonSign(73,36,"⚖ PRECINCT",    "#47c8ff",50,9);
 
-  // ── RESIDENTIAL BLOCK LABELS (hand-painted, above home rows) ──
-  const resX0=46;
-  for(let i=0;i<4;i++)grafSign(resX0+i*9,29,"HOME "+(i+1),
+  // ── HOLOGRAPHIC BILLBOARDS — floating animated corp signage over open ground ──
+  const billboards=[[96,42,9,5,"#19d4ff"],[34,60,8,4,"#ff2da6"],[100,20,9,5,"#7af7ff"],[60,58,8,4,"#39ffd0"]];
+  billboards.forEach(([bx,by,bw,bh,col],bi)=>{
+    if(bx+bw<x0||bx>x1||by+bh<y0||by>y1)return;
+    const X=bx*T,Y=by*T,W=bw*T,H=bh*T,fl=0.55+0.45*Math.sin(t*3+bi*1.3);
+    ctx.save();ctx.globalCompositeOperation="lighter";
+    ctx.globalAlpha=0.06*fl;ctx.fillStyle=col;ctx.fillRect(X,Y,W,H);            // holo panel
+    ctx.globalAlpha=0.11*fl;ctx.strokeStyle=col;ctx.lineWidth=0.6;              // scanlines
+    for(let sy=Y+2;sy<Y+H;sy+=3){ctx.beginPath();ctx.moveTo(X,sy);ctx.lineTo(X+W,sy);ctx.stroke();}
+    ctx.globalAlpha=0.5*fl;ctx.lineWidth=1;ctx.shadowColor=col;ctx.shadowBlur=6;
+    ctx.strokeRect(X+.5,Y+.5,W-1,H-1);ctx.shadowBlur=0;                          // border
+    const bg=ctx.createLinearGradient(X+W/2,Y+H,X+W/2,Y+H+T*3);                  // projector beam
+    bg.addColorStop(0,col);bg.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.globalAlpha=0.05*fl;ctx.fillStyle=bg;ctx.fillRect(X+W*.32,Y+H,W*.36,T*3);
+    ctx.restore();ctx.globalAlpha=1;});
+
+  // ── HOUSING BLOCK LABELS (above the aligned home rows) ──
+  const resX0=31;
+  for(let i=0;i<4;i++)grafSign(resX0+i*9,24,"HOME "+(i+1),
     ["#39ff88","#ffc947","#e040fb","#00d4ff"][i],(i%2?.04:-.05));
-  for(let i=0;i<3;i++)grafSign(resX0+5+i*9,39,"HOME "+(i+5),
+  for(let i=0;i<3;i++)grafSign(resX0+i*9,32,"HOME "+(i+5),
     ["#39ff88","#ffc947","#e040fb"][i],(i%2?-.04:.05));
 
-  // ── ZONE LABELS (reserved outer-ring nature/resource areas) ──
-  if(ST.zones){
-    grafSign(ST.zones.farm.x+8,ST.zones.farm.y+8,"FARMLAND","#b8ff5e",0);
-    grafSign(ST.zones.woods.x+8,ST.zones.woods.y+8,"SALVAGE SECTOR","#a08a6a",0);
-    grafSign(ST.zones.mine.x+8,ST.zones.mine.y+8,"DATA SLUMS","#47c8ff",0);
-    grafSign(ST.zones.civic.x+10,ST.zones.civic.y+9,"CIVIC ZONE","#00d4ff",0);
-  }
-
-  // ── WALL POSTERS (near core buildings) ──
-  poster(38,54,["WANTED","VOLT","100c"],    "#1a0808","#ff3d5a");
-  poster(38,55,["CORP","SURVEY"],           "#080818","#00d4ff");
-  poster(94,54,["FREE","CLINIC"],           "#081408","#39ff88");
-  poster(94,55,["STIMS","=DEATH"],          "#180818","#e040fb");
-  poster(63,45,["DISTRICT","MEET HERE"],    "#0a0c10","#00d4ff");
+  // ── ZONE LABELS + WALL POSTERS removed for the clean suspended look ──
+  // (building name labels kept as wayfinding)
 
   // ── PUDDLE SHIMMER (on horizontal arterials near core) ──
   const pshimmer=0.08+0.06*Math.sin(t*2.1);
@@ -5240,6 +5349,76 @@ function drawStreetLayer(x0,y0,x1,y1){
   for(let xi=66;xi<=70;xi+=2){
     if(xi<x0||xi>x1)continue;
     ctx.fillRect(xi*T,48*T,T,T*2);}
+
+  // ── NEON ARTERIAL STRIPS — glowing animated centerlines along the roads (cyberpunk road glow) ──
+  ctx.save();ctx.globalCompositeOperation="lighter";ctx.lineCap="round";
+  const hCols=["#19d4ff","#ffb020"], vCols=["#ff2da6","#19d4ff"];   // cyan/amber on h, magenta/cyan on v
+  ROADS.h.forEach(([rx0,rx1,ry],idx)=>{
+    if(ry<y0-2||ry>y1+1)return;
+    const Y=(ry+1)*T, ax0=Math.max(rx0,x0)*T, ax1=Math.min(rx1,x1)*T;
+    if(ax1<=ax0)return; const col=hCols[idx%hCols.length];
+    ctx.shadowColor=col;
+    ctx.strokeStyle=col;ctx.globalAlpha=.30;ctx.lineWidth=2.5;ctx.shadowBlur=8;
+    ctx.beginPath();ctx.moveTo(ax0,Y);ctx.lineTo(ax1,Y);ctx.stroke();
+    ctx.globalAlpha=.65;ctx.lineWidth=1;ctx.shadowBlur=3;
+    ctx.beginPath();ctx.moveTo(ax0,Y);ctx.lineTo(ax1,Y);ctx.stroke();
+    const span=ax1-ax0, head=ax0+((t*70+idx*140)%(span+140))-70;   // travelling pulse
+    const g=ctx.createLinearGradient(head-70,0,head+18,0);
+    g.addColorStop(0,"rgba(0,0,0,0)");g.addColorStop(.85,col);g.addColorStop(1,"rgba(255,255,255,0)");
+    ctx.strokeStyle=g;ctx.globalAlpha=.9;ctx.lineWidth=2.5;ctx.shadowBlur=10;
+    ctx.beginPath();ctx.moveTo(Math.max(head-70,ax0),Y);ctx.lineTo(Math.min(head+18,ax1),Y);ctx.stroke();});
+  ROADS.v.forEach(([rx,ry0,ry1],idx)=>{
+    if(rx<x0-2||rx>x1+1)return;
+    const X=(rx+1)*T, ay0=Math.max(ry0,y0)*T, ay1=Math.min(ry1,y1)*T;
+    if(ay1<=ay0)return; const col=vCols[idx%vCols.length];
+    ctx.shadowColor=col;
+    ctx.strokeStyle=col;ctx.globalAlpha=.30;ctx.lineWidth=2.5;ctx.shadowBlur=8;
+    ctx.beginPath();ctx.moveTo(X,ay0);ctx.lineTo(X,ay1);ctx.stroke();
+    ctx.globalAlpha=.65;ctx.lineWidth=1;ctx.shadowBlur=3;
+    ctx.beginPath();ctx.moveTo(X,ay0);ctx.lineTo(X,ay1);ctx.stroke();
+    const span=ay1-ay0, head=ay0+((t*62+idx*110)%(span+140))-70;
+    const g=ctx.createLinearGradient(0,head-70,0,head+18);
+    g.addColorStop(0,"rgba(0,0,0,0)");g.addColorStop(.85,col);g.addColorStop(1,"rgba(255,255,255,0)");
+    ctx.strokeStyle=g;ctx.globalAlpha=.9;ctx.lineWidth=2.5;ctx.shadowBlur=10;
+    ctx.beginPath();ctx.moveTo(X,Math.max(head-70,ay0));ctx.lineTo(X,Math.min(head+18,ay1));ctx.stroke();});
+  // ── CIRCUIT-BOARD TRACES — subtle PCB branch stubs + via-pads off the arterials (replaces round junction glows) ──
+  const _np=0.6+0.4*Math.sin(t*2.2);
+  // a glowing PCB via-pad: soft halo + bright annular ring + bright center
+  const _vp=(px,py,col,rad)=>{
+    ctx.globalAlpha=.45*_np;ctx.drawImage(glowSprite(col),px-rad*2.3,py-rad*2.3,rad*4.6,rad*4.6);
+    ctx.globalAlpha=.9;ctx.strokeStyle=col;ctx.lineWidth=1.3;ctx.shadowColor=col;ctx.shadowBlur=4;
+    ctx.beginPath();ctx.arc(px,py,rad,0,7);ctx.stroke();
+    ctx.globalAlpha=.95;ctx.fillStyle="#dffcff";ctx.beginPath();ctx.arc(px,py,rad*.42,0,7);ctx.fill();
+    ctx.shadowBlur=0;};
+  // a glowing trace stub (wide soft glow + tight bright core)
+  const _stub=(xa,ya,xb,yb,col)=>{
+    ctx.strokeStyle=col;ctx.shadowColor=col;
+    ctx.globalAlpha=.28;ctx.lineWidth=2.2;ctx.shadowBlur=7;
+    ctx.beginPath();ctx.moveTo(xa,ya);ctx.lineTo(xb,yb);ctx.stroke();
+    ctx.globalAlpha=.68;ctx.lineWidth=.9;ctx.shadowBlur=2;
+    ctx.beginPath();ctx.moveTo(xa,ya);ctx.lineTo(xb,yb);ctx.stroke();};
+  // branch stubs off horizontal arterials (alternate up/down), each ending in a via-pad
+  ROADS.h.forEach(([rx0,rx1,ry],idx)=>{ if(ry<y0-5||ry>y1+5)return;
+    const Y=(ry+1)*T, col=hCols[idx%hCols.length];
+    for(let bx=rx0+9;bx<rx1-3;bx+=17){
+      if(bx<x0-4||bx>x1+4)continue;
+      const dir=((bx+idx)&1)?1:-1, X=bx*T, len=(3+(bx%2))*T;
+      _stub(X,Y,X,Y+dir*len,col); _vp(X,Y+dir*len,col,3.1);}});
+  // branch stubs off vertical arterials (alternate left/right)
+  ROADS.v.forEach(([rx,ry0,ry1],idx)=>{ if(rx<x0-5||rx>x1+5)return;
+    const X=(rx+1)*T, col=vCols[idx%vCols.length];
+    for(let by=ry0+11;by<ry1-3;by+=19){
+      if(by<y0-4||by>y1+4)continue;
+      const dir=((by+idx)&1)?1:-1, Y=by*T, len=(3+(by%2))*T;
+      _stub(X,Y,X+dir*len,Y,col); _vp(X+dir*len,Y,col,3.1);}});
+  // larger PCB via-pads where arterials cross (replaces the round junction glow)
+  ROADS.h.forEach(([hx0,hx1,hy])=>{ if(hy<y0-2||hy>y1+1)return;
+    ROADS.v.forEach(([vx,vy0,vy1])=>{
+      if(vx<hx0||vx>hx1||hy<vy0||hy>vy1)return;                 // arterials must actually cross
+      if(vx<x0-1||vx>x1+1)return;
+      _vp((vx+1)*T,(hy+1)*T,"#7af7ff",4.3);});});
+  ctx.globalAlpha=1;ctx.shadowBlur=0;
+  ctx.shadowBlur=0;ctx.globalAlpha=1;ctx.lineCap="butt";ctx.restore();
 }
 
 function render(){
@@ -5252,6 +5431,15 @@ function render(){
   ctx.drawImage(tc,0,0);
   const x0=clamp(Math.floor(cam.x/T)-1,0,MW-1),y0=clamp(Math.floor(cam.y/T)-1,0,MH-1);
   const x1=clamp(Math.ceil((cam.x+VW/z)/T)+1,0,MW),y1=clamp(Math.ceil((cam.y+VH/z)/T)+1,0,MH);
+  // ── FLOOR CAUSTICS — slow underwater light shimmer drifting over the abyss (additive, faint) ──
+  {ctx.save();ctx.globalCompositeOperation="lighter";const cw=MW*T,ch=MH*T,ct=performance.now()*0.001;
+   for(let i=0;i<6;i++){
+     const px=cw*0.5+Math.sin(ct*0.15+i*1.7)*cw*0.42, py=ch*0.5+Math.cos(ct*0.11+i*2.3)*ch*0.42;
+     if(px<x0*T-90||px>x1*T+90||py<y0*T-90||py>y1*T+90)continue;
+     const rad=72+Math.sin(ct*0.3+i)*22;
+     ctx.globalAlpha=0.03+0.02*Math.sin(ct*0.5+i);
+     ctx.drawImage(glowSprite("#2ad8e0"),px-rad,py-rad,rad*2,rad*2);}
+   ctx.restore();ctx.globalAlpha=1;}
   // drifting spore-motes
   if(!MOTES)MOTES=initMotes();
   for(const mo of MOTES){mo.y-=mo.sp;mo.x+=mo.drift||0;mo.ph+=0.04;
@@ -5267,6 +5455,22 @@ function render(){
     ctx.globalAlpha=ma;ctx.fillStyle=mo.c;
     ctx.beginPath();ctx.arc(mo.x,mo.y,mo.r,0,7);ctx.fill()}
   ctx.globalAlpha=1;
+  // lingering plankton-blobs — slow bioluminescent jellyfish-clusters hovering in the void
+  if(!BLOBS)BLOBS=initBlobs();
+  for(const bl of BLOBS){
+    bl.x+=bl.vx;bl.y+=bl.vy;bl.ph+=0.012;
+    if(bl.x<T){bl.x=T;bl.vx=Math.abs(bl.vx)}if(bl.x>(MW-1)*T){bl.x=(MW-1)*T;bl.vx=-Math.abs(bl.vx)}
+    if(bl.y<T){bl.y=T;bl.vy=Math.abs(bl.vy)}if(bl.y>(MH-1)*T){bl.y=(MH-1)*T;bl.vy=-Math.abs(bl.vy)}
+    if(bl.x<x0*T||bl.x>x1*T||bl.y<y0*T||bl.y>y1*T)continue;
+    const bob=Math.sin(bl.ph)*2,base=0.20+0.12*Math.sin(bl.ph*1.3);
+    ctx.save();ctx.globalCompositeOperation="lighter";
+    for(const o of bl.orbs){const ox=bl.x+o.dx,oy=bl.y+o.dy+bob;
+      ctx.globalAlpha=base*0.6;ctx.drawImage(glowSprite(bl.c),ox-o.r*4,oy-o.r*4,o.r*8,o.r*8);
+      ctx.globalAlpha=base*1.1;ctx.fillStyle=bl.c;ctx.beginPath();ctx.arc(ox,oy,o.r,0,7);ctx.fill();
+      const spk=Math.sin(bl.ph*2.3+o.dx);                      // occasional bright sparkle
+      if(spk>0.86){ctx.globalAlpha=(spk-0.86)*7*base;ctx.fillStyle="#ffffff";ctx.beginPath();ctx.arc(ox,oy,o.r*0.7,0,7);ctx.fill();}}
+    ctx.restore();}
+  ctx.globalAlpha=1;
   // gang territory tint (drawn over terrain, under structures)
   if(ST.gangs.length){
     for(const g of ST.gangs){if(!g.turf.size)continue;
@@ -5281,23 +5485,12 @@ function render(){
   // bio-pod canopies (drawn under the room glints below)
   for(const rm of (ST.rooms||[])){if(rm.x0+rm.w<x0||rm.x0>x1||rm.y0+rm.h<y0||rm.y0>y1)continue;drawPod(rm)}
   drawStreetLayer(x0,y0,x1,y1);
-  // watch-post security coverage — subtle ring so the player can see protected ground
-  if(ST._secZones&&ST._secZones.length){
-    for(const z of ST._secZones){
-      if(z.x+z.r<x0||z.x-z.r>=x1||z.y+z.r<y0||z.y-z.r>=y1)continue;
-      const cx=(z.x+.5)*T,cy=(z.y+.5)*T,rr=z.r*T;
-      ctx.save();
-      ctx.globalAlpha=0.05;ctx.fillStyle="#39ff88";
-      ctx.beginPath();ctx.arc(cx,cy,rr,0,7);ctx.fill();
-      ctx.globalAlpha=0.18;ctx.strokeStyle="#39ff88";ctx.lineWidth=1;ctx.setLineDash([5,6]);
-      ctx.beginPath();ctx.arc(cx,cy,rr,0,7);ctx.stroke();ctx.setLineDash([]);
-      ctx.restore();
-    }
-  }
+  // (watch-post coverage rings removed per circuit-aesthetic pass — _secZones still drives gameplay coverage, just not drawn as a circle)
   // structures — iterate the structure set directly and viewport-cull each,
   // instead of scanning every tile in the viewport (huge win at zoom-out).
   for(const s of ST.structs.values()){
     if(s.x<x0||s.x>=x1||s.y<y0||s.y>=y1)continue;
+    if(DEF[s.type]&&DEF[s.type].nat)continue;   // suspended-void look: hide open-area decor (benches, lamps, crates, dumpsters, planters)
     drawStruct(s);}
   for(const p of ST.pawns)drawPawn(p);
   drawTombstones(x0,y0,x1,y1);
@@ -6481,6 +6674,11 @@ function renderInspectCore(){const el=$("inspect");
       if(contracted.length)h+="<button class='tb' id='i-fire'>FIRE CONTRACTED</button>";
     }
     if(d.desc)h+="<div class='sub'>"+d.desc+"</div>";
+    if(e.type==="sporevat"&&!e.bp){const vt=vatTier(e),nx=VAT_TIERS[(e.tier||1)];
+      h+="<div class='sub'>STAGE: <span style='color:"+vt.core+"'>"+vt.name.toUpperCase()+"</span> \u00b7 +"+vt.food+" food/cycle</div>";
+      if(nx&&vt.up){const up=vt.up,parts=Object.entries(up).map(([k,v])=>v+(k==="income"?"c":" "+k)).join(" + ");
+        const can=(ST.income||0)>=(up.income||0)&&Object.entries(up).every(([k,v])=>k==="income"||(ST.goods[k]||0)>=v);
+        h+="<button class='tb' id='i-upgrade'"+(can?"":" style='opacity:.5'")+">UPGRADE \u2192 "+nx.name.toUpperCase()+" ("+parts+")</button>";}}
     if(e.type==="scrap"||e.type==="cache")
       h+="<button class='tb' id='i-salv'>"+(e.desig?"UNMARK":"SALVAGE")+"</button>";
     else if(e.type==="ruin"||d.cat==="b")
@@ -6546,6 +6744,16 @@ $("inspect").addEventListener("click",e=>{
     if(tgt&&repairRobo(tgt)){renderInspect();syncHUD()}}
   else if(id==="i-salv"&&sel){sel.desig=!sel.desig;
     if(sel.desig)ST.flags.salv=true;renderInspect()}
+  else if(id==="i-upgrade"&&sel&&sel.type==="sporevat"){
+    const up=vatTier(sel).up;
+    if(!up){return;}
+    const can=(ST.income||0)>=(up.income||0)&&Object.entries(up).every(([k,v])=>k==="income"||(ST.goods[k]||0)>=v);
+    if(!can){flashMsg&&flashMsg("Can't afford the upgrade");return;}
+    if(up.income)ST.income-=up.income;
+    for(const[k,v] of Object.entries(up))if(k!=="income")ST.goods[k]=(ST.goods[k]||0)-v;
+    sel.tier=(sel.tier||1)+1;
+    float(sel.x+.5,sel.y+.5,"UPGRADED","#39ff88");log(DEF.sporevat.name+" upgraded to "+vatTier(sel).name+".","good");
+    renderInspect();syncHUD();return;}
   else if(id==="i-decon"&&sel){sel.decon=!sel.decon;renderInspect()}});
 
 /* ---------- ambient musings (Haiku, background flavor) ---------- */
@@ -7171,7 +7379,7 @@ function loadFromSlot(slot){
   if(!raw){flashMsg("Slot "+slot+" is empty");return false}
   let d;try{d=JSON.parse(raw)}catch(e){flashMsg("Save file corrupt");return false}
   applyState(d);
-  drawTerrain();MOTES=null;
+  drawTerrain();MOTES=null;BLOBS=null;
   if(ST.pawns[0]){cam.x=ST.pawns[0].px*T-VW/cam.z/2;cam.y=ST.pawns[0].py*T-VH/cam.z/2;clampCam()}
   hideModal();closeOverlay();refreshSpd();syncHUD();renderRoster();renderInspect();
   flashMsg("Loaded "+(slot==="auto"?"autosave":"slot "+slot)+" — day "+dayN());banner("RUN LOADED","good");return true}
@@ -7191,7 +7399,7 @@ function loadGame(){
   const slot=mostRecentSlot();
   if(slot==="legacy"){
     try{const d=JSON.parse(localStorage.getItem(SAVE_KEY));applyState(d);
-      drawTerrain();MOTES=null;
+      drawTerrain();MOTES=null;BLOBS=null;
       if(ST.pawns[0]){cam.x=ST.pawns[0].px*T-VW/cam.z/2;cam.y=ST.pawns[0].py*T-VH/cam.z/2;clampCam()}
       hideModal();refreshSpd();syncHUD();renderRoster();renderInspect();
       flashMsg("Run loaded — day "+dayN());banner("RUN LOADED","good");return true;}

@@ -35,56 +35,6 @@ done yet.
 **IMMEDIATE city-first work queue:** ~~character-CREATION SCREEN~~ (DONE) → stat-gated DIALOGUE
 (opsCheck/ops built to feed it) → job/farming VISUALS + litter → deep testing/tuning.
 
-- **AUDIT + HARDENING PASS (2026-06-18)** — DONE. Full static + runtime audit of the 7,309-line build.
-  Static: 0 syntax errors, braces/brackets balanced, 352 fns with 0 duplicates, 0 dead fns, HTML balanced.
-  Runtime: no crash across multi-seed sim; save/load round-trip verified. FIXES SHIPPED:
-  (1) **SAVE/LOAD HOME-IDENTITY BUG (real, latent)** — `snapPawn` copied `p.home` by value while the
-  `ST.cityHomes` registry was never serialized, so after EVERY load all housed pawns' homes were detached
-  from the registry (verified: 13/13 detached on the original build). `openHomes()` identity checks then
-  mis-reported occupied homes as vacant → double-claiming. Fix: serialize `cityHomes`; on load re-link each
-  pawn's `p.home` to the shared registry entry by bed coords. Verified 13/13 re-linked, 0 detached.
-  (2) **Unsaved gameplay state** — `heat`/`heatWarn` (crime heat reset to 0 on reload — save-scummable),
-  `requests` (pending petitions lost), `lastGlobalReqT`/`lastUpkeep` (post-load timing glitches), and
-  `zones` (cosmetic labels) are now serialized + restored. `_secZones` confirmed self-healing via
-  `securityTick` (no save needed). (3) **Perf HUD** — press **P** to toggle an FPS/pawns/speed overlay
-  (self-contained DOM, works in fullscreen) for real in-browser frame measurement. DEFERRED w/ reason:
-  O(n²) pawn-pair proximity loop (every 5 ticks) is trivial at pop ~13; spatial-bucket it only when pop
-  scales past ~40 (premature now). BALANCE: unmanaged mid-40s mood confirmed as emergent equilibrium
-  (soft floor only at m<10), not a bug — no tuning change. NEW save/load assertions: 10/10 pass.
-- **COMPREHENSIVE FUNCTIONAL VERIFICATION (2026-06-18, follow-up)** — DONE. Read the mechanics-reference
-  docx and cross-checked every documented system against code + runtime. Verified at runtime: 8 personality
-  traits, 6 operative attributes on the avatar, all 6 named roles spawn; an 8-day instrumented organic run
-  fired events (7), a disaster telegraph, a trade caravan, requests, sickness, tier progression (1→3),
-  milestones (5), and insurrection drift (support 5→17, grip 60→68, intel→16) with ZERO crashes and stable
-  survival. Player-gated systems (cells, exposure, gangs) correctly stay dormant in unmanaged play — gangs
-  have a single formation path (player sanction of a crew), by design. FORCE-TESTED those dormant paths:
-  injected a sanctioned gang (gangTick/crimeTick ran 3 days clean, gangHeat accrued), drove a robbery
-  (executed, produced effect), and ran the full investigation loop (informant case opened → investigate
-  revealed a lead → accuse resolved as solved). All clean. NEW FIX FOUND + SHIPPED: **`ST.requests` grew
-  unbounded** (expireRequests only flipped status, never spliced; reached 26 in 8d) — pre-existing, but
-  amplified into SAVE BLOAT by the audit's request-serialization. Fix: prune to pending + 8 most-recent
-  resolved in expireRequests. Verified bounded at 16. Open items (not bugs): births/conception, blackout
-  disaster, addiction escalation, and arrivals are rare/long-horizon and were not observed in 8 days; a
-  7-day×12-seed horizon and live render/FPS profiling remain unmeasured.
-- **HARDENING PASS — buildings, systems, long-horizon (2026-06-18, single-city scope)** — DONE.
-  BUILDINGS: every building + furniture in the mechanics doc maps to a DEF entry (50 total); 41 placeable
-  across 8 build-menu categories (utility-menu gap from earlier sessions resolved). Runtime-proven:
-  production accrues (data/food/scrap), 31/39 economy buildings work, refine outputs 0 only because
-  chemlab/workshop/stimlab/gearshop aren't in the starter set (player-built, by design), and the
-  power/water absence-penalty lands on 13/13 residents when facilities are absent. SYSTEMS: full
-  CLAUDE.md identifier sweep — 106/112 present; the 6 absent are test-harness names (spawnFoeAt),
-  tool names (str_replace/present_files), prose (tombstones→tickTombstones/ST.tombs), and tileInTurf
-  (doc marks it removed). AI DIALOGUE: gates on aiReady()=`!!AI_PROXY` — no TALK button / no crash
-  without a key; deterministic [ACT:] parse + verb-apply verified 7/7 (live LLM call needs a key, can't
-  test headless). LONG-HORIZON (unmanaged, 2 seeds × 7d + 1 × 8d): population stable (no death spiral;
-  one seed grew 13→14 via birth/arrival on d7), mood drops 60→mid-40s and PLATEAUS (stable equilibrium,
-  not decline), eviction fired (homeless 1), request-prune held (≤17), relationship map bounded (~80
-  keys). Per-tick timing in-harness is GC/Proxy-noisy (3-5ms, one 14ms spike) — NOT browser-representative;
-  use the in-game P-key FPS HUD for real numbers. CLEANUP: removed vestigial `powerRecalc()` no-op + all
-  6 call sites (real utility logic lives in the daily tick); save/load still 10/10. FLAGGED, NOT FIXED:
-  (1) `updateFlags(){}` is a second identical no-op — left to avoid pre-test churn; remove in a dedicated
-  pass. (2) docx production row "Logging Camp / Mine Shaft — Wood / Ore" is stale; fix in gendoc.js to
-  "Salvage Yard / Data Den — Scrap / Data" (not patched: docx is generated, edit would be overwritten).
 - **Character-creation screen** — DONE. NEW DISTRICT now routes through `showCharCreate()` before
   newGame: pick 1 of 5 backgrounds (live stat preview), distribute OPS_POINT_BUDGET(4) extra points
   via +/- per attribute (capped 0-10, remaining counter), enter a codename. BEGIN sets
@@ -391,6 +341,11 @@ node build_smoke.js          # expect ALL TESTS PASS
 node probe_final.js          # 15-day full run, must end STABLE + COMPLETE
 ```
 
+> **Lesson (visual passes):** validate by calling `render()` ITSELF, not just individual draw
+> fns — a render-scope `ReferenceError` (a bare `t` in the floor-caustics block) once blanked the
+> screen while per-fn tests still passed. In the harness set `ST.phase="play"` + `VW/VH/dpr` and
+> call `render()` a few frames; `drawStreetLayer` defines its own `t`, `render()` does NOT.
+
 ### Test harness
 - `smoke.js` = the 19 assertions (C economy, E pathing, F1-F3 job AI, G1-G14 save/load).
 - `build_smoke.js` = bundles `stubs.js` + the `<script>` + `smoke.js` into `smoke_bundle.js`, runs it.
@@ -458,6 +413,40 @@ Measured over managed 14-day runs (player keeps everyone ≥45 credits):
 ## 8. Roadmap / opportunities
 
 **BUILT & SHIPPED (do not rebuild — verify against code first):**
+- **Deep-ocean wireframe + circuit-roads + civic-district overhaul** — DONE (this arc).
+  · AESTHETIC: terrain backdrop is now a vertical abyss gradient (#0c2226→#07141c→#02080e) +
+    radial depth fog + edge vignette; tile grid removed (suspended/floating look). `drawPod`
+    rooms converted from solid checkered floor → hollow neon WIREFRAME (faint themed wash +
+    inner luminance + layered halo/bright border + animated pulsing corner studs).
+  · LIFE: bioluminescent mushrooms (density >.80, green/teal motes) + `initBlobs`/`BLOBS` —
+    10 slow lingering plankton-jelly clusters (additive, white sparkle flashes). `BLOBS=null`
+    reset beside both `MOTES=null` sites.
+  · DOOR: `drawStruct` case "door" is now a proximity SLIDING blast door — panels part when a
+    citizen is within 2.4 tiles, per-struct `s._do` lerp + smoothstep, glowing cyan portal.
+  · SPORE VAT — tiered upgradeable farm building. `DEF.sporevat` (food, tiered), `VAT_TIERS`
+    [Spore Vat→Algae Bloom→Bio-Reactor], `vatTier(s)`; tier-scaled food in the 200-tick food
+    tick (+T3 chem trickle); 3-tier render; inspect STAGE line + UPGRADE button (`i-upgrade`).
+  · genCity LAYOUT REWORK — `ROADS` rewritten so roads NEVER cross buildings; x70 = magenta
+    DIVIDE spine (underclass W | corporate E); roads 2-wide. Homes aligned; labor tier W,
+    corporate sector E. Graffiti/zone-labels/posters removed (HOME + building name labels kept).
+  · 4 furnished rooms added (placeRoom): HYDRO FARM, FIXER ROW, CITY HALL, POLICE PRECINCT.
+  · CIRCUIT-BOARD ROADS — removed the dashed security-zone rings (kept `_secZones` for gameplay
+    coverage, just not drawn) AND the round junction-node glows; replaced with subtle PCB traces:
+    branch stubs off each arterial (alt sides, ~17/19-tile spacing) ending in glowing via-pads,
+    larger via-pads at crossings. In `drawStreetLayer`, road-colored, travelling-pulse kept.
+  · NEON DETAILS — floor caustics (6 drifting additive pools, render()), holographic billboards
+    (4, drawStreetLayer), blob sparkles, animated trim. ⚠ caustics first shipped with a bare `t`
+    → render-scope `ReferenceError: t is not defined` (blank screen); FIXED to a local
+    `ct=performance.now()*0.001`. Lesson baked into §5.
+  · CHILL MUSIC (C418/Minecraft feel) — added a sparse GENERATIVE PIANO over the existing Am9
+    pad: soft sine+bell note (`pno`), C-major-pentatonic, 1 (sometimes 2–3) notes/phrase,
+    2.6–7s of space, long decay, through a feedback `echo` DelayNode send. In `ambientStart`
+    (closures; `stopMelody` on `_amb`). Mute-gated. Pentatonic-over-Am = warm, not melancholy.
+  · CIVIC DISTRICT (SE) — replaced the loose scattered civic icons with 6 furnished `placeRoom`
+    rooms laid into the road-carved cells (x112/x120/y82): Learning Hub (NW), Admin Villa (NMID,
+    Mayor roleHome), Hospital-over-Precinct (NE, Enforcer roleHome), Entertainment Complex (SW),
+    Market Hall (SE, Shopkeeper counters + Fixer roleHome). Validated: 0 room-on-road, 0 overlaps,
+    all 3 roleHomes intact. Total rooms 16→22.
 - **Render perf** — DONE. Structure-draw loop now iterates `ST.structs` directly + viewport-culls
   each (was: scan every viewport tile w/ Map lookup). ~35× faster at zoom-out. In `render()`.
 - **Onboarding** — DONE. `checkContextualHints()` + `hintOnce(id,msg)` fire once when the player
@@ -545,8 +534,8 @@ Measured over managed 14-day runs (player keeps everyone ≥45 credits):
   needs a worker" in inspect + "staffstore" onboarding hint. NOTE: wisps do NOT auto-assign to
   stores (player assigns) — so a fresh colony has ~9/11 stores idle until staffed; this is the
   intended "you manage commerce" design but watch starting-economy balance in play.
-  RESOLVED (all three shipped in later builds): commerce buildings → rooms/interiors (autoWrapStore);
-  visible worker badge inside store; studying → distinct visible activities (read/train/practice).
+  REMAINING in this push (not yet built): commerce buildings → rooms/interiors; visible worker
+  inside store; studying → distinct visible activities (read/train/practice).
 - **Home layout (Living Homes Phase 2)** — DONE. `home(x0,y0,variant)` now arranges furniture
   into functional ZONES (sleep nook + lamp, clustered utility/hygiene wall, living area with
   couch over rug facing tv) instead of scattering fixtures along the top wall. 3 layout VARIANTS
