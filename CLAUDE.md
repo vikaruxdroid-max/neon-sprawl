@@ -39,6 +39,80 @@ done yet.
 
 ## ⚡ LATEST STATE (read this first — reconciled from the live VM, June 2026) ⚡
 
+**FOUR FEATURES + MOTEL START + BUG FIXES (most recent session):**
+- **Avatar motel/fixer-room start (+ sleep-anywhere fix):** the avatar was sleeping on the ground because
+  `mkSleep` targets sleep-PODS and the avatar didn't reliably own one. FIX + feature: the avatar now spawns
+  living in the FIXER'S BACK ROOM (`ST.fixerHome`, registered as a reserved cityHome at world ~51,71) with
+  its own claimed pod, low `attach` (it's borrowed). Regular pawns skip the fixer home. This is the "start
+  in a motel/the fixer's room while you build up" beginning. Avatar sickness confirmed working-as-designed
+  (gets infected, blocked from work, recovers when hyg/hp allow — not a bug).
+- **Caravan made visible (fixed the "phantom popup"):** the caravan was a real trade deal with NO map
+  presence, so "CARAVAN ARRIVES" felt fake. Now `ST.caravan` has an {x,y} (via `caravanSpot()` — next to a
+  Market if built, else a road edge) and `drawCaravan()` renders a glowing trader cart with a BUY/SELL goods
+  banner. The event now corresponds to something you can see + walk to.
+- **Side-by-side socializing (`socWith`):** when two wisps socialize they now LOCK into a stable adjacent
+  pair — both pause, hold position, face each other, and emit alternating chat/happy emotes — so the
+  interaction is legible (you can see both thought bubbles). Added a `chat` emote (speech mark). The social
+  hold is in pawnTick (a `socWith`+`socUntil` lock the partner respects). Verified: pairs lock to distance 0.
+- **Lightning toggle (`STORM`, ⚡ button):** mirrors the rain toggle, off by default. `drawLightning()`
+  schedules flashes (~2–7s apart) with a cool-white screen flash, occasional jagged bolts, and double-flash
+  flicker. CRUCIAL hookup: `stampGlow()` boosts every glow by `STORM.flash` during a strike, so ALL the map's
+  neon/sprites POP on each flash (your request). `stormGlow()` exposes the 0..1 flash factor.
+- **Expanded NPC routines (daily rhythm):** `mkSched` already produced wake/work/meal times; ADDED an
+  evening LEISURE WINDOW (`leisureStart`/`leisureEnd`, sociable wisps start earlier + stay out later). In
+  `scoreJobs`, recreate/socialize/visit are biased UP (~1.8x) during the leisure window and gently down
+  outside it — but the out-of-window penalty EASES as the need grows (a genuinely bored/lonely wisp still
+  goes out), so it biases TIMING without suppressing real needs. Result: daytime is work-heavy, evenings
+  shift to leisure. (NOTE: an over-aggressive 0.5x penalty initially broke smoke test F2 — softened to a
+  need-scaled `max(0.78, 1-need/220)`; lesson: don't hard-suppress needs, bias timing.)
+- **NPC-to-NPC AI conversation (`tickNpcConvo`):** the big one. When two wisps are socializing side-by-side
+  AND the player is WATCHING (`playerWatching()` = on-screen + `cam.z>=1.15`), occasionally generate a short
+  in-character AI exchange between them using the CHEAP ambient model (`AI_MODEL_AMBIENT`/Haiku) + the shared
+  budget guards (`AI_CAP_USD`, leaves 15% headroom for player TALK). Pair cooldowns prevent chatter. Lines
+  show as `sayLine()` speech bubbles (`drawSays()` + `roundRectPath()`, wrapped, fade in/out, tail). The
+  "only when watching" gate means a handful of API calls per session, only for conversations you can see.
+  Called at `ST.tick%40===0`, self-gated internally. AI can't fire headless (no proxy) but all machinery —
+  detection, gating, display, tick wiring — is validated; `playerWatching` correctly true zoomed-in /
+  false zoomed-out.
+
+---
+
+## ⚡ AUDIT STATE (prior session) ⚡
+- **Structural integrity: CLEAN.** No dead functions, no duplicate definitions, no const redeclarations,
+  no calls to undefined functions, no leftover debug/console.log, no `debugger`. Removed the one piece of
+  dead weight: the empty retired `updateFlags(){}` (and its 3 call sites). `powerRecalc` already gone.
+- **Feature-presence: ALL WIRED.** Every system claimed DONE exists in code AND is referenced/called in
+  the loop — verified ~22 systems (economy, jobs, eviction, mood, crime, gangs, heists, disasters,
+  caravans, dynasties, factions, insurrection, detective, role-wisps, requests, events, relationships,
+  cliques, mentorship, room-quality, commerce, spore-vat, blobs). No phantom features.
+- **Behavioral validation (ran the sim 5–12 days, measured effects):** Economy active (income → 1442/10d,
+  goods flow). Roles correctly assigned to workplaces, **38% on-duty during work hours** (in the 37–82%
+  target). Relationships form naturally (**67 pairs in 5 days**, positive+negative, strong bonds ≥30).
+  Cliques form. Caravans arrive (~6 days/10). Disasters fire (telegraphed). Insurrection support+intel
+  rise (support 20, intel 18). Events schedule+fire (nextEv advances). **Crime/gang/heat loop WORKS**
+  (seeded a gang: gangHeat rose, racket bank → 1955, district heat rose).
+  - **KEY DESIGN NOTE (not a bug):** the crime system is GATED — `crimeTick()` starts with
+    `if(!ST.gangs.length)return;`. Gangs only form when the PLAYER sanctions a "gang" request (gang
+    requests DO generate autonomously; the player opts in). So crime/heat is correctly dormant until the
+    first gang exists. A headless run with no player input will show 0 gangs / 0 heat — that is correct.
+  - Cases (detective) need informants first; informant cases trigger at `ST.tick%TPD===0` when
+    `REG().informants.length>0` (25% chance). The detective layer is wired but sparse by design.
+- **Optimization (POP=12): the render path is already well-optimized** (prior viewport-culling + cached
+  vignette). Found + fixed the ONE genuine per-frame hotspot: **puddle shimmer** was allocating a fresh
+  `createRadialGradient` per puddle per frame — now builds the gradient ONCE (`_puddleGrad`, module-level)
+  and `translate()`s it per puddle. Other candidates (per-pawn `performance.now()` ≈ 4µs/frame total; the
+  two O(n²) pawn loops = 66 checks at POP=12, one gated to %5 ticks, one daily) are NEGLIGIBLE at the
+  game's actual scale (one city, ~12–30 pawns) — deliberately NOT "optimized" since that would add
+  regression risk for unmeasurable gain.
+- **Validation harness note:** when writing headless test harnesses, pawns use `px`/`py` (float tile
+  positions, e.g. `x+.5`), NOT `x`/`y`. Relationships live in the GLOBAL `ST.rel` map (keyed by pawn-pair
+  via `relKey`), NOT on `p.rel`. `p.assigned` stores a tile KEY (`K(x,y)`), looked up via
+  `ST.structs.get(p.assigned)`. (Getting these wrong produces false "broken" readings.)
+
+---
+
+## ⚡ PRIOR STATE (reconciled from the live VM) ⚡
+
 **⚠ MULTI-SESSION DIVERGENCE WARNING — READ BEFORE EDITING.** Work happens on this game in MORE THAN
 ONE place. A separate session (or the user's own edits) built features DIRECTLY into the live VM that
 never came back to any single container. This caused a real divergence that took a full session to

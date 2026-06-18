@@ -2318,8 +2318,13 @@ function mkSched(P,tr){
   const sleepAt=clamp(22.5+(owl?2.6:0)+(P.soc-50)/45+(P.imp-50)/40-(P.cau-50)/40-(P.ind-50)/55,20,27);
   const workLen=clamp(6+(P.amb-50)/14+(P.ind-50)/22,3.5,11);
   const workStart=clamp(wake+1.8+(P.cau-50)/70,wake+1,13.5);
+  const workEnd=clamp(workStart+workLen,workStart+3,25.5);
+  // LEISURE WINDOW: after work, before bed — when sociable/curious folk go out (bar, arcade, park, friends).
+  // Social pawns start earlier and stay out later; homebodies have a short window.
+  const leisureStart=r2(clamp(workEnd+0.3,16,22));
+  const leisureEnd=r2(clamp(sleepAt-0.4+(P.soc-50)/60,leisureStart+0.5,26.5));
   return{wake:r2(wake),sleepAt:r2(sleepAt),workStart:r2(workStart),
-    workEnd:r2(clamp(workStart+workLen,workStart+3,25.5)),
+    workEnd:r2(workEnd),leisureStart,leisureEnd,
     bf:r2(wake+0.4),lunch:r2(clamp(12.5+(P.imp-50)/55,11.5,14.5)),dinner:r2(clamp(18.5+(P.soc-50)/45,17,21))}}
 function workSpd(p,sk){return (0.6+sk*0.09)*trMul(p,"work")}
 function moveSpd(p){let s=0.32*trMul(p,"move");if(p.dazed>ST.tick)s*=.55;return s}
@@ -2534,6 +2539,19 @@ function scoreJobs(p){
     sm.eat*=(nearWin(hr,S.bf,0.9)||nearWin(hr,S.lunch,0.8)||nearWin(hr,S.dinner,1.0))?1.7:0.7;
     if(nearWin(hr,S.wake+0.6,1.0))sm.hygiene*=1.7;
     sm.learn*=inWin(hr,S.workStart,S.workEnd)?0.8:1.3; // study off-shift
+    // LEISURE RHYTHM: in the evening leisure window, wisps want to go OUT and be together — unwind at a
+    // venue, socialize, visit friends. Outside it they're less inclined — but a genuine NEED still pulls
+    // them (a very bored or very lonely wisp will still go, just less eagerly), so the window biases
+    // TIMING without hard-suppressing real needs.
+    if(S.leisureStart!=null){
+      const inLeisure=inWin(hr,S.leisureStart,S.leisureEnd);
+      // out-of-window penalty eases as the need grows: mild when bored, near-none when desperate.
+      const recPen=Math.max(0.78,1-fun/220);    // funlow → closer to 1
+      const socPen=Math.max(0.78,1-socN/220);
+      sm.recreate*=inLeisure?1.9:recPen;
+      sm.socialize*=inLeisure?1.8:socPen;
+      sm.visit*=inLeisure?1.7:Math.max(0.75,socPen);
+    }
   }else if(night){sm.sleep*=1.4}
   if(inj){sm.eat*=1.3;sm.sleep*=1.3}
   const bias=p.bias;
@@ -3948,6 +3966,7 @@ function tick(){ST.tick++;
   // (roguelike vat-protein production + beacon-extraction win removed — the city has neither)
   for(let i=ST.pawns.length-1;i>=0;i--)pawnTick(ST.pawns[i]);
   for(let i=ST.floats.length-1;i>=0;i--)if(--ST.floats[i].ttl<=0)ST.floats.splice(i,1);
+  if(ST.says)for(let i=ST.says.length-1;i>=0;i--)if(--ST.says[i].ttl<=0)ST.says.splice(i,1);
   tickEmotes();
   tickTombstones();
   if(ST.tick>=ST.nextEv)fireEvent();
@@ -4039,6 +4058,7 @@ function tick(){ST.tick++;
   if(ST.tick%TPD===0&&ST.tick>0&&typeof autosave==="function")autosave(); // daily autosave
   if(ST.tick%120===0)checkTier(); // district tier progression
   if(ST.tick%100===0)tickAmbient(); // background AI musings (rate-limited internally)
+  if(ST.tick%40===0)tickNpcConvo(); // NPC-to-NPC dialogue when player is watching (self-gated, cheap)
   if(ST.tick%100===0)driveAmbience();
   if(ST.tick%50===0)checkContextualHints();
   if(ST.tick%200===0&&ST.gangs.length)gangTick();
@@ -5099,6 +5119,45 @@ function onlookersReact(x,y,kind,radius){
     tryEmote(q,kind,90);
   }
 }
+// draw NPC speech bubbles — a small rounded bubble above the speaker with their line, fading in/out.
+function roundRectPath(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();
+}
+function drawSays(x0,y0,x1,y1){
+  if(!ST.says||!ST.says.length)return;
+  ctx.textAlign="left";ctx.font="7px monospace";
+  for(const s of ST.says){
+    const p=ST.pawns.find(q=>q.id===s.id);if(!p)continue;
+    if(p.px<x0-2||p.px>x1+2||p.py<y0-2||p.py>y1+2)continue;
+    // fade: in over first 12%, hold, out over last 18%
+    const prog=1-s.ttl/s.t0;
+    let a=1; if(prog<0.12)a=prog/0.12; else if(prog>0.82)a=(1-prog)/0.18;
+    a=clamp(a,0,1); if(a<=0)continue;
+    // wrap text to ~22 chars/line
+    const words=s.txt.split(" ");const lines=[];let cur="";
+    for(const w of words){if((cur+" "+w).trim().length>22){lines.push(cur.trim());cur=w;}else cur+=" "+w;}
+    if(cur.trim())lines.push(cur.trim());
+    const lh=8, padX=4, padY=3;
+    let maxW=0; for(const ln of lines)maxW=Math.max(maxW,ctx.measureText(ln).width);
+    const bw=maxW+padX*2, bh=lines.length*lh+padY*2;
+    const cx=p.px*T, by=p.py*T-14-bh;     // above the pawn's head
+    const bx=cx-bw/2;
+    ctx.globalAlpha=a*0.92;
+    // bubble body
+    ctx.fillStyle="rgba(8,14,26,0.92)";roundRectPath(bx,by,bw,bh,3);ctx.fill();
+    ctx.strokeStyle="rgba(120,180,230,0.5)";ctx.lineWidth=0.7;ctx.stroke();
+    // little tail
+    ctx.fillStyle="rgba(8,14,26,0.92)";ctx.beginPath();ctx.moveTo(cx-2,by+bh);ctx.lineTo(cx+2,by+bh);ctx.lineTo(cx,by+bh+3);ctx.closePath();ctx.fill();
+    // text
+    ctx.globalAlpha=a;ctx.fillStyle="#cfe6ff";ctx.textAlign="left";
+    for(let i=0;i<lines.length;i++)ctx.fillText(lines[i],bx+padX,by+padY+lh*(i+1)-2);
+  }
+  ctx.globalAlpha=1;ctx.textAlign="left";
+}
 function drawEmotes(x0,y0,x1,y1){
   if(!ST.emotes||!ST.emotes.length)return;
   ctx.textAlign="center";
@@ -5606,6 +5665,7 @@ function render(){
   for(const p of ST.pawns)drawPawn(p);
   drawTombstones(x0,y0,x1,y1);
   drawEmotes(x0,y0,x1,y1);
+  drawSays(x0,y0,x1,y1);
   // floating text
   ctx.font="7px monospace";ctx.textAlign="center";
   for(const f of ST.floats){const prog=1-f.ttl/f.t0;const a=clamp(1-prog*prog,0,1);
@@ -6982,6 +7042,75 @@ async function tickAmbient(){
   }catch(e){/* silent — ambient is best-effort */}
   AMBIENT.inFlight=false;}
 
+/* ═══════════ NPC-TO-NPC AI CONVERSATION ═══════════
+   When two wisps socialize side-by-side AND the player is actually watching them (on-screen, zoomed in
+   enough to read faces), occasionally generate a short, in-character AI exchange between the two. Gated
+   hard on "is the player looking" so API calls only happen for conversations the player can actually see —
+   a handful per session, not hundreds. Uses the cheap ambient model + the shared budget guards. */
+const NPCCONVO={lastTick:-1e9,gapTicks:600,inFlight:false,cooldownByPair:{}};
+// is a world tile currently visible AND the camera zoomed in enough to read pawns?
+function playerWatching(wx,wy){
+  if(cam.z<1.15)return false;                       // zoomed too far out to read a conversation
+  const sx=wx*T,sy=wy*T;
+  const left=cam.x, top=cam.y, right=cam.x+VW/cam.z, bottom=cam.y+VH/cam.z;
+  const pad=T*1.5;
+  return sx>left+pad&&sx<right-pad&&sy>top+pad&&sy<bottom-pad;   // comfortably inside the viewport
+}
+// a speech line shown above a pawn for a few seconds (longer + wrapped vs a quick float)
+function sayLine(p,txt){ if(!p||!txt)return;
+  ST.says=ST.says||[];
+  // remove any existing line from this speaker so they don't stack
+  ST.says=ST.says.filter(s=>s.id!==p.id);
+  ST.says.push({id:p.id,txt:txt.slice(0,90),ttl:240,t0:240});
+  if(ST.says.length>4)ST.says.shift();
+}
+async function tickNpcConvo(){
+  if(NPCCONVO.inFlight||!aiReady()||!AMBIENT.enabled)return;
+  if(ST.tick-NPCCONVO.lastTick<NPCCONVO.gapTicks)return;
+  if(AI_CAP_USD>0&&aiCostUSD()>=AI_CAP_USD*0.85)return;   // leave headroom for player TALK
+  // find a socializing pair the player is watching
+  let a=null,b=null;
+  for(const p of ST.pawns){
+    if(!p.socWith||isChild(p))continue;
+    const o=ST.pawns.find(q=>q.id===p.socWith);
+    if(!o||isChild(o))continue;
+    if(!playerWatching((p.px+o.px)/2,(p.py+o.py)/2))continue;
+    // pair cooldown so the same two don't chatter repeatedly
+    const pk=[p.id,o.id].sort().join("_");
+    if(ST.tick-(NPCCONVO.cooldownByPair[pk]||-1e9)<1800)continue;
+    a=p;b=o;NPCCONVO.cooldownByPair[pk]=ST.tick;break;
+  }
+  if(!a||!b)return;
+  NPCCONVO.lastTick=ST.tick;NPCCONVO.inFlight=true;
+  try{
+    const rel=relGet(a.id,b.id);
+    const tone=rel>50?"warm, they're close":rel>15?"friendly enough":rel<-15?"tense, there's friction":"neutral, acquaintances";
+    const sys="You write ONE short line of overheard dialogue between two residents of a cyberpunk slum district. "
+      +"Keep it under 14 words, natural and in-character — like a snatch of conversation caught in passing. "
+      +"No names, no quotes, no stage directions. Just the spoken line.";
+    const ctxLine=a.name+" ("+axTraits(a)+", currently "+feltState(a)+") is talking with "
+      +b.name+" ("+axTraits(b)+"). Their relationship: "+tone+". "
+      +"Write what "+a.name+" says to "+b.name+" right now.";
+    const line1=await aiChat(sys,[{role:"user",content:ctxLine}],AI_MODEL_AMBIENT);
+    const c1=(line1||"").replace(/^[\s"'\u201c\u201d]+|[\s"'\u201c\u201d]+$/g,"").replace(/\[.*?\]/g,"").trim();
+    if(c1&&a.socWith===b.id){
+      sayLine(a,c1);remember(a,"talking with "+b.name+": \u201c"+c1+"\u201d");
+      // a brief beat, then b replies (only if they're still together + still on screen)
+      setTimeout(async()=>{
+        if(a.socWith!==b.id&&b.socWith!==a.id)return;
+        if(!playerWatching((a.px+b.px)/2,(a.py+b.py)/2))return;
+        if(AI_CAP_USD>0&&aiCostUSD()>=AI_CAP_USD*0.85)return;
+        try{
+          const reply=await aiChat(sys,[{role:"user",content:b.name+" ("+axTraits(b)+") replies to: \u201c"+c1+"\u201d. One short line back."}],AI_MODEL_AMBIENT);
+          const c2=(reply||"").replace(/^[\s"'\u201c\u201d]+|[\s"'\u201c\u201d]+$/g,"").replace(/\[.*?\]/g,"").trim();
+          if(c2)sayLine(b,c2);
+        }catch(e){}
+      },1600);
+    }
+  }catch(e){/* best-effort */}
+  NPCCONVO.inFlight=false;
+}
+
 /* ---------- wisp conversation (Phase 1) ---------- */
 let CHAT={p:null,hist:[],busy:false,wasPaused:false};
 function axTraits(p){const a=p.pers,o=[];
@@ -7558,7 +7687,7 @@ function applyState(d){
       }
     }
   }
-  ST.beams=[];ST.floats=[];ST.emotes=[];ST.tombs=[];ST.sel=[];ST.rooms=d.rooms||[];
+  ST.beams=[];ST.floats=[];ST.emotes=[];ST.tombs=[];ST.says=[];ST.sel=[];ST.rooms=d.rooms||[];
   ST.phase="run";ST.paused=false;ST.speed=1;}
 function saveToSlot(slot){
   if(ST.phase!=="run"){flashMsg("Nothing to save yet");return false}
@@ -7645,7 +7774,7 @@ function openLoadSlots(){
    ============================================================ */
 function newGame(){
   ST.phase="run";ST.tick=0;ST.speed=1;ST.paused=false;
-  ST.pawns.length=0;ST.beams.length=0;ST.floats.length=0;
+  ST.pawns.length=0;ST.beams.length=0;ST.floats.length=0;ST.says=[];
   ST.grp={};ST.sel=[];ST.goods={data:0,chem:0,parts:0,stims:0,gear:0,food:0,scrap:0};ST.income=200;ST.debtDays=0;ST.crisis=false;ST.gangs=[];
   ST.stats={built:0,deaths:0};ST.milestones=[];ST.tierReached=1;
   ST.mov={support:5,exposure:0,intel:0,cells:0,stance:"hidden",doctrine:null,foundedTick:0};
