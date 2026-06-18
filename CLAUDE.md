@@ -35,6 +35,22 @@ done yet.
 **IMMEDIATE city-first work queue:** ~~character-CREATION SCREEN~~ (DONE) → stat-gated DIALOGUE
 (opsCheck/ops built to feed it) → job/farming VISUALS + litter → deep testing/tuning.
 
+- **AUDIT + HARDENING PASS (2026-06-18)** — DONE. Full static + runtime audit of the 7,309-line build.
+  Static: 0 syntax errors, braces/brackets balanced, 352 fns with 0 duplicates, 0 dead fns, HTML balanced.
+  Runtime: no crash across multi-seed sim; save/load round-trip verified. FIXES SHIPPED:
+  (1) **SAVE/LOAD HOME-IDENTITY BUG (real, latent)** — `snapPawn` copied `p.home` by value while the
+  `ST.cityHomes` registry was never serialized, so after EVERY load all housed pawns' homes were detached
+  from the registry (verified: 13/13 detached on the original build). `openHomes()` identity checks then
+  mis-reported occupied homes as vacant → double-claiming. Fix: serialize `cityHomes`; on load re-link each
+  pawn's `p.home` to the shared registry entry by bed coords. Verified 13/13 re-linked, 0 detached.
+  (2) **Unsaved gameplay state** — `heat`/`heatWarn` (crime heat reset to 0 on reload — save-scummable),
+  `requests` (pending petitions lost), `lastGlobalReqT`/`lastUpkeep` (post-load timing glitches), and
+  `zones` (cosmetic labels) are now serialized + restored. `_secZones` confirmed self-healing via
+  `securityTick` (no save needed). (3) **Perf HUD** — press **P** to toggle an FPS/pawns/speed overlay
+  (self-contained DOM, works in fullscreen) for real in-browser frame measurement. DEFERRED w/ reason:
+  O(n²) pawn-pair proximity loop (every 5 ticks) is trivial at pop ~13; spatial-bucket it only when pop
+  scales past ~40 (premature now). BALANCE: unmanaged mid-40s mood confirmed as emergent equilibrium
+  (soft floor only at m<10), not a bug — no tuning change. NEW save/load assertions: 10/10 pass.
 - **Character-creation screen** — DONE. NEW DISTRICT now routes through `showCharCreate()` before
   newGame: pick 1 of 5 backgrounds (live stat preview), distribute OPS_POINT_BUDGET(4) extra points
   via +/- per attribute (capped 0-10, remaining counter), enter a codename. BEGIN sets
@@ -495,8 +511,8 @@ Measured over managed 14-day runs (player keeps everyone ≥45 credits):
   needs a worker" in inspect + "staffstore" onboarding hint. NOTE: wisps do NOT auto-assign to
   stores (player assigns) — so a fresh colony has ~9/11 stores idle until staffed; this is the
   intended "you manage commerce" design but watch starting-economy balance in play.
-  REMAINING in this push (not yet built): commerce buildings → rooms/interiors; visible worker
-  inside store; studying → distinct visible activities (read/train/practice).
+  RESOLVED (all three shipped in later builds): commerce buildings → rooms/interiors (autoWrapStore);
+  visible worker badge inside store; studying → distinct visible activities (read/train/practice).
 - **Home layout (Living Homes Phase 2)** — DONE. `home(x0,y0,variant)` now arranges furniture
   into functional ZONES (sleep nook + lamp, clustered utility/hygiene wall, living area with
   couch over rug facing tv) instead of scattering fixtures along the top wall. 3 layout VARIANTS

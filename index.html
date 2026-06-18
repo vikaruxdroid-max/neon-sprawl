@@ -72,8 +72,8 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 .dtag.health{color:#6bcfff}.dtag.district{color:var(--yl)}.dtag.info{color:var(--dim)}
 
 /* ── INSPECT ── */
-#inspect{position:fixed;left:8px;bottom:60px;width:320px;padding:14px 16px;
-  font-size:12px;display:none;line-height:1.55;z-index:30}
+#inspect{position:fixed;left:8px;bottom:60px;width:360px;height:560px;max-height:calc(100vh - 130px);padding:14px 16px;
+  font-size:12px;display:none;line-height:1.55;z-index:30;overflow-y:auto;overflow-x:hidden;box-sizing:border-box}
 #inspect h3{margin:0 0 3px;font-family:var(--disp);font-weight:700;font-size:18px;
   color:#eafff4;letter-spacing:.02em}
 #inspect .sub{color:var(--dim);font-size:11px;margin-bottom:5px;line-height:1.5}
@@ -328,7 +328,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   #hud{font-size:10px;gap:4px}
   .hud-seg{gap:4px;padding:0 7px}
   .hud-goods{gap:6px;padding:0 6px}
-  #inspect{width:260px;bottom:96px;font-size:11px}
+  #inspect{width:300px;height:auto;max-height:50vh;bottom:96px;font-size:11px}
   #requests{width:220px;top:calc(var(--hud-h) + 28vh + 14px)}
   #toolbar{bottom:6px;padding:4px}
   .tb{padding:5px 7px;font-size:10px}
@@ -362,8 +362,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   <!-- Center: goods inline -->
   <div class="hud-goods">
     <span class="hud-pip" title="Food"><span class="dot" style="background:#b8ff5e"></span><span id="g-food" style="color:var(--dim)">0</span></span>
-    <span class="hud-pip" title="Wood"><span class="dot" style="background:#a06a3a"></span><span id="g-wood" style="color:var(--dim)">0</span></span>
-    <span class="hud-pip" title="Materials"><span class="dot" style="background:#ffc947"></span><span id="g-materials" style="color:var(--dim)">0</span></span>
+    <span class="hud-pip" title="Scrap"><span class="dot" style="background:#a08a6a"></span><span id="g-scrap" style="color:var(--dim)">0</span></span>
     <span class="hud-pip" title="Data"><span class="dot" style="background:#47c8ff"></span><span id="g-data" style="color:var(--dim)">0</span></span>
     <span class="hud-pip" title="Chem"><span class="dot" style="background:#39ff88"></span><span id="g-chem" style="color:var(--dim)">0</span></span>
     <span class="hud-pip" title="Parts"><span class="dot" style="background:#ff8c42"></span><span id="g-parts" style="color:var(--dim)">0</span></span>
@@ -592,8 +591,8 @@ const DEF={
   gearshop:   {name:"Gear Shop",    cost:{income:100},hp:80, blocks:1, work:160, cat:"b", desc:"Refines Parts + Data → Gear. Steady, clean income.", refine:{in:["parts","data"],out:"gear"}, vendor:true, wage:10},
   // ── RESOURCE PRODUCTION (outer-ring economy) ──
   farmplot:   {name:"Farm Plot",    cost:{income:30}, hp:40, blocks:0, work:110, cat:"b", desc:"Grows Food. Feeds the block cheaply, cuts the credit drain.", prod:"food", prodRate:200, wage:7},
-  loggingcamp:{name:"Logging Camp", cost:{income:40}, hp:60, blocks:1, work:130, cat:"b", desc:"Harvests Wood from the outskirts — sold for income.", prod:"wood", prodRate:240, wage:8},
-  mineshaft:  {name:"Mine Shaft",   cost:{income:60}, hp:80, blocks:1, work:150, cat:"b", desc:"Extracts Materials — premium commodity, high margin.", prod:"materials", prodRate:300, wage:9},
+  loggingcamp:{name:"Salvage Yard",  cost:{income:40}, hp:60, blocks:1, work:130, cat:"b", desc:"Strip scrap from the dead sectors — low pay, no questions asked.", prod:"scrap", prodRate:240, wage:8},
+  mineshaft:  {name:"Data Den",      cost:{income:60}, hp:80, blocks:1, work:150, cat:"b", desc:"Grey-market terminals — run hacks and sell stolen data. High margin, draws heat.", prod:"data", prodRate:300, wage:9, illicit:true},
   // ── CIVIC BUILDINGS ──
   park:       {name:"Sprawl Park",  cost:{income:50}, hp:50, blocks:0, work:140, cat:"b", desc:"Green space — free recreation + stress relief.", civic:"park"},
   arcade:     {name:"Arcade",       cost:{income:80}, hp:60, blocks:1, work:150, cat:"b", desc:"Premium entertainment — strong fun, small fee earns income.", civic:"arcade", vendor:true},
@@ -607,6 +606,10 @@ const DEF={
   watchpost:  {name:"Watch Post",   cost:{income:110},hp:90, blocks:1, work:0,   cat:"b", desc:"Security outpost — suppresses crime and bleeds off district heat in range.", security:true, secRadius:18},
   powerstation:{name:"Power Station",cost:{income:180},hp:120,blocks:1,work:200, cat:"b", desc:"Generates district power. Without it, buildings run on failing backup — mood and output suffer. Needs a worker to run.", utility:"power", prod:"power", wage:9},
   waterfac:   {name:"Water Facility",cost:{income:160},hp:100,blocks:1,work:190, cat:"b", desc:"Supplies clean water. Without it, hygiene and health decline across the block. Needs a worker to run.", utility:"water", wage:8},
+  copstation: {name:"Precinct",     cost:{income:150},hp:110,blocks:1,work:160, cat:"b", desc:"Regime police post — the Enforcer's station. Suppresses crime and projects regime presence.", security:true, secRadius:16, wage:11, roleHome:"enforcer"},
+  streetvendor:{name:"Street Vendor",cost:{income:60}, hp:50, blocks:1,work:120, cat:"b", desc:"A noodle-and-stim cart on the strip — cheap food and goods, street-level commerce.", vendor:true, sells:"food", wage:7},
+  mayorhouse: {name:"Admin Villa",  cost:{income:200},hp:120,blocks:1,work:150, cat:"b", desc:"The Mayor's fortified residence and office — the regime's seat in the district.", civic:"mayor", wage:12, roleHome:"mayor"},
+  fixercorner:{name:"Fixer Corner", cost:{income:80}, hp:60, blocks:1,work:140, cat:"b", desc:"A back-alley node where the Fixer brokers data, gear, and favors off the books.", vendor:true, illicit:true, wage:10, roleHome:"fixer"},
   // ── DECOR (nat:1 = not buildable, placed by genCity) ──
   bench:      {name:"Bench",       nat:1, hp:40, blocks:0},
   streetlamp: {name:"Street Lamp", nat:1, hp:30, blocks:0},
@@ -615,21 +618,22 @@ const DEF={
   vendmachine:{name:"Vending Machine",nat:1,hp:50,blocks:1},
   planter:    {name:"Planter",     nat:1, hp:30, blocks:0}
 };
-const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","bar","medbed","dealer","farmplot","loggingcamp","mineshaft","park","arcade","hospital","school","nursery","market","hall","furnstore","housing","powerstation","waterfac"];
+const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","streetvendor","bar","medbed","dealer","farmplot","loggingcamp","mineshaft","fixercorner","park","arcade","hospital","school","nursery","market","hall","mayorhouse","furnstore","housing","powerstation","waterfac","watchpost","copstation"];
 // Build menu: curated minimal categories (start small, expand later). Each entry: type.
 const BUILD_CATS=[
   {name:"Home",     items:["wall","door","pod","lamp","fridge","shower","toilet"]},
   {name:"Comfort",  items:["tv","gym","couch","bookshelf","art","rug"]},
-  {name:"Work",     items:["workstation","chemlab","workshop","stimlab","gearshop","farmplot","loggingcamp","mineshaft"]},
-  {name:"Commerce", items:["counter","bar","market","furnstore","dealer"]},
-  {name:"Civic",    items:["medbed","hospital","park","arcade","school","nursery","hall"]},
-  {name:"Order",    items:["watchpost"]},
+  {name:"Work",     items:["workstation","chemlab","workshop","stimlab","gearshop","farmplot","loggingcamp","mineshaft","fixercorner"]},
+  {name:"Commerce", items:["counter","streetvendor","bar","market","furnstore","dealer"]},
+  {name:"Civic",    items:["medbed","hospital","park","arcade","school","nursery","hall","mayorhouse"]},
+  {name:"Order",    items:["watchpost","copstation"]},
+  {name:"Utility",  items:["powerstation","waterfac"]},
   {name:"Growth",   items:["housing"]},
 ];
 // glyph per fixture for the build cards
 const BUILD_ICON={wall:"▦",door:"⌷",pod:"☖",lamp:"✦",fridge:"❄",shower:"♒",toilet:"⊡",tv:"▭",gym:"⛏",
   workstation:"⌨",chemlab:"⚗",workshop:"⚙",stimlab:"⚕",gearshop:"⛭",counter:"▤",bar:"♨",medbed:"✚",
-  dealer:"☠",farmplot:"❀",loggingcamp:"🪓",mineshaft:"⛏",park:"❦",arcade:"►",hospital:"✚",school:"✎",nursery:"⊙",market:"⇄",hall:"⌂",furnstore:"🛋",housing:"⌂",watchpost:"◈",powerstation:"⚡",waterfac:"💧",couch:"⌗",bookshelf:"▤",art:"◳",rug:"▢"};
+  dealer:"☠",farmplot:"❀",loggingcamp:"♻",mineshaft:"⌬",park:"❦",arcade:"►",hospital:"✚",school:"✎",nursery:"⊙",market:"⇄",hall:"⌂",furnstore:"🛋",housing:"⌂",watchpost:"◈",powerstation:"⚡",waterfac:"💧",copstation:"⚖",streetvendor:"🍜",mayorhouse:"♔",fixercorner:"⟁",couch:"⌗",bookshelf:"▤",art:"◳",rug:"▢"};
 
 
 // weapons removed — city sim mode
@@ -666,7 +670,7 @@ const ST={
   sel:[],
   stats:{built:0,deaths:0},
   flags:{},
-  goods:{data:0,chem:0,parts:0,stims:0,gear:0,food:0,wood:0,materials:0},
+  goods:{data:0,chem:0,parts:0,stims:0,gear:0,food:0,scrap:0},
   income:0,
   debtDays:0,
   crisis:false,
@@ -1515,6 +1519,15 @@ function genCity(){
   addBuilt("school",   cz.x+12, cz.y+10);
   addBuilt("arcade",   cz.x+18, cz.y+10); // second entertainment node
 
+  // ── ROLE WORKPLACES — the named cast's posts, so they work where citizens can reach them ──
+  // placed in/near the core so the Doctor's clinic, the store, the precinct etc. are central.
+  addBuilt("medbed",      cz.x+4,  cz.y+3);   // Doctor's clinic
+  addBuilt("counter",     cz.x+4,  cz.y+9);   // Shopkeeper's store
+  addBuilt("copstation",  cz.x+24, cz.y+3);   // Enforcer's precinct
+  addBuilt("mayorhouse",  cz.x+24, cz.y+10);  // Mayor's villa
+  addBuilt("streetvendor",cz.x+8,  cz.y+14);  // a street food cart
+  addBuilt("fixercorner", cz.x+15, cz.y+16);  // Fixer's back-alley node
+
   // ── STREET FURNITURE — computed relative to rooms, not hardcoded ──
   // street lamps around the core perimeter and plaza
   const lampSpots=[
@@ -1609,22 +1622,22 @@ function theAvatar(){return ST.pawns.find(p=>p.isAvatar)||null;}
    high-empathy Doctor shelters your cells. They are gameplay TARGETS — turn, bribe, expose, protect.
    ============================================================ */
 const ROLES={
-  doctor:   {title:"Doctor",    fname:"Doc",   align:"civic",   workType:"hospital", accent:"#5cffd0",
+  doctor:   {title:"Doctor",    fname:"Doc",   align:"civic",   workType:"medbed", accent:"#5cffd0",
     desc:"runs the clinic — heals the block, sees who comes in bleeding",
     persLean:{emp:80,intg:65,cau:55}, allegianceLean:10},
-  shopkeeper:{title:"Shopkeeper",fname:"Merchant",align:"civic",workType:"gearshop", accent:"#ffd24a",
+  shopkeeper:{title:"Shopkeeper",fname:"Merchant",align:"civic",workType:"counter", accent:"#ffd24a",
     desc:"runs the store — the block's commerce flows through their counter",
     persLean:{amb:65,soc:60,intg:50}, allegianceLean:0},
-  enforcer: {title:"Enforcer",  fname:"Sergeant",align:"regime", workType:null,       accent:"#ff5470",
+  enforcer: {title:"Enforcer",  fname:"Sergeant",align:"regime", workType:"copstation", accent:"#ff5470",
     desc:"the regime's muscle — patrols the block, hunts dissent",
     persLean:{intg:40,imp:55,cau:35,emp:30}, allegianceLean:-60, regimeForce:true},
-  mayor:    {title:"Mayor",     fname:"Administrator",align:"regime",workType:null,    accent:"#c77dff",
+  mayor:    {title:"Mayor",     fname:"Administrator",align:"regime",workType:"mayorhouse", accent:"#c77dff",
     desc:"the regime's face — sets policy, keeps the district in line",
     persLean:{amb:80,intg:35,soc:65,cau:60}, allegianceLean:-45, regimeForce:true},
   informant:{title:"Informant", fname:"Citizen",align:"regime", workType:null,        accent:"#9aa7bd",
     desc:"a hidden snitch — feeds the regime in exchange for safety",
     persLean:{cau:75,intg:30,soc:45,imp:30}, allegianceLean:-20, secretInformant:true},
-  fixer:    {title:"Fixer",     fname:"Broker", align:"insurgent",workType:null,       accent:"#ff9f2d",
+  fixer:    {title:"Fixer",     fname:"Broker", align:"insurgent",workType:"fixercorner", accent:"#ff9f2d",
     desc:"the black-market broker — knows everyone, owes no one, a natural ally",
     persLean:{amb:70,soc:75,intg:40,cur:65}, allegianceLean:35, insurgentLever:true},
 };
@@ -1974,7 +1987,7 @@ const VOCATIONS={
   fabricator:{name:"Fabricator", sk:"bld",  fix:["workshop","gearshop"],         blurb:"builds and machines"},
   techie:    {name:"Techie",     sk:"sal",  fix:["workstation","chemlab","stimlab"],blurb:"runs terminals and labs"},
   grower:    {name:"Grower",     sk:"cook", fix:["farmplot"],                     blurb:"works the farms"},
-  laborer:   {name:"Laborer",    sk:"sht",  fix:["loggingcamp","mineshaft"],      blurb:"hauls wood and ore"},
+  laborer:   {name:"Scavenger",   sk:"sht",  fix:["loggingcamp","mineshaft"],      blurb:"strips scrap and runs data"},
   trader:    {name:"Trader",     sk:"sal",  fix:["counter","bar","gearshop"],     blurb:"works the counters"},
 };
 function initCareer(sk,pers){
@@ -2394,6 +2407,7 @@ function scoreJobs(p){
       *(fitsVocation(p,workStr.type)?1.15:0.9)   // do what they're good at
       *ethicMul(p)                                 // hard workers push, slackers ease off
       *(p.career?(0.7+p.career.sat/100*0.5):1)     // satisfied pawns show up
+      *(p.role?1.6:1)                              // named roles hold their post — citizens rely on them
       ,0,100):0,treat:p.sick&&medStr?95:0,
     substance:dlrStr?clamp((p.addiction||0)*0.6+((p.stress||0)>40?((p.stress||0)-40)*0.4:0),0,100):0,
     crime:(robTgt&&cred<20)?clamp(30-cred*1.1+turfBonus+nightBonus,0,100):0,
@@ -2467,6 +2481,16 @@ function scoreJobs(p){
 function chooseJob(p){
   if(p.needs.food<=22){const j=mkEat(p);if(j)return j}
   if(p.needs.rest<=18)return mkSleep(p);
+  // ROLE ANCHOR: a named role-wisp with a post reports to work during work hours (08:00-19:00),
+  // unless a need is pressing. Keeps the Doctor at the clinic, the Shopkeeper at the store, etc.,
+  // so citizens can reliably find and interact with them.
+  if(p.role&&p.assigned&&!p.sick&&ST.tick>(p.workCd||0)){
+    const hr=hourN();
+    if(hr>=8&&hr<19&&p.needs.food>30&&p.needs.rest>28){
+      const ws=ST.structs.get(p.assigned);
+      if(ws&&!ws.bp&&!isBroken(ws))return{t:"work",s:ws,prog:0};
+    }
+  }
   return scoreJobs(p)}
 function clearJob(p){const j=p.job;
   if(j&&j.s&&j.s.res===p.id)j.s.res=0;
@@ -3425,13 +3449,13 @@ function checkContextualHints(){
 
 /* ---------- events ---------- */
 function scheduleEv(){ST.nextEv=ST.tick+Math.floor(R(.75,1.35)*TPD)}
-const PRICES={stims:22,gear:16,data:8,chem:6,parts:6,wood:7,materials:14,food:5};
+const PRICES={stims:22,gear:16,data:8,chem:6,parts:6,scrap:7,food:5};
 /* ============================================================
    TRADE CARAVANS — periodic external traders; demand spikes & deals
    ============================================================ */
 // A caravan arrives wanting to BUY a commodity at a premium (sell opportunity)
 // or SELL one cheap (stock-up opportunity). Telegraphed, time-limited.
-const CARAVAN_GOODS=["materials","gear","stims","wood","data","parts"];
+const CARAVAN_GOODS=["scrap","gear","stims","data","chem","parts"];
 function maybeCaravan(){
   if(ST.caravan)return;
   if(ST.pawns.length<3||ST.tick<TPD*2)return;
@@ -3813,8 +3837,8 @@ function tick(){ST.tick++;
     if(farms>0&&(ST.goods.food||0)<ST.pawns.length*12)
       ST.goods.food=(ST.goods.food||0)+Math.max(1,Math.round(farms/5));
     // logging + mining trickle slowly when idle; dedicated workers (via assign/hire) produce faster through the work job
-    if(logs>0&&ST.tick%400===0)ST.goods.wood=(ST.goods.wood||0)+Math.max(1,Math.round(logs/3));
-    if(mines>0&&ST.tick%600===0)ST.goods.materials=(ST.goods.materials||0)+Math.max(1,Math.round(mines/3));}
+    if(logs>0&&ST.tick%400===0)ST.goods.scrap=(ST.goods.scrap||0)+Math.max(1,Math.round(logs/3));
+    if(mines>0&&ST.tick%600===0)ST.goods.data=(ST.goods.data||0)+Math.max(1,Math.round(mines/3));}
   if(ST.tick%160===0){  // vendor sales cycle — auto-sell goods, district takes 40% cut
     const ILLEGAL={stims:true};
     // dynamic pricing: abundant goods fetch less, scarce goods fetch a premium.
@@ -3842,9 +3866,8 @@ function tick(){ST.tick++;
       else if(!sells){
         // generic vendors move the premium commodities first, then raw goods
         if((ST.goods.gear||0)>0)good="gear";
-        else if((ST.goods.materials||0)>0)good="materials";
-        else if((ST.goods.wood||0)>0)good="wood";
-        else if((ST.goods.data||0)>0)good="data";}
+        else if((ST.goods.data||0)>0)good="data";
+        else if((ST.goods.scrap||0)>0)good="scrap";}
       if(!good)continue;
       ST.goods[good]--;
       const price=marketPrice(good);
@@ -4601,7 +4624,7 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
       ctx.globalAlpha=1;
       // minecart rail hint
       rr(X+3,Y+T-2,T-6,1,"#4a3a28");
-      if((ST.goods.materials||0)>0)stampGlow("#ffc947",X+T/2,Y+T/2,T*.5,gl*.14);
+      if((ST.goods.data||0)>0)stampGlow("#47c8ff",X+T/2,Y+T/2,T*.5,gl*.14);
       break;}
     // ── CIVIC ──
     case "park":{
@@ -5192,8 +5215,8 @@ function drawStreetLayer(x0,y0,x1,y1){
   // ── ZONE LABELS (reserved outer-ring nature/resource areas) ──
   if(ST.zones){
     grafSign(ST.zones.farm.x+8,ST.zones.farm.y+8,"FARMLAND","#b8ff5e",0);
-    grafSign(ST.zones.woods.x+8,ST.zones.woods.y+8,"THE WOODS","#39ff88",0);
-    grafSign(ST.zones.mine.x+8,ST.zones.mine.y+8,"OLD MINE","#ffc947",0);
+    grafSign(ST.zones.woods.x+8,ST.zones.woods.y+8,"SALVAGE SECTOR","#a08a6a",0);
+    grafSign(ST.zones.mine.x+8,ST.zones.mine.y+8,"DATA SLUMS","#47c8ff",0);
     grafSign(ST.zones.civic.x+10,ST.zones.civic.y+9,"CIVIC ZONE","#00d4ff",0);
   }
 
@@ -5483,6 +5506,7 @@ window.addEventListener("keydown",e=>{const k=e.key.toLowerCase();
   else if(k==="k")openOverlay("crew");
   else if(k==="l")openOverlay("district");
   else if(k==="t")openOverlay("tasks");
+  else if(k==="p")togglePerfHUD();
   else if(k==="escape"){if(TOOL)setTool(null);
     else if(cam.follow){stopFollow();renderInspect();}
     else{ST.sel=[];renderInspect();closeSub();syncHUD()}}});
@@ -6173,12 +6197,23 @@ function canGenRequest(p){
 
 function genRequests(){
   if(ST.phase!=="run"||!ST.requests)return;
-  const gap=600;
+  // PACING: keep petitions occasional, not a flood. A global cooldown spaces them out, and a cap on
+  // simultaneous pending requests prevents pile-up. (Routine flashpoints surface in the weekly council.)
+  const pending=ST.requests.filter(r=>r.status==="pending").length;
+  if(pending>=3)return;                                    // never more than 3 open at once
+  if(ST.lastGlobalReqT&&ST.tick-ST.lastGlobalReqT<900)return;  // ~9h min between any two petitions
+  const gap=2400;                                          // each wisp can petition at most ~once/day
+  // gather eligible wisps, pick ONE at random so we don't spawn several at once
+  const eligible=[];
   for(const p of ST.pawns){
     if(!canGenRequest(p))continue;
     if(p.lastReqT&&ST.tick-p.lastReqT<gap)continue;
-    const r=tryBuildRequest(p);
-    if(r){ST.requests.push(r);p.lastReqT=ST.tick;renderRequests()}}}
+    eligible.push(p);
+  }
+  if(!eligible.length)return;
+  const p=eligible[Math.floor(Math.random()*eligible.length)];
+  const r=tryBuildRequest(p);
+  if(r){ST.requests.push(r);p.lastReqT=ST.tick;ST.lastGlobalReqT=ST.tick;renderRequests();}}
 
 function tryBuildRequest(p){
   const id=uid();
@@ -6257,7 +6292,7 @@ function syncHUD(){
   const hudEl=$("hud");if(hudEl)hudEl.classList.toggle("crisis",!!ST.crisis);
   // goods pips — color when stocked
   const g=ST.goods||{};
-  ["food","wood","materials","data","chem","parts","stims","gear"].forEach(k=>{
+  ["food","scrap","data","chem","parts","stims","gear"].forEach(k=>{
     const el=$("g-"+k);if(!el)return;
     const v=g[k]||0;
     el.textContent=v;
@@ -6856,7 +6891,7 @@ function districtStatsHTML(){
   // economy
   h+="<h4>Economy</h4>";
   const g=ST.goods||{};
-  h+=["food","wood","materials","data","chem","parts","stims","gear"].map(k=>
+  h+=["food","scrap","data","chem","parts","stims","gear"].map(k=>
     "<div class='srow'><span>"+k.toUpperCase()+"</span><b class='"+(g[k]>0?"sgood":"")+"'>"+(g[k]||0)+"</b></div>").join("");
   h+="<div class='srow'><span>Income</span><b class='"+(ST.income<0?"sbad":ST.crisis?"sbad":"sgood")+"'>"+(ST.crisis?"⚠ ":"")+Math.round(ST.income||0)+"c</b></div>";
   if(ST.debtDays)h+="<div class='srow'><span>Debt days</span><b class='sbad'>"+ST.debtDays+"/6</b></div>";
@@ -6901,10 +6936,10 @@ function districtStatsHTML(){
       {const st=c.stance||0;const stLbl=st>=55?"<span style='color:#39ff88'>backs you</span>":st<=-55?"<span style='color:#ff4757'>opposes you</span>":"<span style='opacity:.6'>neutral</span>";
        h+="<div class='srow'><span>Loyalty"+(rival?" · rivals "+rival.name:"")+"</span><b>"+(c.loyalty|0)+" · "+stLbl+"</b></div>";}}}
   // MARKET — current dynamic prices reflect supply/demand
-  {const BASE={stims:22,gear:16,data:8,chem:6,parts:6,wood:7,materials:14,food:5};
+  {const BASE={stims:22,gear:16,data:8,chem:6,parts:6,scrap:7,food:5};
    const px=(g)=>{const base=BASE[g];const stock=ST.goods[g]||0;const mult=clamp(1.6-(stock/12),0.55,1.6);return Math.max(1,Math.round(base*mult));};
    h+="<h4>Market</h4>";
-   for(const g of ["stims","gear","materials","data","chem","parts","wood","food"]){
+   for(const g of ["stims","gear","scrap","data","chem","parts","food"]){
      const stock=ST.goods[g]||0;const p=px(g);const base=BASE[g];
      const trend=p>base?"<span style='color:#39ff88'>▲</span>":p<base?"<span style='color:#ff6b6b'>▼</span>":"·";
      h+="<div class='srow'><span>"+g+" <span style='opacity:.5'>(stock "+stock+")</span></span><b>"+p+"c "+trend+"</b></div>";}}
@@ -6950,7 +6985,7 @@ function showHelp(){if(ST.phase==="run"){ST.paused=true;refreshSpd()}showModal(
   "<tr><td style='color:var(--cy)'>Citizens</td><td>Each has needs: food, rest, hygiene, fun, and social. When needs go unmet, stress rises. High stress → snapping, fights, crime. Faces show their emotional state — watch them.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Economy</td><td>Production fixtures (Workstation, Chemlab, Workshop) generate goods. Vendors sell goods for district income. District income pays rent (34c/day per citizen). Income below zero for 3 days triggers Crisis — 5 days means collapse.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Goods chain</td><td>DATA (workstation) + CHEM (chemlab) + PARTS (workshop) → STIMS (stimlab) or GEAR (gearshop). Stims reduce stress. Gear cuts damage taken and boosts crime success.</td></tr>"+
-  "<tr><td style='color:var(--cy)'>Resources</td><td>The outskirts ring the core: FARMLAND (NW) grows Food that feeds the block cheaply, THE WOODS (NE) yield Wood, and the OLD MINE (SW) extracts Materials. Farms grow on their own; assign citizens to logging/mining to boost output. Wood and Materials sell through vendors for district income.</td></tr>"+
+  "<tr><td style='color:var(--cy)'>Resources</td><td>The outskirts ring the core: FARMLAND (NW) grows Food that feeds the block cheaply, the SALVAGE SECTOR (NE) yields Scrap stripped from dead sectors, and the DATA SLUMS (SW) run grey-market hacks for Data. Farms grow on their own; assign citizens to salvage/data work to boost output. Scrap and Data sell through vendors for district income.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Civic (SE)</td><td>PARK — free recreation and strong stress relief. ARCADE — premium fun, small fee feeds income. HOSPITAL — faster, cheaper, stronger treatment than a Med Bay. LEARNING HUB — citizens study here in their spare time, raising their work skills over a few visits.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Population</td><td>New citizens arrive only if you have open housing. Build a Housing Unit (150c) to add one home slot. Citizens pay 34c rent per day — evicted citizens sleep rough and get stressed.</td></tr>"+
   "<tr><td style='color:var(--cy)'>Petitions</td><td>Citizens surface flashpoints — feuds, epidemics, gang formations, thefts — in the REQUESTS panel. Your choice shapes the outcome. Daily reports summarize each day.</td></tr>"+
@@ -7075,11 +7110,14 @@ function serializeState(){
     ter:Array.from(ST.ter),
     structs:[...ST.structs.values()].map(snapStruct),
     pawns:ST.pawns.map(snapPawn),
+    heat:ST.heat||0,heatWarn:ST.heatWarn||false,
+    requests:ST.requests||[],lastGlobalReqT:ST.lastGlobalReqT||0,lastUpkeep:ST.lastUpkeep||0,
+    zones:ST.zones||null,cityHomes:ST.cityHomes||[],
     rooms:ST.rooms}}
 function applyState(d){
   ST.tick=d.tick||0;
   ST.grp=d.grp||{};ST.rel=d.rel||{};ST.relMeta=d.relMeta||{};ST.cliques=d.cliques||[];ST.nextEv=(d.nextEv==null?1e9:d.nextEv);ST.lastCrackdown=d.lastCrackdown||0;
-  ST.goods=d.goods||{data:0,chem:0,parts:0,stims:0,gear:0,food:0,wood:0,materials:0};ST.income=d.income||0;
+  ST.goods=d.goods||{data:0,chem:0,parts:0,stims:0,gear:0,food:0,scrap:0};ST.income=d.income||0;
   ST.debtDays=d.debtDays||0;ST.crisis=d.crisis||false;
   ST.gangs=(d.gangs||[]).map(g=>({...g,turf:new Set(g.turf||[])}));
   ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];ST.tierReached=d.tierReached||1;ST.contrabandPolicy=d.contrabandPolicy||"crackdown";ST.hintsSeen=d.hintsSeen||{};ST.pendingDisaster=d.pendingDisaster||null;ST.blackoutUntil=d.blackoutUntil||0;ST.caravan=d.caravan||null;CHRONICLE.length=0;if(Array.isArray(d.chronicle))for(const e of d.chronicle)CHRONICLE.push(e);
@@ -7104,6 +7142,19 @@ function applyState(d){
     if(p.surname===undefined)p.surname=CH(NL);
     if(p.child===undefined)p.child=false;
     if(p.parents===undefined)p.parents=null;}
+  ST.heat=d.heat||0;ST.heatWarn=d.heatWarn||false;
+  ST.requests=Array.isArray(d.requests)?d.requests:[];
+  ST.lastGlobalReqT=d.lastGlobalReqT||0;ST.lastUpkeep=d.lastUpkeep||0;
+  if(d.zones)ST.zones=d.zones;
+  if(Array.isArray(d.cityHomes)&&d.cityHomes.length){   // restore home registry + re-link by-value pawn homes back to shared entries
+    ST.cityHomes=d.cityHomes;
+    for(const p of ST.pawns){
+      if(p.home&&p.home.bed){
+        const h=ST.cityHomes.find(H=>H.bed&&H.bed.x===p.home.bed.x&&H.bed.y===p.home.bed.y);
+        if(h)p.home=h;
+      }
+    }
+  }
   ST.beams=[];ST.floats=[];ST.emotes=[];ST.tombs=[];ST.sel=[];ST.rooms=d.rooms||[];
   ST.phase="run";ST.paused=false;ST.speed=1;
   powerRecalc()}
@@ -7193,7 +7244,7 @@ function openLoadSlots(){
 function newGame(){
   ST.phase="run";ST.tick=0;ST.speed=1;ST.paused=false;
   ST.pawns.length=0;ST.beams.length=0;ST.floats.length=0;
-  ST.grp={};ST.sel=[];ST.goods={data:0,chem:0,parts:0,stims:0,gear:0,food:0,wood:0,materials:0};ST.income=200;ST.debtDays=0;ST.crisis=false;ST.gangs=[];
+  ST.grp={};ST.sel=[];ST.goods={data:0,chem:0,parts:0,stims:0,gear:0,food:0,scrap:0};ST.income=200;ST.debtDays=0;ST.crisis=false;ST.gangs=[];
   ST.stats={built:0,deaths:0};ST.milestones=[];ST.tierReached=1;
   ST.mov={support:5,exposure:0,intel:0,cells:0,stance:"hidden",doctrine:null,foundedTick:0};
   ST.regime={grip:60,awareness:0,lastSweep:0,informants:[]};
@@ -7213,12 +7264,22 @@ function newGame(){
   // populace — scatter procedural agents near the core (not across the whole 140x100 map)
   // NAMED ROLE-WISPS — the district's power structure & civic pillars, present from turn one.
   {const roleKeys=["doctor","shopkeeper","enforcer","mayor","informant","fixer"];
-   for(const rk of roleKeys){let tries=0,placed=false;
+   for(const rk of roleKeys){const R0=ROLES[rk];
+     // find this role's workplace building (if any) so we can post them there
+     let workS=null;
+     if(R0.workType){for(const s of ST.structs.values()){if(s.type===R0.workType&&!s.bp){workS=s;break;}}}
+     // spawn near the workplace if found, else anywhere walkable in the core
+     let placed=false,tries=0;
      while(tries<2000&&!placed){tries++;
-       const x=RI(44,92),y=RI(30,74);
+       let x,y;
+       if(workS){x=clamp(workS.x+RI(-2,2),1,MW-2);y=clamp(workS.y+RI(-2,2),1,MH-2);}
+       else{x=RI(44,92);y=RI(30,74);}
        if(colCost(x,y)<0)continue;
        if(ST.pawns.some(q=>(q.px|0)===x&&(q.py|0)===y))continue;
-       ST.pawns.push(mkRoleWisp(x,y,rk));placed=true;}}}
+       const rp=mkRoleWisp(x,y,rk);
+       // ASSIGN them to their post so the job system keeps them working there (the panel + interaction)
+       if(workS)rp.assigned=K(workS.x,workS.y);
+       ST.pawns.push(rp);placed=true;}}}
   // fill the rest of the starting population with procedural citizens
   {let tries=0;while(ST.pawns.length<POP&&tries<4000){tries++;
     const x=RI(40,96),y=RI(28,78);  // within the built-up core region
@@ -7241,9 +7302,18 @@ function newGame(){
   powerRecalc();updateFlags();syncHUD();renderInspect();refreshSpd();hideModal();
   banner("DAY 1 — THE SPRAWL","good")}
 
+// ── PERF HUD (press P) — self-contained DOM overlay; measures real frame rate in-browser, incl. fullscreen ──
+let PERF_HUD=false,_fpsT=0,_fpsN=0,_fps=0;
+const perfEl=(typeof document!=="undefined")?document.createElement("div"):null;
+if(perfEl){perfEl.id="perfhud";
+  perfEl.style.cssText="position:fixed;top:6px;right:8px;z-index:99999;font:11px ui-monospace,Menlo,monospace;color:#39ff88;background:rgba(0,0,0,.55);padding:3px 7px;border:1px solid #1c3a2a;border-radius:3px;pointer-events:none;display:none;white-space:nowrap";
+  if(document.body)document.body.appendChild(perfEl);}
+function togglePerfHUD(){PERF_HUD=!PERF_HUD;if(perfEl)perfEl.style.display=PERF_HUD?"block":"none";}
 let lastT=0,acc=0;
 function loop(ts){requestAnimationFrame(loop);
   const dt=Math.min(60,lastT?ts-lastT:16);lastT=ts;
+  if(PERF_HUD){_fpsN++;_fpsT+=dt;if(_fpsT>=500){_fps=Math.round(_fpsN*1000/_fpsT);_fpsN=0;_fpsT=0;
+    if(perfEl)perfEl.textContent="FPS "+_fps+" · pawns "+(ST.pawns?ST.pawns.length:0)+" · spd "+ST.speed+(ST.paused?" · PAUSED":"");}}
   if(ST.phase==="run"&&!ST.paused){
     acc+=dt;const step=100/ST.speed;let n=0;
     while(acc>=step&&n<10){tick();acc-=step;n++;if(ST.phase!=="run")break}
