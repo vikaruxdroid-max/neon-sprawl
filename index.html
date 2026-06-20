@@ -176,8 +176,12 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 
 /* ── TOOLBAR ── */
 /* ── OPERATIVE DOCK — a quiet persistent status strip that expands into controls on demand ── */
-#op-dock{position:fixed;left:10px;bottom:8px;z-index:17;font-family:var(--mono);
-  display:flex;flex-direction:column;gap:0;max-width:280px;user-select:none}
+/* OPS COMMAND BAR — bottom-CENTER, stacked just ABOVE the build toolbar (which already owns bottom:8px). The
+   operative's toolkit sits front-and-center as the primary action surface. The collapsible strip rises into
+   the ops panel upward. NOTE: the build submenu also pops up here transiently when a tool category is open —
+   the ops bar yields to it (lower z-index) so it doesn't fight the submenu while you're placing buildings. */
+#op-dock{position:fixed;left:50%;transform:translateX(-50%);bottom:56px;z-index:16;font-family:var(--mono);
+  display:flex;flex-direction:column;gap:0;max-width:520px;width:max-content;align-items:stretch;user-select:none}
 #op-dock .od-strip{display:flex;align-items:center;gap:8px;cursor:pointer;
   background:rgba(4,10,22,.95);border:1px solid var(--bd);border-radius:8px;
   padding:6px 11px;box-shadow:0 -2px 14px rgba(0,0,0,.4);transition:border-color .15s,box-shadow .15s}
@@ -301,8 +305,15 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 /* crew grid */
 .crew-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
 .crew-card{display:flex;align-items:center;gap:9px;padding:9px 11px;cursor:pointer;
-  background:rgba(8,18,36,.7);border:1px solid var(--bd);border-radius:9px;transition:.12s}
+  background:rgba(8,18,36,.7);border:1px solid var(--bd);border-left:3px solid var(--bd);border-radius:9px;transition:.12s}
 .crew-card:hover{border-color:var(--cy);background:rgba(0,212,255,.07)}
+/* HIGHLIGHT IMPORTANT INFO — a colored left edge makes a wisp's status scannable at a glance across the grid:
+   red = in crisis (sick / broke / very low mood), amber = needs attention (homeless / hooked), green = thriving. */
+.crew-card.crew-crisis{border-left-color:#ff4757;background:rgba(255,71,87,.06)}
+.crew-card.crew-warn{border-left-color:#ff8c42}
+.crew-card.crew-good{border-left-color:#39ff88}
+.crew-st.busy{color:#8be0ff}        /* actively working/acting */
+.crew-st.idle{color:var(--dim);font-style:italic}   /* idle/sleeping — lower visual weight */
 .crew-card.sel{border-color:var(--cy);box-shadow:0 0 0 1px var(--cy) inset}
 .crew-ava{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   font-family:var(--disp);font-weight:700;font-size:14px;color:#04101a;flex-shrink:0}
@@ -711,7 +722,11 @@ const SFX=(()=>{let ac=null,mut=false;
     toggleMute(){mut=!mut;
       if(this._amb){try{this._amb.master.gain.value=mut?0:0.15}catch(e){}}
       if(typeof MUSIC!=="undefined"&&MUSIC.setMuted)MUSIC.setMuted(mut);
-      return mut}
+      return mut},
+    isMuted(){return mut},
+    // scale the synth ambience bed's volume (0..1) alongside the mp3 music, so the Volume slider governs
+    // BOTH audio systems — not just the mp3 stream (which may be absent). 0.15 is the ambience's full level.
+    setAmbVolume(v){const vv=Math.max(0,Math.min(1,v));if(this._amb&&!mut){try{this._amb.master.gain.value=0.15*vv}catch(e){}}}
   }})();
 // ═══════════════════════ AMBIENT MUSIC — immersive background bed ═══════════════════════
 // Streams looping ambient tracks (mp3s hosted alongside the game), shuffled + crossfaded so the bed
@@ -1131,6 +1146,11 @@ const M=()=>ST.mov, REG=()=>ST.regime;
 // POWER GRID — true while a blackout is in effect (set by sabotage/disaster). Centralizes the check used
 // by the cascade: production halts, clinics can't treat, lights drop, and NPCs on edge get angry.
 function gridDown(){return !!(ST.blackoutUntil&&ST.tick<ST.blackoutUntil);}
+// track the tick a blackout began (for the visual ease-in). Set on the rising edge, cleared when power's back.
+function trackBlackoutEdge(){
+  if(gridDown()){if(ST._blackoutStart==null)ST._blackoutStart=ST.tick;}
+  else if(ST._blackoutStart!=null)ST._blackoutStart=null;
+}
 // a wisp's openness to the cause: blends their allegiance with discontent (the regime's victims
 // radicalize). Broke, evicted, low-mood, ungoverned wisps are the most recruitable.
 function radicalPotential(p){
@@ -5255,14 +5275,19 @@ function pawnTick(p){
   const wealth=(p.credits||0);
   const poor=wealth<15, comfortable=wealth>60;
   if(ST.procgen!==false&&!p.sick&&ST.tick%60===0){
-    let infectChance=0.002+(p.needs.hyg<35?(35-p.needs.hyg)/35*0.12:0);
-    if(poor)infectChance*=1.8;          // worse conditions, more exposure
-    else if(comfortable)infectChance*=0.45;   // clean living, preventive care
+    // REBALANCE v2 — the log showed infections still outpacing recovery in a low-hygiene district (a near
+    // permanent plague + log spam burying real events). Cut the base rate and the dirty-hygiene ramp further,
+    // and only LOG occasionally so routine sickness doesn't drown the activity feed.
+    let infectChance=0.0005+(p.needs.hyg<25?(25-p.needs.hyg)/25*0.025:0);
+    if(poor)infectChance*=1.4;          // worse conditions, more exposure
+    else if(comfortable)infectChance*=0.35;   // clean living, preventive care
+    infectChance=Math.min(0.025,infectChance);   // hard cap halved — never more than ~2.5% per hourly check
     if(Math.random()<infectChance){
-      p.sick=true;addMod(p,"sick","Infection",-10,TPD);float(p.px,p.py,"INFECTED","#ff4757");emote(p,"gross");log(p.name+" caught an infection.","warn")}
+      p.sick=true;addMod(p,"sick","Infection",-10,TPD);float(p.px,p.py,"INFECTED","#ff4757");emote(p,"gross");
+      if(Math.random()<0.34)log(p.name+" caught an infection.","warn")}   // log ~1 in 3 to cut spam
   }
   if(p.sick&&ST.tick%60===0){  // contagion: spread to nearby citizens
-    const spreadRate=0.006*(p.needs.hyg<30?3:1);  // dirty carrier spreads 3x
+    const spreadRate=0.0015*(p.needs.hyg<30?1.6:1);  // halved; dirty carrier spreads a bit faster
     for(const q of ST.pawns){if(q===p||q.sick)continue;
       const d=DIST(p.px,p.py,q.px,q.py);if(d>3)continue;
       // bar and clinic are social hotspots — double spread rate there
@@ -5274,18 +5299,20 @@ function pawnTick(p){
         q.sick=true;q.sickSource=p.id;
         addMod(q,"sick","Infection",-10,TPD);float(q.px,q.py,"INFECTED","#ff4757");
         remember(q,"caught something — probably from "+p.name);
-        log(q.name+" caught an infection from "+p.name+".","warn")}}}
+        if(Math.random()<0.34)log(q.name+" caught an infection from "+p.name+".","warn")}}}   // log ~1 in 3
   if(p.sick){
     // poor wisps without access to care decay faster; the comfortable have constant care that slows it
     if(ST.tick%60===0){let decay=1;if(poor)decay=1.6;else if(comfortable)decay=0.6;p.hp-=decay;}
     if(p.hp<=0){killPawn(p,"died of an untreated infection");return}
-    // recovery: better hygiene/health/WEALTH speeds it (the comfortable can afford constant treatment)
-    if(p.hp>35&&ST.tick%80===0){
-      const clean=(p.needs.hyg||50)>50, healthy=p.hp>55;
-      let recoverChance=clean&&healthy?0.14:(p.needs.hyg||50)>30?0.07:0.035;
-      if(comfortable)recoverChance*=1.6;      // constant care
-      else if(poor)recoverChance*=0.6;        // no access — it lingers
-      if(Math.random()<recoverChance){p.sick=false;p.quarantine=false;log(p.name+" shook off the infection.","good");}
+    // recovery: REBALANCED so the sick actually recover even in a poorer district (the old gates needed
+    // hygiene>50, which low-hygiene wisps never hit → infections lingered forever). Everyone now has a
+    // meaningful baseline recovery chance; clean/healthy/wealthy just recover faster.
+    if(p.hp>25&&ST.tick%80===0){
+      const clean=(p.needs.hyg||50)>45, healthy=p.hp>50;
+      let recoverChance=clean&&healthy?0.22:(p.needs.hyg||50)>25?0.15:0.10;   // floor raised further (in/out balance)
+      if(comfortable)recoverChance*=1.5;      // constant care
+      else if(poor)recoverChance*=0.8;        // slower, but recovers
+      if(Math.random()<recoverChance){p.sick=false;p.quarantine=false;if(Math.random()<0.5)log(p.name+" shook off the infection.","good");}
     }
     // DESPERATION — a poor, sick wisp whose health is failing is pushed toward desperate measures.
     // mark them so chooseJob's crime/steal weights spike (the divide drives them to act out).
@@ -5320,9 +5347,20 @@ function pawnTick(p){
     log(p.name+" snapped — wandering dazed.","warn")}
   if(p.dazed>ST.tick&&p.dazed-ST.tick===1){applyDrift(p,{cau:2,soc:-1})}
   if(p.dazed>ST.tick){p.sleeping=false;
-    if(!p.dz||((p.px|0)===p.dz.x&&(p.py|0)===p.dz.y))p.dz=randNear(p,4);
-    if(p.dz&&gotoCell(p,p.dz.x,p.dz.y,0)==="fail")p.dz=null;
-    return}
+    // SURVIVAL FLOOR (death-spiral fix) — a dazed wisp normally just wanders, but it must NOT wander itself to
+    // death. If critically hungry (or exhausted), break out of the aimless wander to actually EAT/SLEEP. Without
+    // this, a wisp that snapped stayed dazed (re-triggering while their mood was wrecked by hunger), never ate,
+    // and STARVED — exactly how the avatar "Esteban" died. Survival overrides the daze.
+    const _starv=(p.needs&&p.needs.food!=null&&p.needs.food<20);
+    const _exh=(p.needs&&p.needs.rest!=null&&p.needs.rest<10);
+    if(_starv||_exh){
+      p.dazed=ST.tick;p.dz=null;   // end the daze so survival (eat/sleep) takes over this tick — do NOT return
+    } else {
+      if(!p.dz||((p.px|0)===p.dz.x&&(p.py|0)===p.dz.y))p.dz=randNear(p,4);
+      if(p.dz&&gotoCell(p,p.dz.x,p.dz.y,0)==="fail")p.dz=null;
+      return;
+    }
+  }
   // relationship-driven behaviors (every 80 ticks, non-drafted non-dazed)
   if(ST.tick%80===0&&p.dazed<ST.tick){
     // REVENGE: a pawn with a standing grudge confronts the target when close
@@ -5419,6 +5457,19 @@ function pawnTick(p){
   // EMBODIED OPS: an in-flight operation supersedes normal AI. Must run BEFORE the chooseJob line below,
   // because a null job would otherwise make the AI immediately grab a new one (interrupting the op).
   if(p.isAvatar&&p.activeOp){advanceActiveOp(p);return;}
+  // AVATAR HARD SURVIVAL FLOOR — the operative is irreplaceable (its death ends the run), so survival gets
+  // ABSOLUTE priority over every other state. If the avatar is critically hungry or exhausted and isn't
+  // already eating/sleeping, force the survival job NOW — this runs regardless of manual/auto/posture/daze,
+  // so nothing (a snapped daze, an idle manual wait, a lay-low posture) can let the avatar starve. This is
+  // the safety net that should have saved "Esteban".
+  if(p.isAvatar){
+    const avStarv=(p.needs&&p.needs.food!=null&&p.needs.food<24);
+    const avExh=(p.needs&&p.needs.rest!=null&&p.needs.rest<14);
+    const eatingNow=p.job&&(p.job.t==="eat");
+    const sleepingNow=p.sleeping||(p.job&&p.job.t==="sleep");
+    if(avStarv&&!eatingNow){const j=mkEat(p);if(j){p.dazed=ST.tick;p.job=j;p.cmd=null;return;}}
+    if(avExh&&!sleepingNow&&!avStarv){const j=mkSleep(p);if(j){p.dazed=ST.tick;p.job=j;p.cmd=null;return;}}
+  }
   // MANUAL MODE: when the player has taken direct control, the avatar doesn't pick its own busywork —
   // it waits for orders. It STILL handles critical survival (eating when starving, sleeping when
   // exhausted) so neglect can't accidentally kill your operative; everything else is the player's call.
@@ -6422,12 +6473,30 @@ function fireEvent(){
   if(surplusChem&&Math.random()<0.3)ev="black_market";
   if(ev==="wander"&&openHomes().length===0)ev="brawl";
   switch(ev){
-    case "brawl":{const a=CH(ST.pawns),b=CH(ST.pawns.filter(p=>p!==a));
+    case "brawl":{
+      // LONE-BRAWL FIX — a brawl must be between two wisps who are ACTUALLY NEAR each other. Previously a
+      // and b were both picked at random from the whole map, so they could be on opposite sides; the "BRAWL"
+      // float + camera pan only showed A, so you'd see one wisp brawling "alone" while B fought from afar.
+      // Now: pick an instigator A, then find a B standing close to A. If nobody's nearby, no brawl this time.
+      const adults=ST.pawns.filter(p=>p.hp>0&&!isChild(p)&&!p.jailed);
+      let a=null,b=null;
+      // try a few instigators until one has a neighbour within brawling distance
+      const shuffled=adults.slice().sort(()=>Math.random()-0.5);
+      for(const cand of shuffled){
+        const near=adults.filter(q=>q!==cand&&DIST(cand.px,cand.py,q.px,q.py)<3.5);
+        if(near.length){a=cand;b=CH(near);break;}
+      }
       if(a&&b){const dmg=RI(6,18);a.hp=Math.max(1,a.hp-dmg);b.hp=Math.max(1,b.hp-dmg);
         a.stress=Math.min(100,(a.stress||0)+12);b.stress=Math.min(100,(b.stress||0)+12);
         relAdj(a.id,b.id,-20);ST.heat=Math.min(100,(ST.heat||0)+8);
-        float(a.px,a.py,"BRAWL","#ff4757");panToEvent(a.px,a.py,"#ff4757");
-        log(a.name+" and "+b.name+" got into it on the block — heat rising.","warn");banner("STREET BRAWL","warn");SFX.alert()}break}
+        // both combatants show the visual + emote, so it reads as an actual fight between two wisps
+        float(a.px,a.py,"BRAWL","#ff4757");float(b.px,b.py,"BRAWL","#ff4757");
+        tryEmote&&tryEmote(a,"angry",90);tryEmote&&tryEmote(b,"angry",90);
+        // briefly make them face off (a short flee/agitation so they don't just stand calmly mid-brawl)
+        a.stress=Math.min(100,a.stress+6);b.stress=Math.min(100,b.stress+6);
+        panToEvent(a.px,a.py,"#ff4757");
+        log(a.name+" and "+b.name+" got into it on the block — heat rising.","warn");banner("STREET BRAWL","warn");SFX.alert()}
+      break}
     case "wander":{const open=openHomes();if(!open.length)break;
       const e=edgeCell();
       const p=mkPawn(e.x,e.y,CH(["sal","bld","sht"]));
@@ -6548,6 +6617,7 @@ function tick(){ST.tick++;
   jailTick();        // hold/release/execute jailed pawns (escalating sentences for repeat offenders)
   extortionTick();   // process recurring extortion payments from blackmail victims
   blackoutTick();    // power-outage cascade — anger the on-edge, and a regime wisp repairs the grid
+  trackBlackoutEdge();   // record blackout start/end for the visual darkness ease-in
   witnessMemoryTick();   // lasting witness fallout — fear-informing, allegiance drift, decay over time
   if(ST.tick%50===0)checkWinState();   // (§7) liberation check — grip held low long enough = victory
   directorTick();                      // (§3) Brain B — advance the tension curve (buildup/peak/relax)
@@ -8051,6 +8121,40 @@ function drawPawn(p){
       ctx.beginPath();ctx.arc(X,Y,15,-Math.PI/2,-Math.PI/2+frac*Math.PI*2);ctx.stroke();ctx.globalAlpha=1;
       // a faint full-circle track behind it
       ctx.strokeStyle=oc;ctx.globalAlpha=0.18;ctx.lineWidth=2.4;ctx.beginPath();ctx.arc(X,Y,15,0,7);ctx.stroke();ctx.globalAlpha=1;
+      // ── PER-OP MOTION (Phase 3) — distinct visual on top of the progress ring, so each deed READS ──
+      if(ao.anim==="strike"){
+        // ASSASSINATION — a violent red slash that sweeps across the operative, sharpening as the kill nears.
+        // Cadence quickens with progress (~every 22 ticks early → ~every 10 ticks at the end); each slash is a
+        // hard diagonal streak with a bright leading point, plus a brief red flash-ring on the strike beat.
+        const period=Math.max(10,22-Math.round(frac*12));
+        const phase=ST.tick%period;            // 0..period-1
+        const inStrike=phase<5;                // the slash is visible for ~5 ticks of each cycle
+        if(inStrike){
+          const t=phase/5;                     // 0→1 across the slash
+          const len=10+18*frac;                // longer, more committed slash as the op progresses
+          // diagonal slash through the operative (top-right → bottom-left), swept by t
+          const ang=-Math.PI/4;                // 45° downward
+          const cx=X,cy=Y;
+          const sweep=(t-0.5)*len*1.6;         // the streak travels across as t advances
+          const dx=Math.cos(ang),dy=Math.sin(ang);
+          // perpendicular offset gives the slash its travel
+          const px=-dy*sweep,py=dx*sweep;
+          ctx.strokeStyle="#ff2d3d";ctx.globalAlpha=0.92*(1-t*0.4);ctx.lineWidth=2.6;ctx.lineCap="round";
+          ctx.beginPath();
+          ctx.moveTo(cx+px-dx*len*0.5,cy+py-dy*len*0.5);
+          ctx.lineTo(cx+px+dx*len*0.5,cy+py+dy*len*0.5);
+          ctx.stroke();
+          // bright leading point of the blade
+          ctx.fillStyle="#ffd0d4";ctx.globalAlpha=0.9*(1-t*0.5);
+          ctx.beginPath();ctx.arc(cx+px+dx*len*0.5,cy+py+dy*len*0.5,2.1,0,7);ctx.fill();
+          ctx.lineCap="butt";ctx.globalAlpha=1;
+        }
+        // a hard red flash-ring on the first tick of each strike cycle — the "impact" beat
+        if(phase===0){
+          ctx.strokeStyle="#ff2d3d";ctx.globalAlpha=0.6;ctx.lineWidth=3;
+          ctx.beginPath();ctx.arc(X,Y,17,0,7);ctx.stroke();ctx.globalAlpha=1;
+        }
+      }
     }
   }}
 function toolColor(){if(!TOOL)return "#00e5ff";
@@ -8437,6 +8541,20 @@ function render(){
   }
   // ── OP READOUT — the cyberpunk hacker terminal above the avatar during an operation (on top of all)
   drawOpReadout();
+  // ── BLACKOUT DARKNESS — when the grid is down (sabotage/disaster), actually DARKEN the screen so the
+  //    outage is VISIBLE, not just a state. Screen-space overlay (uniform dim), eased in/out, with a faint
+  //    flicker so it reads as a power failure rather than nightfall. Logic (production/medical halt) already
+  //    keys off gridDown(); this is the missing visual half.
+  if(gridDown()){
+    ctx.setTransform(dpr,0,0,dpr,0,0);           // screen space — cover the whole viewport
+    const left=ST.blackoutUntil-ST.tick;
+    const easeIn=Math.min(1,(ST._blackoutStart!=null?(ST.tick-ST._blackoutStart):TPS)/TPS);
+    const easeOut=Math.min(1,left/TPS);
+    const k=Math.max(0,Math.min(1,Math.min(easeIn,easeOut)));
+    const flicker=0.04*Math.sin(performance.now()*0.013)+0.03*Math.sin(performance.now()*0.047);
+    const dim=Math.max(0,(0.62+flicker)*k);      // up to ~62% black, flickering
+    ctx.globalAlpha=dim;ctx.fillStyle="#02060a";ctx.fillRect(0,0,VW,VH);ctx.globalAlpha=1;
+  }
 }
 
 // draw the streaming op terminal in screen space, anchored above the avatar's head
@@ -8678,23 +8796,26 @@ function clickSelect(c){const p=pawnAt(c.wx,c.wy);
         s.kind="s";if(runAvatarOp(opKey,s)){ST.opTargeting=null;ST.opTargetingOp=null;}
         ST.sel=ST.sel&&ST.sel[0]&&ST.sel[0].isAvatar?ST.sel:[theAvatar()].filter(Boolean);
         renderInspect();syncHUD();return;
-      }else{flashMsg&&flashMsg("Not a power/water building — pick a utility, or tap the op again to cancel.");return;}
+      }else{flashMsg&&flashMsg("Not a power/water building \u2014 targeting cancelled.");ST.opTargeting=null;ST.opTargetingOp=null;syncHUD();return;}
     }else if(need==="regime"){
       if(p&&!p.isAvatar&&!isChild(p)&&(p.regimeForce||p.informant||(p.allegiance||0)<-20)){
         if(!inOpRange(theAvatar(),opDef,p)){flashMsg&&flashMsg("Too far \u2014 move your operative close to them, then pick them again.");return;}
         p.kind="pawn";if(runAvatarOp(opKey,p)){ST.opTargeting=null;ST.opTargetingOp=null;}
         ST.sel=[theAvatar()].filter(Boolean);renderInspect();syncHUD();return;
-      }else{flashMsg&&flashMsg("Not a regime asset — pick a loyalist/enforcer/informant, or tap the op again to cancel.");return;}
+      }else{flashMsg&&flashMsg("Not a regime asset (need a loyalist/enforcer/informant) \u2014 targeting cancelled.");ST.opTargeting=null;ST.opTargetingOp=null;syncHUD();return;}
     }else if(need==="anyPawn"){
       if(p&&!p.isAvatar&&!isChild(p)&&p.hp>0){
-        // blackmail requires a KNOWN secret on this target
+        // blackmail requires a KNOWN secret on this target — this is a SOFT fail: keep targeting active so
+        // the player can pick a different (valid) wisp, but only flash the hint ONCE (not every click).
         if(opDef&&opDef.needsSecret&&!knownSecret(p)){
-          flashMsg&&flashMsg("You have no dirt on "+p.name.split(" ")[0]+" — surveil them first to find their secret.");return;
+          if(ST._lastDirtWarn!==p.id){ST._lastDirtWarn=p.id;flashMsg&&flashMsg("You have no dirt on "+p.name.split(" ")[0]+" \u2014 surveil them first, or pick someone you've already surveilled.");}
+          return;
         }
         if(!inOpRange(theAvatar(),opDef,p)){flashMsg&&flashMsg("Too far \u2014 move your operative close to them, then pick them again.");return;}
+        ST._lastDirtWarn=null;
         p.kind="pawn";if(runAvatarOp(opKey,p)){ST.opTargeting=null;ST.opTargetingOp=null;}
         ST.sel=[theAvatar()].filter(Boolean);renderInspect();syncHUD();return;
-      }else{flashMsg&&flashMsg("Pick a wisp (not a child), or tap the op again to cancel.");return;}
+      }else{flashMsg&&flashMsg("Not a valid target \u2014 targeting cancelled.");ST.opTargeting=null;ST.opTargetingOp=null;ST._lastDirtWarn=null;syncHUD();return;}
     }
   }
   if(p){ST.sel=[p];renderInspect();return}
@@ -8715,7 +8836,50 @@ function marqueeSelect(m){
   const got=ST.pawns.filter(p=>p.px*T>=ax&&p.px*T<=bx&&p.py*T>=ay&&p.py*T<=by);
   if(got.length)ST.sel=got;else ST.sel=[];
   renderInspect()}
-function rmbAction(c){if(TOOL){setTool(null);return}}
+// RIGHT-CLICK = COMMAND THE OPERATIVE. We always act from the avatar's perspective, so a right-click is an
+// order to YOUR operative — no need to select it first. On empty walkable ground: go manual + path there.
+// On a wisp/structure: select it (surfacing the valid ops you can perform on that target) AND start moving
+// toward it so you're in range to act. This is the unified move+target flow.
+function rmbAction(c){
+  if(TOOL){setTool(null);return}
+  if(ST.phase!=="run")return;
+  const av=theAvatar();if(!av||av.hp<=0)return;
+  // a target wisp under the cursor? select it (shows what we can do TO them) and close in.
+  const tp=pawnAt(c.wx,c.wy);
+  if(tp&&tp!==av){
+    ST.sel=[tp];
+    // move the operative adjacent to the target so an op is in range (manual takeover)
+    if(!av.jailed){
+      ST.avatarManual=true;
+      if(av.activeOp){av.activeOp=null;OPREADOUT=null;flashMsg&&flashMsg("Operation abandoned.");}
+      av.job={t:"goto",x:tp.px|0,y:tp.py|0,adj:1};av.cmd=null;
+    }
+    renderInspect();syncHUD();
+    if(typeof SFX!=="undefined"&&SFX.ui)SFX.ui();
+    return;
+  }
+  // a structure under the cursor? select it (sabotage-able buildings show their op) and close in.
+  const s=structAt(c.x,c.y);
+  if(s){
+    ST.sel=[s];
+    if(!av.jailed){ST.avatarManual=true;
+      if(av.activeOp){av.activeOp=null;OPREADOUT=null;flashMsg&&flashMsg("Operation abandoned.");}
+      av.job={t:"goto",x:s.x,y:s.y,adj:1};av.cmd=null;}
+    renderInspect();syncHUD();
+    if(typeof SFX!=="undefined"&&SFX.ui)SFX.ui();
+    return;
+  }
+  // empty WALKABLE ground → go manual and walk there.
+  if(colCost(c.x,c.y)>=0&&!av.jailed){
+    ST.avatarManual=true;
+    if(av.activeOp){av.activeOp=null;OPREADOUT=null;flashMsg&&flashMsg("Operation abandoned.");}
+    av.job={t:"goto",x:c.x,y:c.y};av.cmd=null;
+    ST.sel=[av];                                  // keep the operative in focus so the ops bar shows
+    renderInspect();syncHUD();
+    if(typeof SFX!=="undefined"&&SFX.ui)SFX.ui();
+    return;
+  }
+}
 function tapAction(c){
   if(TOOL){applyCell(c.x,c.y);return}
   const p=pawnAt(c.wx,c.wy);
@@ -8742,13 +8906,20 @@ cv.addEventListener("mousedown",e=>{e.preventDefault();SFX.wake();
     if(dk==="paint"){PT.paint=new Set();PT.lastC=c;paintCell(c.x,c.y)}
     else if(dk==="rect")PT.marq={x0:c.wx,y0:c.wy,x1:c.wx,y1:c.wy,rect:true};
     else if(!TOOL)PT.marq={x0:c.wx,y0:c.wy,x1:c.wx,y1:c.wy,rect:false}}
-  else{PT.panning=true;PT.btn=e.button;PT.lx=e.clientX;PT.ly=e.clientY;PT.moved=false}});
+  else{
+    // RIGHT/MIDDLE BUTTON. Panning with the mouse now requires CTRL+right-drag (so a plain right-click is
+    // free to COMMAND the operative via rmbAction on mouseup). Middle-button still pans freely. We still
+    // arm a "panning" drag for ctrl+right and middle so the move handler can pan; a plain right-click that
+    // doesn't drag falls through to rmbAction on mouseup.
+    PT.panning=true;PT.btn=e.button;PT.lx=e.clientX;PT.ly=e.clientY;PT.moved=false;
+    PT.panAllowed=(e.button===1)||(e.button===2&&(e.ctrlKey||e.metaKey));   // middle = always; right = ctrl only
+  }});
 window.addEventListener("mousemove",e=>{
   const c=cellAt(e.clientX,e.clientY);
   PT.hoverX=c.x;PT.hoverY=c.y;PT.hwx=c.wx;PT.hwy=c.wy;
   if(PT.panning){const dx=e.clientX-PT.lx,dy=e.clientY-PT.ly;
     if(Math.abs(dx)+Math.abs(dy)>3)PT.moved=true;
-    cam.x-=dx/cam.z;cam.y-=dy/cam.z;clampCam();if(cam.follow)stopFollow();
+    if(PT.panAllowed){cam.x-=dx/cam.z;cam.y-=dy/cam.z;clampCam();if(cam.follow)stopFollow();}
     PT.lx=e.clientX;PT.ly=e.clientY;return}
   if(!PT.down)return;
   if(Math.hypot(e.clientX-PT.sx,e.clientY-PT.sy)>4)PT.moved=true;
@@ -8873,10 +9044,13 @@ function chronicle(text,icon){
 }
 let DIARY_FILTER="saga";
 const DIARY_CATS={
-  crime:["robbed","stolen","caught","busted","fight","brawl","broke into","assault"],
+  // NOTE order matters — classifyEntry returns the FIRST category whose keyword appears. "caught" was bare
+  // here and stole "caught an infection" from health (everything sick showed as [CRIME]). Crime's catch is
+  // specifically "caught <committing a crime>", so it's narrowed; health is also checked ahead of crime below.
+  health:["sick","infected","infection","clinic","treated","shook off","quarantine","epidemic","outbreak","contagion"],
+  crime:["robbed","stolen","caught robbing","caught stealing","caught breaking","busted","fight","brawl","broke into","assault","snitch","racket"],
   eco:["income","credits","sold","debt","crisis","district finance","stim lab","gear shop","supply","market","gig","laid off","workstation","production"],
   social:["truce","feud","crew","gang","relationship","arrived","wandered","drift","mugged","sanctioned","broke up"],
-  health:["sick","infected","infection","clinic","treated","shook off","quarantine","died","spread"],
   district:["enforcer","crackdown","raid","heat","evict","rent","housing","home","district","day "]
 };
 function classifyEntry(msg){
@@ -9038,11 +9212,19 @@ function renderCrewOverlay(){
     const mood=p.mood|0;
     const moodCol=mood>60?"var(--gn)":mood>35?"var(--yl)":"var(--rd)";
     const task=p.dazed>ST.tick?"dazed":jobLabel(p);
-    h+="<div class='crew-card' data-cid='"+p.id+"'>"+
+    // HIGHLIGHT — classify the card so its left edge signals status at a glance
+    const inCrisis=p.sick||((p.credits||0)<0)||mood<25;
+    const needsAttn=!inCrisis&&(p.homeless||(p.addiction||0)>40);
+    const thriving=!inCrisis&&!needsAttn&&mood>65&&!p.homeless;
+    const cardCls="crew-card"+(inCrisis?" crew-crisis":needsAttn?" crew-warn":thriving?" crew-good":"");
+    // task readability — idle/sleeping is lower-weight, active work pops
+    const tl=task.toLowerCase();
+    const stCls=(tl.indexOf("sleep")>=0||tl.indexOf("idl")>=0||tl.indexOf("dazed")>=0)?"crew-st idle":"crew-st busy";
+    h+="<div class='"+cardCls+"' data-cid='"+p.id+"'>"+
        "<div class='crew-ava' style='background:"+p.accent+"'>"+p.name.charAt(0)+"</div>"+
        "<div class='crew-meta'>"+
          "<div class='crew-nm'>"+p.name+(p.career?" <span style='color:var(--dim);font-weight:400;font-size:9px'>· "+vocationOf(p).name+"</span>":"")+"</div>"+
-         "<div class='crew-st' style='color:"+moodCol+"'>"+task+" · mood "+mood+"</div>"+
+         "<div class='"+stCls+"'>"+task+" · <span style='color:"+moodCol+";font-weight:700'>mood "+mood+"</span></div>"+
          (crewFlagHTML(p)?"<div class='crew-flags'>"+crewFlagHTML(p)+"</div>":"")+
        "</div></div>";
   }
@@ -10719,7 +10901,9 @@ function closeSettings(){const s=$("settings-menu");if(s)s.style.display="none";
 function settingsOpen(){const s=$("settings-menu");return s&&s.style.display!=="none";}
 // keep the Settings panel's controls in sync with current state
 function syncSettings(){
-  const muted=MUSIC&&MUSIC.isMuted&&MUSIC.isMuted();
+  // read the MASTER mute state from SFX (it governs both the synth ambience and the mp3 music); fall back
+  // to MUSIC's own flag if SFX doesn't expose it.
+  const muted=(SFX&&SFX.isMuted)?SFX.isMuted():(MUSIC&&MUSIC.isMuted&&MUSIC.isMuted());
   const ms=$("set-mute-state");if(ms){ms.textContent=muted?"off":"on";ms.style.color=muted?"var(--dim)":"#22ddff";}
   const vol=MUSIC&&MUSIC.getVolume?Math.round(MUSIC.getVolume()*100):34;
   const vs=$("set-vol");if(vs)vs.value=vol;
@@ -10740,8 +10924,19 @@ const sysM=$("sys-menu");if(sysM)sysM.onclick=(e)=>{if(e.target===sysM)closeSysM
 // SETTINGS controls
 const setX=$("settings-x");if(setX)setX.onclick=()=>{SFX.ui();closeSettings();};
 const setMenuEl=$("settings-menu");if(setMenuEl)setMenuEl.onclick=(e)=>{if(e.target===setMenuEl)closeSettings();};
-const setMute=$("set-mute");if(setMute)setMute.onclick=()=>{SFX.ui();if(MUSIC&&MUSIC.setMuted){const nm=!(MUSIC.isMuted&&MUSIC.isMuted());MUSIC.setMuted(nm);}syncSettings();};
-const setVol=$("set-vol");if(setVol)setVol.oninput=function(){const v=(+this.value)/100;if(MUSIC&&MUSIC.setVolume)MUSIC.setVolume(v);const vv=$("set-vol-val");if(vv)vv.textContent=this.value;};
+const setMute=$("set-mute");if(setMute)setMute.onclick=()=>{SFX.ui();
+  // FIX — the mute button must silence BOTH audio systems: the synth ambience drone (SFX) AND the mp3 music
+  // bed (MUSIC). Previously it called MUSIC.setMuted alone, so the synth drone kept playing and "mute did
+  // nothing." SFX.toggleMute handles both (it flips its own ambience gain and forwards to MUSIC.setMuted).
+  if(SFX&&SFX.toggleMute)SFX.toggleMute();
+  else if(MUSIC&&MUSIC.setMuted){const nm=!(MUSIC.isMuted&&MUSIC.isMuted());MUSIC.setMuted(nm);}
+  syncSettings();};
+const setVol=$("set-vol");if(setVol)setVol.oninput=function(){const v=(+this.value)/100;
+  // scale BOTH audio systems: the mp3 music bed AND the synth ambience drone (the latter is what plays when
+  // no mp3 files are present, so the slider must govern it too or "volume does nothing").
+  if(MUSIC&&MUSIC.setVolume)MUSIC.setVolume(v);
+  if(SFX&&SFX.setAmbVolume)SFX.setAmbVolume(v);
+  const vv=$("set-vol-val");if(vv)vv.textContent=this.value;};
 const setSkip=$("set-skip");if(setSkip)setSkip.onclick=()=>{SFX.ui();if(MUSIC&&MUSIC.skip)MUSIC.skip();};
 const setRain=$("set-rain");if(setRain)setRain.onclick=()=>{SFX.ui();ATMO.on=!ATMO.on;ATMO.fog=0;syncSettings();};
 const setStorm=$("set-storm");if(setStorm)setStorm.onclick=()=>{SFX.ui();STORM.on=!STORM.on;STORM.flash=0;STORM.nextAt=0;syncSettings();};
