@@ -39,7 +39,40 @@ done yet.
 
 ## ⚡ LATEST STATE (read this first — reconciled from the live VM, June 2026) ⚡
 
-**EMBODIED OPS PHASE 2 COMPLETE — PERCEPTION & WITNESSES (most recent session): the world now WATCHES.**
+**FULL DOC-VS-CODE AUDIT + ABORT-ON-MOVE FIX (most recent session): verified the architecture doc's claims
+against the live code through Phase 2.** Audited every system the Embodied-Ops Architecture doc claims is
+built — confirmed each EXISTS, is WIRED (called, not dead), and BEHAVES as specified.
+
+- **AUDIT RESULT — all doc-claimed systems verified:** canSee, witnessPenalty, runWitnessCheck,
+  advanceActiveOp, resolveAvatarOp, inOpRange, resolveOpTarget, opState, bribeReceptivity, renderOpDock,
+  opDockState all present + wired (call sites confirmed). The 5 "Findings" the doc claims fixed all hold in
+  code: F1 move-to-tile works, F2 AI doesn't interrupt an op (the critical one — 0 jobs grabbed mid-op),
+  F3 stuck-detector exempt, F4 zero drift against a crowd, F5 snapPawn nulls activeOp + clean serialize.
+  Behavioral claims verified: positioning gates the op (far blocked/near stages), op holds position +
+  advances, a witness arriving MID-op affects the outcome (resolve-time computation works), darkness blinds
+  witnesses at range.
+- **DOC-VS-CODE DISCREPANCY FOUND + FIXED:** the doc says "a move command mid-op ABORTS the op (Operation
+  abandoned)," but the Phase 1 code actually BLOCKED movement during an op (the `!selA.activeOp` guard).
+  Code now matches the doc (and the better UX): clicking to move during an op ABORTS it ("Operation
+  abandoned.") and starts the walk — you can break off if the heat shifts. Fixed in BOTH clickSelect +
+  tapAction. VERIFIED: mid-op move-click clears activeOp + issues the goto.
+- **DOC-VS-CODE NAMING DRIFT (not a bug):** the doc's pseudocode names a `beginAvatarOp` staging function;
+  the actual staging logic lives INSIDE `runAvatarOp` (same behavior — validates cost/range/secret then
+  sets activeOp). Functionality is complete; only the name differs. Noted, not changed.
+- **PERFORMANCE PROFILE (honest finding, NOT fixed — out of scope + risky):** Phase 2 perception is
+  negligible (witnessPenalty 0.002ms, only runs at resolve; separatePawns 0% of tick; renderOpDock
+  0.001ms). BUT the core `pawnTick` is ~1.9ms/pawn (95% of tick time) — pre-existing AI/pathing cost, NOT
+  from the ops/UI work. At normal speed it's a non-issue (~1 tick per 6 frames); only at MAX fast-forward
+  could 10 ticks/frame approach the budget. chooseJob is 0.18ms, gotoCell 0.011ms — the cost is spread
+  across the rest of the per-pawn AI (needs/mood/relationships). Optimizing the core sim is a deep, risky,
+  separate undertaking that could destabilize the validated simulation — deliberately NOT attempted here.
+  Flagged for a future dedicated perf pass if max-speed stutter ever bothers Carlo.
+- **VALIDATION:** smoke 20/20, no dead/dupe, CSS balanced, full render clean (dock + reactive panel + op +
+  ring all active).
+
+---
+
+## ⚡ EMBODIED OPS PHASE 2 — PERCEPTION & WITNESSES (prior session) ⚡
 NPCs who can see you raise the difficulty of an op's roll, and being seen escalates fallout. Stealth
 positioning (where + WHEN you act) is now a real mechanic.
 

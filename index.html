@@ -6687,9 +6687,11 @@ function clickSelect(c){const p=pawnAt(c.wx,c.wy);
   }
   if(p){ST.sel=[p];renderInspect();return}
   const s=structAt(c.x,c.y);if(s){ST.sel=[s];renderInspect();return}
-  // AVATAR MOVE-ON-CLICK: if your operative is selected and you click an empty walkable tile, walk it there
+  // AVATAR MOVE-ON-CLICK: if your operative is selected and you click an empty walkable tile, walk it there.
+  // If an op is in flight, moving ABORTS it (a deliberate bail) — you can break off if the heat changes.
   const selA=ST.sel&&ST.sel[0];
-  if(selA&&selA.isAvatar&&!selA.activeOp&&colCost(c.x,c.y)>=0){
+  if(selA&&selA.isAvatar&&colCost(c.x,c.y)>=0){
+    if(selA.activeOp){selA.activeOp=null;flashMsg&&flashMsg("Operation abandoned.");}
     selA.job={t:"goto",x:c.x,y:c.y};selA.cmd=null;
     if(typeof SFX!=="undefined"&&SFX.ui)SFX.ui();
     return;
@@ -6708,9 +6710,10 @@ function tapAction(c){
   if(p){ST.sel=[p];renderInspect();syncHUD();return}
   const s=structAt(c.x,c.y);
   if(s){ST.sel=[s];renderInspect();return}
-  // AVATAR MOVE-ON-CLICK: operative selected + empty walkable tile -> walk there
+  // AVATAR MOVE-ON-CLICK: operative selected + empty walkable tile -> walk there (aborts an op if in flight)
   const selA=ST.sel&&ST.sel[0];
-  if(selA&&selA.isAvatar&&!selA.activeOp&&colCost(c.x,c.y)>=0){
+  if(selA&&selA.isAvatar&&colCost(c.x,c.y)>=0){
+    if(selA.activeOp){selA.activeOp=null;flashMsg&&flashMsg("Operation abandoned.");}
     selA.job={t:"goto",x:c.x,y:c.y};selA.cmd=null;
     if(typeof SFX!=="undefined"&&SFX.ui)SFX.ui();
     return;
