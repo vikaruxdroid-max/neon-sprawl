@@ -684,8 +684,106 @@ const SFX=(()=>{let ac=null,mut=false;
     ambientStop(){const A=this._amb;if(A&&A.master)try{A.master.gain.value=0}catch(e){}},
     toggleMute(){mut=!mut;
       if(this._amb){try{this._amb.master.gain.value=mut?0:0.15}catch(e){}}
+      if(typeof MUSIC!=="undefined"&&MUSIC.setMuted)MUSIC.setMuted(mut);
       return mut}
   }})();
+// ═══════════════════════ AMBIENT MUSIC — immersive background bed ═══════════════════════
+// Streams looping ambient tracks (mp3s hosted alongside the game), shuffled + crossfaded so the bed
+// evolves and never repeats back-to-back. Fades in gently on first interaction. Fully OPTIONAL: if the
+// files aren't found (404) or audio is blocked, it silently no-ops — the game runs fine without music.
+const MUSIC=(()=>{
+  // candidate filenames — the player uses whichever actually load (so exact naming is forgiving).
+  // Put your trimmed loop files alongside index.html under any of these names.
+  const TRACKS=[
+    "slow-ambient-cyberpunk-soundtrack-70_062026.mp3",
+    "slow-ambient-cyberpunk-soundtrack-70_062026__1_.mp3",
+    "soft-ambient-video-game-soundtrack-steady_062026.mp3",
+    "soft-ambient-video-game-soundtrack-very_062026.mp3",
+    // generic fallbacks if you rename them simply:
+    "ambient1.mp3","ambient2.mp3","ambient3.mp3"
+  ];
+  const VOL=0.34;            // target music volume (gentle bed, sits under the SFX)
+  const FADE_MS=4000;        // fade-in / crossfade duration
+  let muted=false, started=false, order=[], idx=0, cur=null, nxt=null, available=null, checking=false;
+  // probe which track URLs actually exist (HEAD-style: try to load metadata; keep the ones that succeed)
+  function probe(cb){
+    if(available){cb(available);return;}
+    if(checking)return;checking=true;
+    const found=[];let pending=TRACKS.length;
+    if(!pending){available=[];cb(available);return;}
+    TRACKS.forEach(src=>{
+      const a=new Audio();a.preload="metadata";
+      let done=false;const finish=ok=>{if(done)return;done=true;if(ok)found.push(src);if(--pending===0){available=found;cb(found);}};
+      a.addEventListener("loadedmetadata",()=>finish(true),{once:true});
+      a.addEventListener("error",()=>finish(false),{once:true});
+      // some browsers need a load() nudge; guard everything
+      try{a.src=src;a.load();}catch(e){finish(false);}
+      // safety timeout so a hung request doesn't stall startup
+      setTimeout(()=>finish(false),6000);
+    });
+  }
+  function shuffle(arr){const a=arr.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+  function makeAudio(src){
+    const a=new Audio(src);a.loop=false;a.preload="auto";a.volume=0;
+    return a;
+  }
+  function fadeTo(audio,target,ms){
+    if(!audio)return;
+    const steps=24,dt=ms/steps;const start=audio.volume;let i=0;
+    const id=setInterval(()=>{i++;const v=start+(target-start)*(i/steps);
+      try{audio.volume=clampVol(v);}catch(e){}
+      if(i>=steps){clearInterval(id);try{audio.volume=clampVol(target);}catch(e){}
+        if(target<=0){try{audio.pause();audio.currentTime=0;}catch(e){}}}
+    },dt);
+  }
+  function clampVol(v){return Math.max(0,Math.min(1,v));}
+  function playNext(){
+    if(!order.length)return;
+    const src=order[idx%order.length];idx++;
+    cur=makeAudio(src);
+    cur.addEventListener("error",()=>{setTimeout(playNext,500);},{once:true});
+    // when the track nears its end, crossfade into the next one for a seamless evolving bed
+    cur.addEventListener("timeupdate",function onTU(){
+      if(!cur||!cur.duration)return;
+      if(cur.duration-cur.currentTime<=FADE_MS/1000+0.4){
+        cur.removeEventListener("timeupdate",onTU);
+        crossfade();
+      }
+    });
+    const p=cur.play();if(p&&p.catch)p.catch(()=>{});
+    fadeTo(cur,muted?0:VOL,FADE_MS);
+  }
+  function crossfade(){
+    const prev=cur;
+    const src=order[idx%order.length];idx++;
+    nxt=makeAudio(src);
+    nxt.addEventListener("error",()=>{setTimeout(playNext,500);},{once:true});
+    nxt.addEventListener("timeupdate",function onTU2(){
+      if(!nxt||!nxt.duration)return;
+      if(nxt.duration-nxt.currentTime<=FADE_MS/1000+0.4){nxt.removeEventListener("timeupdate",onTU2);crossfade();}
+    });
+    const p=nxt.play();if(p&&p.catch)p.catch(()=>{});
+    cur=nxt;
+    fadeTo(nxt,muted?0:VOL,FADE_MS);    // new one rises
+    fadeTo(prev,0,FADE_MS);             // old one falls + stops
+  }
+  return {
+    // call once on first user interaction (audio can't autoplay before a gesture)
+    start(){
+      if(started)return;started=true;
+      probe(found=>{
+        if(!found||!found.length){return;}   // no music files present — silent, no error
+        order=shuffle(found);idx=0;
+        playNext();
+      });
+    },
+    setMuted(m){muted=m;
+      // fade current track to 0 or back up (don't hard-cut)
+      if(cur)fadeTo(cur,m?0:VOL,800);
+    },
+    isPlaying(){return !!cur;}
+  };
+})();
 
 /* ---------- data definitions ---------- */
 const DEF={
@@ -5016,6 +5114,7 @@ function renderEventPanel(){
 }
 // delegated handler for event option clicks + the VIEW button
 if(typeof document!=="undefined"&&document.addEventListener)document.addEventListener("click",e=>{
+  if(typeof MUSIC!=="undefined"&&MUSIC.start)MUSIC.start();   // kick off ambient music on first interaction
   const v=e.target.closest&&e.target.closest("#ev-view");
   if(v&&activeEvent&&activeEvent.focusId){SFX&&SFX.ui&&SFX.ui();
     const fp=ST.pawns.find(p=>p.id===activeEvent.focusId);

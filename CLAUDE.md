@@ -39,14 +39,42 @@ done yet.
 
 ## ⚡ LATEST STATE (read this first — reconciled from the live VM, June 2026) ⚡
 
-**JAIL KEYSTONE + VISUAL FIXES (most recent session) — first checkpoint of a LARGE multi-session op-rework.**
-Carlo asked to deeply rework all 9 avatar ops into an interconnected hard-gated tech tree (intel reveals
-hidden stats → surveil maps routine → secrets unlock blackmail/frame → assassinate hard-gated on completed
-surveil + weakened target), add a PHYSICAL jail, and rework each op's mechanics + consequences. His design
-locks: build it all (multi-session), HARD gates (strict tech tree), jail = active escalating risk (repeat
-incarceration → execution territory). THIS SESSION shipped the JAIL (the keystone everything else needs)
-+ two visual fixes. The op-rework spine (intel revelation, surveil routine-mapping, the hard gates, per-op
-consequence reworks) is STILL TO BUILD — that's the bulk of the vision, next sessions.
+**AMBIENT MUSIC INTEGRATION (most recent session).** Carlo generated 3 chill/immersive ambient cyberpunk
+tracks (Stable Audio, C418-style — soft, low, loopable) and wanted them as a background bed. Built the music
+player + wired it in. NOTE: these are the FIRST external assets in the project — it's no longer a pure
+single HTML file; the mp3s are hosted alongside index.html on the VM (Carlo's primary deploy; bloat is fine
+there). GitHub Pages copy will be SILENT unless the mp3s are also uploaded there (fails gracefully → no
+crash, just no music).
+
+**MUSIC SYSTEM (`MUSIC` IIFE, near SFX):** HTML5 `<audio>`-based (better for streaming mp3s than Web Audio
+buffers + easy crossfade). Streams looping ambient tracks SHUFFLED + CROSSFADED (4s fade) so the bed evolves
++ never repeats back-to-back. Fades in gently on first interaction. VOL 0.34 (gentle, sits under SFX).
+- FILENAME-FORGIVING: a `TRACKS` candidate list (the 3-4 generated names + generic ambient1/2/3.mp3
+  fallbacks). On start it PROBES which URLs actually load (loadedmetadata vs error, 6s timeout) and plays
+  only the ones found — so exact naming doesn't have to be hardcoded. **If Carlo renamed the files on the
+  VM, the names must match an entry in TRACKS (or he tells Claude the real names to add).**
+- FULLY OPTIONAL + GRACEFUL: no files found / audio blocked / no browser Audio → silent no-op, game runs
+  fine. All Audio calls guarded in try/catch. VERIFIED: game runs full day clean, save/load clean, surfaces
+  clean, MUSIC methods safe to call even without browser Audio (node harness).
+- MUTE: wired into the existing `b-mute` toggle via `SFX.toggleMute()` → `MUSIC.setMuted(m)` (fades music
+  to 0 / back to VOL, doesn't hard-cut). Started via `MUSIC.start()` on the first document click (autoplay
+  needs a user gesture).
+- **CANNOT validate the actual audio** (Claude can't hear) — Carlo confirms playback/feel/levels at runtime.
+  Tuning knobs if needed: VOL (volume), FADE_MS (crossfade length), TRACKS (filenames).
+
+**The 3 working tracks (Carlo's, in /mnt/user-data/uploads as raw 3-min generations — he was to trim calm
+60-90s loop bodies + crossfade seams in Audacity, then upload trimmed versions to the VM):**
+slow-ambient-cyberpunk-soundtrack-70_062026.mp3, slow-ambient-cyberpunk-soundtrack-70_062026__1_.mp3,
+soft-ambient-video-game-soundtrack-steady_062026.mp3 (+ a "very" variant). Loop the steady middle section.
+
+**STILL TO BUILD (the big op-rework — see jail-keystone session below for the full plan):** intel→stat
+revelation, surveil→routine mapping, hard-gated op tech tree, per-op consequence reworks (dissent/bribe/
+frame/blackmail/sabotage-guard/steal/assassinate/lie-low). Plus char-creation overhaul, embodied-ops Phase
+3-5 (animations/audio), pawn-AI perf. Carlo is OPEN TO DESIGN IDEAS on every op — design-partner mode.
+
+---
+
+## ⚡ JAIL KEYSTONE + visual fixes (prior session) ⚡
 
 **VISUAL FIXES (both validated):**
 - AVATAR CHEVRON REMOVED — the little triangle above the operative is gone; the pulsing cyan ring alone
