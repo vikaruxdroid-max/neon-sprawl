@@ -39,8 +39,67 @@ done yet.
 
 ## ⚡ LATEST STATE (read this first — reconciled from the live VM, June 2026) ⚡
 
-**SEPARATE ACTIONS MENU + PATRONIZE economic intervention (most recent session).** Carlo asked to finally
-build the separate actions menu (a long-standing pending item) plus any improvements. Built both, validated.
+**JAIL KEYSTONE + VISUAL FIXES (most recent session) — first checkpoint of a LARGE multi-session op-rework.**
+Carlo asked to deeply rework all 9 avatar ops into an interconnected hard-gated tech tree (intel reveals
+hidden stats → surveil maps routine → secrets unlock blackmail/frame → assassinate hard-gated on completed
+surveil + weakened target), add a PHYSICAL jail, and rework each op's mechanics + consequences. His design
+locks: build it all (multi-session), HARD gates (strict tech tree), jail = active escalating risk (repeat
+incarceration → execution territory). THIS SESSION shipped the JAIL (the keystone everything else needs)
++ two visual fixes. The op-rework spine (intel revelation, surveil routine-mapping, the hard gates, per-op
+consequence reworks) is STILL TO BUILD — that's the bulk of the vision, next sessions.
+
+**VISUAL FIXES (both validated):**
+- AVATAR CHEVRON REMOVED — the little triangle above the operative is gone; the pulsing cyan ring alone
+  marks the avatar (cleaner read, Carlo's request).
+- DOCK FLICKER FIXED — the actions dock was calling `renderOpDock()` (full innerHTML rebuild) every 3 ticks
+  while an op ran / the avatar moved, thrashing the DOM (flicker + eating button clicks → "have to go
+  through every action"). NEW `updateOpDockLive()` does a LIGHTWEIGHT update (only the progress bar +
+  status text via querySelector, guarded), called on the periodic refresh instead of the full rebuild.
+
+**JAIL SYSTEM (the keystone — physical lockup with escalating consequence):**
+- New `jail` building DEF ("Holding Cells", ⛓ icon, in BUILD_ORDER + icon map). Placed at worldgen right
+  beside the precinct (room at 122,82, with pods as cells).
+- `jailPawn(p,severity,crime)` — severity 1=petty/2=serious/3=capital. Increments `p.jailCount` (priors).
+  Sentence = `TPD*(severity*0.6+priors*0.4)` days, ESCALATING. capital (severity≥3, OR severity≥2 with ≥3
+  priors) → execution. Sets `p.jailed={cell,jx,jy,until,severity,crime,capital,arrivedAt}` + walks them to
+  the cell (`{t:"goto",adj:1}`). No jail building → fallback fine+heat.
+- `jailTick()` (every tick) — holds pawns at the cell (arrival <2.9), counts down, RELEASES when served
+  (jail RADICALIZES: disillusion+allegiance up unless informant; relief emote) or EXECUTES capital after
+  ~0.4 day (a public execution radicalizes witnesses/neighbors — regime overreach). pawnTick has a guard
+  holding jailed pawns at/heading-to the cell. `jailed`/`jailCount` serialize automatically (snapPawn
+  Object.assign) — VERIFIED persists through save/load.
+- `bribeOutOfJail()` (avatar) — cost = `40*severity*(1+jailCount*0.3)` credits + 8 intel; blocked for
+  capital; leaves an exposure trail. Wired to a dock `od-bribeout` button (the dock shows IMPRISONED status
+  + bribe-out when the operative is jailed, hiding the ops grid).
+- WIRED INTO OP FAILURES: `opFailure` now arrests on caught serious crimes — `JAILABLE={steal:2,sabotage:2,
+  assassinate:3}`. Caught = botched OR an enforcer saw you (canSee) OR (high exposure + 50% roll). A botched
+  assassination = capital = execution. VERIFIED: botched steal → jail → bribe out works; botched
+  assassination → capital → bribe correctly blocked.
+- VERIFIED end-to-end: arrest → walk to physical cell → hold → release (radicalized) / capital execution,
+  escalating priors, full day stable (max stuck 51, 13 survive), save/load clean, surfaces clean.
+
+**STILL TO BUILD (the bulk of Carlo's op-rework vision — next sessions, in dependency order):**
+1. INTEL → progressive stat revelation: NPC hidden stats (pers: amb/imp/soc/emp/cur/intg, already
+   randomized + hidden) get UNVEILED incrementally by gathering intel on a target (disposition → traits →
+   secret). Resistance: high integrity + low curiosity + regime loyalty = they clam up / notice prying.
+2. SURVEIL → routine mapping: shadow a wisp to learn home/work/schedule + VULNERABLE WINDOWS (alone, where,
+   when) — which is what makes assassination targeting possible. Resist: cautious+perceptive notice the tail.
+3. HARD GATES across the ops (strict tech tree): assassinate REQUIRES completed surveil (known routine) +
+   weakened/framed target; sabotage requires intel on the building first; frame requires bribery done; etc.
+   Need a per-target "what have I discovered/completed" tracker to gate on.
+4. PER-OP CONSEQUENCE REWORKS: dissent (propaganda, npcs resist/report), bribe (police bribe / random info,
+   resist/report), frame (multi-step, needs prior ops), blackmail (extract money, bad debuff), sabotage
+   (guard posted after first attack to stop spam), steal (resist/fight back/always calls police → jail),
+   assassinate (success effects scaled by victim's role; failure → seen/jail/execution), LIE LOW (rework:
+   miss work / go to ground physically, not just an exposure-reducer).
+   CARLO IS OPEN TO DESIGN IDEAS on every one of these — engage as a design partner, not just an implementer.
+- Plus still-pending from before: Wave 4 CHARACTER-CREATION overhaul (text-clipping), Phase 3-5 embodied
+  ops (animations/audio — Claude can't validate), pawn-AI perf (parked). AI reaction + op-readout FEEL are
+  Carlo's to judge at runtime.
+
+---
+
+## ⚡ SEPARATE ACTIONS MENU + PATRONIZE (prior session) ⚡
 
 **SEPARATE ACTIONS MENU — the ops toolkit, now always-reachable:** the avatar ops were only in the inspect
 panel (you had to find + select your operative in the world first). Now they're ALSO in the OPERATIVE dock

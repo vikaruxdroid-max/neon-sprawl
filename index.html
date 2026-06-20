@@ -734,6 +734,7 @@ const DEF={
   powerstation:{name:"Power Station",cost:{income:180},hp:120,blocks:1,work:200, cat:"b", desc:"Generates district power. Without it, buildings run on failing backup — mood and output suffer. Needs a worker to run.", utility:"power", wage:9},
   waterfac:   {name:"Water Facility",cost:{income:160},hp:100,blocks:1,work:190, cat:"b", desc:"Supplies clean water. Without it, hygiene and health decline across the block. Needs a worker to run.", utility:"water", wage:8},
   copstation: {name:"Precinct",     cost:{income:150},hp:110,blocks:1,work:160, cat:"b", desc:"Regime police post — the Enforcer's station. Suppresses crime and projects regime presence.", security:true, secRadius:16, wage:11, roleHome:"enforcer"},
+  jail:       {name:"Holding Cells", cost:{income:120},hp:120,blocks:1,work:0,   cat:"b", desc:"The regime's lockup. Wisps caught in serious crimes are held here. Sentences escalate for repeat offenders — and the worst are never seen again.", jail:true},
   streetvendor:{name:"Street Vendor",cost:{income:60}, hp:50, blocks:1,work:120, cat:"b", desc:"A noodle-and-stim cart on the strip — cheap food and goods, street-level commerce.", vendor:true, sells:"food", wage:7},
   mayorhouse: {name:"Admin Villa",  cost:{income:200},hp:120,blocks:1,work:150, cat:"b", desc:"The Mayor's fortified residence and office — the regime's seat in the district.", civic:"mayor", wage:12, roleHome:"mayor"},
   fixercorner:{name:"Fixer Corner", cost:{income:80}, hp:60, blocks:1,work:140, cat:"b", desc:"A back-alley node where the Fixer brokers data, gear, and favors off the books.", vendor:true, illicit:true, wage:10, roleHome:"fixer"},
@@ -745,7 +746,7 @@ const DEF={
   vendmachine:{name:"Vending Machine",nat:1,hp:50,blocks:1},
   planter:    {name:"Planter",     nat:1, hp:30, blocks:0}
 };
-const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","cafeteria","streetvendor","bar","medbed","dealer","farmplot","sporevat","loggingcamp","mineshaft","fixercorner","park","arcade","hospital","school","nursery","market","hall","mayorhouse","furnstore","housing","powerstation","waterfac","watchpost","copstation"];
+const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","cafeteria","streetvendor","bar","medbed","dealer","farmplot","sporevat","loggingcamp","mineshaft","fixercorner","park","arcade","hospital","school","nursery","market","hall","mayorhouse","furnstore","housing","powerstation","waterfac","watchpost","copstation","jail"];
 // Build menu: curated minimal categories (start small, expand later). Each entry: type.
 const BUILD_CATS=[
   {name:"Home",     items:["wall","door","pod","lamp","fridge","shower","toilet"]},
@@ -767,7 +768,7 @@ const VAT_TIERS=[
 function vatTier(s){return VAT_TIERS[clamp((s.tier||1)-1,0,2)];}
 const BUILD_ICON={wall:"▦",door:"⌷",pod:"☖",lamp:"✦",fridge:"❄",shower:"♒",toilet:"⊡",tv:"▭",gym:"⛏",
   workstation:"⌨",chemlab:"⚗",workshop:"⚙",stimlab:"⚕",gearshop:"⛭",counter:"▤",bar:"♨",medbed:"✚",
-  dealer:"☠",farmplot:"❀",sporevat:"🍄",loggingcamp:"♻",mineshaft:"⌬",park:"❦",arcade:"►",hospital:"✚",school:"✎",nursery:"⊙",market:"⇄",hall:"⌂",furnstore:"🛋",housing:"⌂",watchpost:"◈",powerstation:"⚡",waterfac:"💧",copstation:"⚖",streetvendor:"🍜",mayorhouse:"♔",fixercorner:"⟁",cafeteria:"🍽",couch:"⌗",bookshelf:"▤",art:"◳",rug:"▢"};
+  dealer:"☠",farmplot:"❀",sporevat:"🍄",loggingcamp:"♻",mineshaft:"⌬",park:"❦",arcade:"►",hospital:"✚",school:"✎",nursery:"⊙",market:"⇄",hall:"⌂",furnstore:"🛋",housing:"⌂",watchpost:"◈",powerstation:"⚡",waterfac:"💧",copstation:"⚖",jail:"⛓",streetvendor:"🍜",mayorhouse:"♔",fixercorner:"⟁",cafeteria:"🍽",couch:"⌗",bookshelf:"▤",art:"◳",rug:"▢"};
 
 
 // weapons removed — city sim mode
@@ -1070,7 +1071,103 @@ function roleForcesTick(){
     }
   }
 }
-// ═══════════════════════ THE SABOTAGE LOOP — start to finish ═══════════════════════
+// ═══════════════════════ THE JAIL SYSTEM — physical lockup with escalating consequence ═══════════════════════
+// Caught in a serious crime → an enforcer walks you to the Holding Cells and you're held for a sentence.
+// Repeat incarceration ESCALATES: each stint is longer, and severe/repeat offenders face execution. This is
+// the real cost behind the risky ops (steal lands you here; a botched assassination can be terminal).
+function nearestJail(x,y){
+  let best=null,bd=1e9;
+  for(const s of ST.structs.values()){if(s.bp||!DEF[s.type]||!DEF[s.type].jail)continue;
+    const d=DIST(x,y,s.x,s.y);if(d<bd){bd=d;best=s;}}
+  return best;
+}
+// send a pawn to jail. severity: 1=petty, 2=serious, 3=capital (assassination/killing). returns false if no jail.
+function jailPawn(p,severity,crime){
+  if(!p||p.hp<=0||p.jailed)return false;
+  const jail=nearestJail(p.px,p.py);
+  if(!jail){ // no lockup exists — fall back to a heavy fine + heat (can't physically hold them)
+    if(p.isAvatar){M().exposure=clamp((M().exposure||0)+15,0,100);log("No holding cells in the district — you slip the patrol, but the heat is on.","warn");}
+    return false;
+  }
+  p.jailCount=(p.jailCount||0)+1;                 // priors — escalates the response
+  severity=severity||1;
+  // base sentence scales with severity AND priors; capital crimes (or enough priors) → execution
+  const priors=p.jailCount;
+  const capital=severity>=3||(severity>=2&&priors>=3);
+  p.jailed={
+    cell:K(jail.x,jail.y), jx:jail.x, jy:jail.y,
+    until:capital?1e15:ST.tick+Math.floor(TPD*(severity*0.6+priors*0.4)),  // days, escalating
+    severity, crime:crime||"a crime against the regime", capital, arrivedAt:0
+  };
+  // walk them to the cell (held there by the pawnTick guard); an enforcer escorts if one's near
+  p.job={t:"goto",x:jail.x,y:jail.y,adj:1};p._toJail=K(jail.x,jail.y);
+  p.activeOp=null;p.cmd=null;
+  if(p.isAvatar){
+    flashMsg&&flashMsg("CAUGHT — you're being taken to the Holding Cells"+(priors>1?" (prior #"+priors+")":""));
+    banner&&banner(capital?"SENTENCED":"ARRESTED",capital?"bad":"warn");
+  }
+  log((p.isAvatar?"You were":p.name+" was")+" arrested for "+(crime||"a crime")+" — taken to the Holding Cells"+(capital?". The sentence is death.":"."),"bad");
+  chronicle&&chronicle((p.isAvatar?"You were":p.name+" was")+" jailed for "+(crime||"a crime")+(capital?" — facing execution.":"."),"\u26d3");
+  return true;
+}
+// per-tick: drive jailed pawns — hold them at the cell, count down, release or execute
+function jailTick(){
+  for(let i=ST.pawns.length-1;i>=0;i--){const p=ST.pawns[i];const j=p.jailed;if(!j)continue;
+    const atCell=DIST(p.px,p.py,j.jx,j.jy)<2.9;
+    if(!atCell){ // still being walked to the cell
+      if(!p.job||p.job.t!=="goto")p.job={t:"goto",x:j.jx,y:j.jy,adj:1};
+      continue;
+    }
+    if(!j.arrivedAt)j.arrivedAt=ST.tick;
+    // EXECUTION — capital sentence: held a short while, then the regime makes them disappear
+    if(j.capital){
+      if(ST.tick-j.arrivedAt>Math.floor(TPD*0.4)){
+        if(p.isAvatar){
+          // the player's operative executed = a hard run-ending blow; surface it dramatically
+          banner&&banner("EXECUTED","bad");log("The regime executed your operative. The cell falls silent.","bad");
+          chronicle&&chronicle("Your operative was executed by the regime.","\u2620");
+          killPawn(p,"was executed by the regime");
+        } else {
+          log(p.name+" was executed by the regime — made an example of.","bad");
+          chronicle&&chronicle(p.name+" was executed by the regime.","\u2620");
+          // a public execution radicalizes witnesses/neighbors (the regime overreaches)
+          for(const q of ST.pawns){if(q===p||isChild(q)||q.hp<=0)continue;
+            if(relGet(p.id,q.id)>20||DIST(q.px,q.py,j.jx,j.jy)<20){q.disillusion=clamp((q.disillusion||0)+RI(5,12),0,100);q.allegiance=clamp((q.allegiance||0)+RI(2,6),-100,100);}}
+          killPawn(p,"was executed by the regime");
+        }
+      }
+      continue;
+    }
+    // hold + emotional toll, then RELEASE when the sentence is served
+    if(ST.tick%200===0){p.mood=clamp((p.mood||50)-3,0,100);p.stress=clamp((p.stress||0)+3,0,100);
+      if(typeof tryEmote==="function"&&Math.random()<0.3)tryEmote(p,"sad",200);}
+    if(ST.tick>=j.until){
+      p.jailed=null;p._toJail=null;p.job=null;
+      addMod&&addMod(p,"exjail","Did time","-6",TPD);
+      // jail HARDENS most wisps against the regime (radicalizing) — unless they were a loyal informant
+      if(!p.informant){p.disillusion=clamp((p.disillusion||0)+RI(6,14),0,100);p.allegiance=clamp((p.allegiance||0)+RI(3,8),-100,100);}
+      if(p.isAvatar){flashMsg&&flashMsg("Released from the Holding Cells");banner&&banner("RELEASED","good");}
+      log((p.isAvatar?"You were":p.name+" was")+" released from the Holding Cells.",p.isAvatar?"good":"info");
+      if(typeof emotionalReact==="function")emotionalReact(p,"relief",0.5);
+    }
+  }
+}
+// bribe your way out of jail (the avatar) — costs credits scaled by severity + priors
+function bribeOutOfJail(){
+  const av=theAvatar();if(!av||!av.jailed){flashMsg&&flashMsg("You're not in jail");return false;}
+  const j=av.jailed;
+  if(j.capital){flashMsg&&flashMsg("No bribe can buy off an execution order");return false;}
+  const cost=Math.round(40*j.severity*(1+(av.jailCount||1)*0.3));
+  const m=M();
+  if((m.intel||0)<8){flashMsg&&flashMsg("Need 8 intel to arrange a bribe");return false;}
+  if((ST.income||0)<cost){flashMsg&&flashMsg("Need "+cost+"c to bribe your way out");return false;}
+  m.intel-=8;ST.income-=cost;
+  av.jailed=null;av._toJail=null;av.job=null;
+  m.exposure=clamp((m.exposure||0)+6,0,100);   // greasing palms leaves a trail
+  log("You bribed your way out of the Holding Cells — "+cost+"c and the door opens.","good");
+  flashMsg&&flashMsg("Bribed out — you're free");banner&&banner("BRIBED OUT","good");
+  return true;
+}
 // A sabotage isn't a one-shot stat hit; it sets a whole sequence in motion: the city goes dark → wisps
 // feel it and lose faith → that disillusionment makes them recruitable → NPCs eventually REPAIR it →
 // the regime INVESTIGATES (enforcer walks the scene, questions wisps; a witness who saw enough fingers
@@ -1836,6 +1933,21 @@ function opFailure(opKey,target,check,botched){
   m.exposure=clamp((m.exposure||0)+expHit,0,100);
   REG().awareness=clamp((REG().awareness||0)+(sev==="botched"?14:7),0,100);
   const opName=AVATAR_OPS[opKey].name;
+  // ARREST — getting caught on a serious crime can land your operative in the Holding Cells. The severity
+  // scales with the op: theft/sabotage = serious (jail), a botched assassination = capital (execution risk).
+  const av=theAvatar();
+  const JAILABLE={steal:2,sabotage:2,assassinate:3};   // op -> crime severity if caught
+  let arrested=false;
+  if(av&&JAILABLE[opKey]){
+    // you're caught if it was botched, OR (on a plain fail) the regime is already aware / an enforcer saw you
+    const enfSaw=ST.pawns.some(p=>p.role==="enforcer"&&p.hp>0&&canSee&&canSee(p,av,AVATAR_OPS[opKey])>0.2);
+    const caught=botched||enfSaw||(m.exposure>55&&Math.random()<0.5);
+    if(caught){
+      const crimeName=opKey==="steal"?"theft from the regime":opKey==="sabotage"?"sabotage":"an attempt on a regime figure";
+      arrested=jailPawn(av,JAILABLE[opKey],crimeName);
+    }
+  }
+  if(arrested)return;   // jailPawn already logged + banner'd; the arrest supersedes the normal fail message
   if(sev==="botched"){
     log("\u26a0 Your "+opName+" was BOTCHED — the regime's onto you. Exposure spikes.","bad");
     banner("OP BOTCHED","bad");if(SFX&&SFX.alert)SFX.alert();
@@ -2394,6 +2506,8 @@ function genCity(){
   // NE cell — HOSPITAL (north) over PRECINCT (south); copstation keeps the Enforcer's roleHome
   placeRoom(122,71,9,5,{x:122,y:73},[{t:"hospital",x:4,y:1},{t:"medbed",x:1,y:1},{t:"medbed",x:7,y:1},{t:"counter",x:1,y:3},{t:"medbed",x:7,y:3},{t:"pod",x:3,y:3}]);
   placeRoom(122,77,9,4,{x:122,y:78},[{t:"copstation",x:4,y:1},{t:"counter",x:1,y:1},{t:"workstation",x:7,y:1},{t:"pod",x:1,y:2},{t:"gym",x:7,y:2}]);
+  // HOLDING CELLS — the regime lockup, right beside the precinct. Caught wisps are walked here + held.
+  placeRoom(122,82,9,4,{x:122,y:82},[{t:"jail",x:4,y:1},{t:"pod",x:1,y:1},{t:"pod",x:7,y:1},{t:"pod",x:1,y:2},{t:"pod",x:7,y:2}]);
 
   // SW cell — ENTERTAINMENT COMPLEX (recreation; vendors earn the regime a cut)
   placeRoom(104,84,15,6,{x:111,y:84},[{t:"arcade",x:2,y:1},{t:"arcade",x:5,y:1},{t:"tv",x:8,y:1},{t:"tv",x:11,y:1},{t:"counter",x:13,y:1},{t:"couch",x:2,y:3},{t:"couch",x:5,y:3},{t:"streetvendor",x:9,y:3},{t:"rug",x:7,y:2}]);
@@ -4117,6 +4231,11 @@ function pawnTick(p){
     const exhausted=(p.needs&&p.needs.rest!=null&&p.needs.rest<12);
     if(!starving&&!exhausted)return;                // idle, awaiting command (survival still overrides)
   }
+  // a JAILED pawn is held — walk to the cell, then stay put (jailTick drives release/execution)
+  if(p.jailed){const j=p.jailed;
+    if(DIST(p.px,p.py,j.jx,j.jy)<2.9){p.job=null;return;}        // at the cell: hold, jailTick handles it
+    if(!p.job||p.job.t!=="goto"){p.job={t:"goto",x:j.jx,y:j.jy,adj:1};}   // still being walked there
+  }
   // a wisp actively repairing sabotage stays on the job — don't let routine AI pull them away
   if(p._repairing){const rs=ST.structs.get(p._repairing);
     if(rs&&rs.sabotaged>ST.tick){
@@ -5109,6 +5228,7 @@ function tick(){ST.tick++;
   for(let i=ST.pawns.length-1;i>=0;i--)pawnTick(ST.pawns[i]);
   separatePawns();   // soft personal-space: keep wisps from stacking on top of each other
   sabotageTick();    // drive any active sabotage's lifecycle (reaction → repair → investigation)
+  jailTick();        // hold/release/execute jailed pawns (escalating sentences for repeat offenders)
   for(let i=ST.floats.length-1;i>=0;i--)if(--ST.floats[i].ttl<=0)ST.floats.splice(i,1);
   if(ST.says)for(let i=ST.says.length-1;i>=0;i--)if(--ST.says[i].ttl<=0)ST.says.splice(i,1);
   tickEmotes();
@@ -6580,7 +6700,7 @@ function drawPawn(p){
     const pul=0.5+0.35*Math.sin(ST.tick*0.1);
     ctx.strokeStyle="#22ddff";ctx.globalAlpha=pul;ctx.lineWidth=1.6;
     ctx.beginPath();ctx.arc(X,Y,11,0,7);ctx.stroke();ctx.globalAlpha=1;
-    ctx.fillStyle="#22ddff";ctx.beginPath();ctx.moveTo(X,Y-13);ctx.lineTo(X-4,Y-18);ctx.lineTo(X+4,Y-18);ctx.closePath();ctx.fill();
+    // (chevron removed — the pulsing ring alone marks the avatar; cleaner read)
     // OP IN FLIGHT: a filling arc shows the deed performing, tinted by op type
     if(p.activeOp){const ao=p.activeOp;const frac=Math.max(0,Math.min(1,ao.prog/ao.duration));
       const oc=ao.anim==="strike"?"#ff4757":ao.anim==="confer"?"#ffd24a":ao.anim==="plant"?"#ff8c42":ao.anim==="lift"?"#5cff9e":ao.anim==="rally"?"#22ddff":"#b06fff";
@@ -8185,8 +8305,22 @@ function renderOpDock(){
   // ── THE ACTIONS MENU — the full ops toolkit, right here in the dock so you can operate without first
   // hunting for + selecting your operative in the world. Same buttons/contract as the inspect panel.
   h+="<div class='od-ops' style='margin-top:8px;border-top:1px solid var(--bd);padding-top:6px'>";
-  h+="<div class='opcat' style='margin-bottom:2px'>OPERATIONS</div>";
-  h+=renderOpsGrid({compact:true});
+  if(av&&av.jailed){
+    // IMPRISONED — your operative is in the Holding Cells; ops are unavailable, bribe-out offered
+    const j=av.jailed;
+    h+="<div class='opcat' style='color:#ff6b6b;margin-bottom:3px'>\u26d3 IMPRISONED</div>";
+    h+="<div class='sub' style='font-size:9.5px;color:#ffb0b0'>Held for "+(j.crime||"a crime")+(av.jailCount>1?" \u00b7 prior #"+av.jailCount:"")+".</div>";
+    if(j.capital){
+      h+="<div class='sub' style='font-size:9.5px;color:#ff4757;margin-top:3px'>Sentenced to death. No bribe will save you now.</div>";
+    } else {
+      const cost=Math.round(40*j.severity*(1+(av.jailCount||1)*0.3));
+      h+="<button class='tb' id='od-bribeout' style='margin-top:5px;border-color:rgba(255,210,74,.5);color:#ffe08a'>\u25c8 BRIBE OUT ("+cost+"c \u00b7 8 intel)</button>";
+      h+="<div class='sub' style='font-size:8.5px;opacity:.6;margin-top:3px'>Or wait out the sentence.</div>";
+    }
+  } else {
+    h+="<div class='opcat' style='margin-bottom:2px'>OPERATIONS</div>";
+    h+=renderOpsGrid({compact:true});
+  }
   h+="</div>";
   h+="<div class='sub' style='font-size:8.5px;opacity:.6;margin-top:6px'>"+(isSel?"Click an empty tile to move \u00b7 click a target to operate":"Select your operative to command it")+"</div>";
   h+="</div>";
@@ -8199,6 +8333,19 @@ function renderOpDock(){
   h+="</div>";
   dock.innerHTML=h;
   dock.classList.toggle("expanded",OP_DOCK_OPEN);
+}
+// LIGHTWEIGHT live refresh — updates ONLY the progress bar + status text (no full innerHTML rebuild).
+// Called every few ticks while an op runs / the avatar moves, so the dock stays live WITHOUT flickering
+// or interrupting button interaction (the full rebuild was thrashing the DOM and eating clicks).
+function updateOpDockLive(){
+  const dock=document.getElementById("op-dock");if(!dock||dock.style.display==="none"||!dock.querySelector)return;
+  const av=theAvatar();const st=opDockState(av);
+  // progress bar (inside the open panel)
+  const prog=dock.querySelector(".od-prog > i");
+  if(prog&&st.prog!=null)prog.style.width=st.prog+"%";
+  // status text + glyph in the always-visible strip
+  const stateEl=dock.querySelector(".od-state");if(stateEl)stateEl.innerHTML=st.txt;
+  const glyphEl=dock.querySelector(".od-glyph");if(glyphEl)glyphEl.textContent=st.glyph;
 }
 function syncHUD(){
   renderOpDock();
@@ -9039,6 +9186,7 @@ $("op-dock").addEventListener("click",e=>{
   // op buttons inside the dock — shared dispatch with the inspect panel
   const opBtn=e.target.closest&&e.target.closest(".i-op");
   if(opBtn){dispatchOpButton(opBtn);return;}
+  if(e.target.id==="od-bribeout"){if(bribeOutOfJail()){renderOpDock();syncHUD();}return;}
   if(e.target.id==="i-lielow"){if(goToGround()){SFX.ui&&SFX.ui();}renderInspect();renderOpDock();syncHUD();return;}
   const av=theAvatar();if(!av)return;
   if(e.target.closest("#od-jump")){ // jump camera to + select the operative
@@ -9536,8 +9684,9 @@ function loop(ts){requestAnimationFrame(loop);
     if(KEYS.d||KEYS.arrowright)dx+=sp;
     if(dx||dy){cam.x+=dx;cam.y+=dy;clampCam();if(cam.follow)stopFollow();}}
   tickFollow();
-  // keep the operative dock's live progress fresh while an op is performing
-  if(ST.phase==="run"&&!ST.paused){const av=theAvatar();if(av&&(av.activeOp||(av.job&&av.job.t==="goto"))&&ST.tick%3===0)renderOpDock();}
+  // keep the operative dock's live progress fresh while an op is performing — lightweight update only
+  // (touches the progress bar + status text, NOT the whole DOM, so the buttons don't flicker)
+  if(ST.phase==="run"&&!ST.paused){const av=theAvatar();if(av&&(av.activeOp||(av.job&&av.job.t==="goto"))&&ST.tick%3===0)updateOpDockLive();}
   render()}
 
 window.addEventListener("resize",resize);
