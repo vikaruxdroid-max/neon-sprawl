@@ -35,6 +35,43 @@ done yet.
 **IMMEDIATE city-first work queue:** ~~character-CREATION SCREEN~~ (DONE) → stat-gated DIALOGUE
 (opsCheck/ops built to feed it) → job/farming VISUALS + litter → deep testing/tuning.
 
+## ⚡ LATEST STATE — GOVERNMENT ENVOY FEATURE (complete) + SURVEIL REWORK + STARVATION FIX (most recent session) ⚡
+
+**Build `d10fa64d` in outputs. Committed up through `957c8322`; the final departure-variant polish (`d10fa64d`) is the latest, to be committed.** Two commits landed this session: the starvation fix (`e6d6cd21`), then the full envoy feature (`957c8322`).
+
+### THE CRITICAL FIX — avatar/NPC starvation death-spiral (was real, now fixed + proven)
+Root cause: the **dazed state** (`p.dazed>ST.tick`) in pawnTick wandered the wisp and `return`ed BEFORE the eat-when-hungry logic. A wisp who snapped (low mood) stayed dazed, never ate, starved, which wrecked mood further → re-dazed → death. This is how the avatar "Esteban" died in Carlo's day-3 log (2 days of "snapped — wandering dazed" then "starved to death"). **Fix (two layers):** (1) the dazed branch now has a SURVIVAL FLOOR — if `food<20||rest<10`, it ends the daze (`p.dazed=ST.tick`) and falls through to job selection instead of returning; (2) an AVATAR HARD SURVIVAL FLOOR added right after the activeOp check (before manual/posture/daze) — if the avatar is `food<24||rest<14` and not already eating/sleeping, force `mkEat`/`mkSleep` NOW, overriding every state. VERIFIED: starving+dazed avatar eats instead of dying; survived 800 ticks neglected; daze flavor intact; no mass die-off.
+
+### THE GOVERNMENT ENVOY — a complete 6-stage decision feature (spec: NEON_SPRAWL_Government_Representative_Spec.md)
+A regime emissary visits to confer with the Mayor. A decision under pressure: ignore it → the regime cracks down; or use the operative toolkit to spy on / disrupt the meeting, at risk. Reuses existing ops — the avatar never "stands next to the rep." All 8 of Carlo's design decisions locked + built.
+
+- **State (`ST.envoy`, parallel to `ST.caravan`):** `{id, stage, x, y, mayorId, conferStart, conferDuration(TPD*0.45), leaveAt, spied, disrupted, struck, killed, discredited, resolved}`. `ST.lastEnvoy` cooldown.
+- **Functions (all after the storyEvent array, ~line 6388+):** `envoyMeetingSpot()` (finds the Mayor `role==="mayor"`, else civic building, else center), `maybeEnvoy()` (HEAT-DRIVEN trigger: `chance=0.004+heat*0.05` where `heat=(awareness/100)*0.6+(exposure/100)*0.4`; cooldown 3+ days; guards on `ST.envoy||ST.caravan`, pop>=4; VERIFIED 252/5000 spawns at max heat vs ~0 cold), `spawnEnvoy()` (spawns a regime-loyal govt wisp: `isEnvoy, role="envoy", allegiance=-90, govt=true, accent="#ff5470", homeless=true, dossierImmune=true`), `envoyTick()` (state machine arriving→conferring→leaving→despawn, with hard leaveAt cap; the envoy walks via gotoCell), `envoyCrackdown(ev)` (THE THREAT), `envoyOpHook(opKey,target,crit)` (detects ops aimed at the envoy/meeting, sets flags + payoffs), `envoyStrikeViaCell()` (the cell-member strike), `renderEnvoyPanel()` (the response UI).
+- **pawnTick:** `if(p.isEnvoy)return;` at the very top (envoy driven entirely by envoyTick, suppresses citizen AI).
+- **Wired into `caravanTick()`:** `maybeEnvoy(); envoyTick();`.
+- **THE THREAT (ignore it → both):** `envoyCrackdown` fires on the conferring→leaving transition IF `!disrupted && !struck`. (a) HARD CRACKDOWN — awareness `+RI(18,28)` (spied: `RI(8,14)`), grip `+RI(8,14)` (spied `RI(3,6)`), `reg.lastSweep=ST.tick`, runs `regimeSweep(false)`. (b) COMPROMISE A SYMPATHIZER — turns the HIGHEST-allegiance sympathizer (`allegiance>15 && !recruited && !informant`) into an informant (`-25` allegiance). Spying blunts (a) NOT (b). VERIFIED: awareness 0→27 ignored vs 0→0 disrupted; spied +8 vs unspied +25.
+- **THE 5 RESPONSE OPTIONS (all reuse existing ops, via `envoyOpHook` + the panel):** surveil the meeting (→`spied`, blunts crackdown, +intel) · sabotage the venue during conferring (→`disrupted`) · frame the envoy (→`disrupted+discredited`, cuts visit short; gated on prior bribe) · strike the envoy directly (assassinate →`struck+killed`; the envoy is exempt from the routine-knowledge gate since it's exposed/time-limited) · strike via a cell member (`envoyStrikeViaCell` →`struck`; avatar stays clean, the member is risked/can be burned; **gated on having a recruited cell**). ALL VERIFIED.
+- **THE RESPONSE PANEL (`renderEnvoyPanel`, top-right, called in the %25 UI refresh):** appears while arriving/conferring, removed when leaving. Buttons GATED: surveil+strike always; frame locked w/o prior bribe; cell-strike locked w/o a cell. VIEW button, spied indicator, time-left note. Routes buttons to `runAvatarOp(...,envoy)` or `envoyStrikeViaCell()`. Gating all VERIFIED. **NOTE: panel placement is BLIND-BUILT — needs Carlo's eyes (top-right collision risk).**
+- **DEPARTURE VARIANTS:** the leaving stage logs flavor keyed to outcome — discredited ("under a cloud"), disrupted ("empty-handed"), resolved/ignored ("satisfied, grip tightened"). Killed cases despawn elsewhere with their own banners. VERIFIED.
+
+### SURVEIL REWORK (operative now actively tails + risks detection)
+`advanceActiveOp` for surveil/tail ops: the avatar FOLLOWS the target (gotoCell to stay within `tailDist=max(2.5,range-0.5)`), and every ~30 ticks a DETECTION ROLL fires — `spotChance=max(0,vis*0.35-(tradecraft-5)*0.03)` where `vis=canSee(tp,p,op)` and tradecraft is the 1-10 ops stat; +0.12 if closer than 2.2 tiles; clamped 0.02-0.6. Getting spotted BLOWS the op (exposure +RI(6,12), awareness +RI(2,5), target wary, "SPOTTED YOU" float). VERIFIED: follows the target; 39/40 caught when close+bad-tradecraft vs 10/40 elite+distance (skill+positioning matter).
+
+### MAPPED-HOME HIGHLIGHT
+When you surveil a wisp's home (`routineStage(p)>=1`, `p.routine.home={x,y}`), selecting them draws a pulsing cyan "HOME" bracket-marker on their house tile (in render(), before the EVENT PING block), and the PERSON-tab DOSSIER shows "Home: mapped — marked on map ◎". VERIFIED + save/load preserves routine.
+
+### PRE-EXISTING CRASH FIXED (bonus)
+`collectAlerts` assumed every caravan has `cv.good`, but the "outsiders" caravan mode doesn't → `cv.good.toUpperCase()` crashed whenever an outsiders caravan was active with the alerts panel up. Now guards each mode (outsiders/buy/sell). Also added the envoy alert ("Government envoy incoming"/"Envoy is meeting the Mayor").
+
+### AUDIT (this session, build d10fa64d) — code HEALTHY
+Full start-to-finish audit: 501 functions, 0 dead, 0 dupe; core lifecycle, ops, combat/death/jail, events/disasters, long-game (2.5 days), envoy integration, save/load — ALL PASS, NO functional bugs. Tick = 5ms baseline / ~8ms heavy load (100ms budget → 5-8% used; huge headroom). NO reorg/optimization recommended while play-testing (save-format + regression risk; monolith is load-bearing; no defect to fix). Full report: NEON_SPRAWL_Code_Review_Audit.md.
+
+### OPEN WATCH-LIST ITEM (not reproduced)
+**Jail-during-sabotage** (avatar arrested mid-sabotage, falls asleep, never transported): reported twice by Carlo, NOT reproduced in any audit scenario; the day-3 log showed jail transport firing CORRECTLY. The pawnTick jailed-branch `return` fix is in. Stays on the watch list — if it recurs on `d10fa64d`+, capture the EXACT state (mid-op? jail distance? guard present?).
+
+### FIRST-DRAFT NUMBERS (all need in-play tuning)
+Envoy: trigger chance/cooldown, confer duration (TPD*0.45), crackdown magnitudes, cell-strike success formula (`0.5+allegiance/200-grip/300`). Surveil: 30-tick roll cadence, 0.35 vis weight, tradecraft scaling. Everything VISUAL is unverified (the envoy walking/reading as govt, the meeting, the panel placement, the home marker, the sabotage darkness, the surveil-follow motion).
+
 ---
 
 ## ⚡ LATEST STATE — WITNESS FEAR DEPTH (bribe-resistance + flee-on-sight) + WITNESS MEMORY + CLUSTERING (most recent session) ⚡

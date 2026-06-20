@@ -6450,9 +6450,26 @@ function envoyTick(){
   }
   // LEAVING — the envoy departs (resolution consequences handled in a later stage)
   if(ev.stage==="leaving"){
-    // walk back toward an edge, then despawn
+    // walk back toward an edge, then despawn — with a DEPARTURE VARIANT message keyed to how the visit ended.
     const exit=(typeof edgeCell==="function")?edgeCell():{x:e.px|0,y:0};
-    if(!ev._exit){ev._exit=exit;}
+    if(!ev._exit){ev._exit=exit;
+      // announce the departure once, as they turn to leave (the killed-cases despawn elsewhere with their own logs)
+      if(!ev._departAnnounced){ev._departAnnounced=true;
+        if(ev.discredited){
+          log("\u25c8 The envoy slinks out of the district under a cloud of suspicion \u2014 the regime will think twice before trusting their report.","good");
+          banner("ENVOY LEAVES DISCREDITED","good");
+        } else if(ev.disrupted){
+          log("\u25c8 The envoy departs empty-handed \u2014 whatever they came to arrange, you broke it up.","good");
+          banner("ENVOY LEAVES THWARTED","good");
+        } else if(ev.resolved){
+          // ignored: the crackdown already fired in the conclusion; this is the cold exit
+          log("\u25c8 The envoy leaves satisfied \u2014 they got what they came for, and the regime's grip has tightened.","warn");
+          banner("ENVOY DEPARTS","warn");
+        } else {
+          log("\u25c8 The envoy departs the district.","info");
+        }
+      }
+    }
     gotoCell(e,ev._exit.x,ev._exit.y,0);
     if(DIST(e.px,e.py,ev._exit.x,ev._exit.y)<2||ST.tick>=ev.leaveAt){
       const idx=ST.pawns.indexOf(e);if(idx>=0)ST.pawns.splice(idx,1);
