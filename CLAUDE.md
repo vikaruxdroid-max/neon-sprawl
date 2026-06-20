@@ -39,7 +39,406 @@ done yet.
 
 ## ⚡ LATEST STATE (read this first — reconciled from the live VM, June 2026) ⚡
 
-**INFILTRATOR SYSTEMS — SPACING + DICE-AS-STORY + SECRETS + 5 NEW OPS (most recent, big session):**
+**ECONOMY + DAY/NIGHT VISUAL + UNIVERSAL ATTENDANTS + AI REACTIONS (most recent session): four systems
+from Carlo's batch, plus a comprehensive validation pass.** Carlo's design answers: weekly-accumulating rent
+(daily pay), robots staff anything unstaffed (max coverage, wisps first), AI calls built fully now.
+
+**ECONOMIC LOOP:** daily pay → rent accrues DAILY but is DUE WEEKLY (a buffer — one bad day ≠ eviction) →
+personality-driven leisure spending. In the daily `ST.tick%TPD===0` block: subsist income (+9, +6 homeless);
+rent accrues per-day scaled by home quality (`q.rentAccrued`); on the weekly rent day (dayNum%7===0,
+guarded by `_lastRentDay`) the balance settles — pay it (relief emote if comfortable) or it becomes
+rentDebt → eviction at debt≥3 (grief emote). LEISURE is personality-driven in chooseJob: sociable wisps →
+bar, impulsive → arcade. GAMBLING at the arcade: impulsive wisps (imp>52) bet, 38% win rate (house edge),
+big losses sting + push toward desperation (disillusion up). VERIFIED: daily accrual (8/day), weekly
+settlement fires, gambling swings credits, economy sane (~900 credits, not runaway), employment healthy.
+
+**DAY/NIGHT VISUAL CYCLE:** the map now visually darkens at night, tied to the SAME `lightLevel(hourN())`
+the wisp schedules use (so the world dims when they go home to sleep). Screen-space tint in render() before
+the blackout overlay: cool blue night wash (up to 0.6 alpha at deep night) + faint dusk/dawn warmth band.
+Render cost negligible (~1ms/frame, night ≈ day). Ties the visual to the rhythm from the prior session.
+
+**WEATHER CONSOLIDATION:** the two loose HUD toggles (☂ rain+fog `b-atmo`, ⚡ lightning `b-storm`) are now
+ONE weather button (☁ `b-weather`) opening a small `#weather-menu` panel with both toggles inside (icons
+kept). `syncWeatherMenu()` reflects on/off state; click-outside closes it. NO orphaned refs to the old
+buttons.
+
+**UNIVERSAL ATTENDANTS:** robots now staff ANY building left unstaffed (max coverage) in roboTick — but
+WISPS GET FIRST CLAIM: a building must sit unstaffed `patience` days (utilities 1 day [urgent], others 3)
+before a robot fills it, and auto-staffed robots YIELD to unemployed wisps (freed each day if an idle worker
+exists). `s.autoStaffed`/`s._unstaffedDays` track auto vs player-chosen. VERIFIED: ~78% coverage,
+employment stays 100% (robots fill the genuine excess — 81 buildings vs 12 adults — without starving wisps).
+
+**AI REACTIONS (Claude API, wired fully — CANNOT validate live responses, endpoint unreachable from
+sandbox):** `aiReactLine(p,event)` — a watched wisp speaks an AI-generated line reacting to a dramatic moment
+(uses the existing aiChat → Cloudflare Worker proxy, AI_MODEL_AMBIENT). Gated (aiReady + AMBIENT.enabled +
+playerWatching), throttled (120t min gap), 50% chance (keeps it special), budget-aware, and FAILS GRACEFULLY
+when no proxy is set (silent no-op, no crash). Wired into `emotionalReact` via an `aiEvent` opt + directly
+at the blackout. Active events: robbery ("robbed at knifepoint…"), eviction ("evicted… nowhere to sleep"),
+blackout ("power just went out…"). VERIFIED: hooks fire + safe when AI not configured. **Carlo must watch at
+runtime whether the LINES feel good — that's the untestable piece.**
+
+**COMPREHENSIVE VALIDATION PASS (Carlo asked, wants to play-test after):** structure clean (JS valid, smoke
+20/20, no dead/dupe, CSS balanced, 0 orphaned weather refs). SAVE/LOAD round-trip with all new state: day/
+pop/credits preserved exactly, loaded game runs 500t stable, 13 survive. PERFORMANCE: render ~1ms/frame
+(day/night tint negligible), roboTick 0.3ms (daily), tick ~16ms (pre-existing pawn-AI cost, NOT a
+regression — parked). INTEGRATION/CHAINING confirmed: disillusion→recruit potential (+10), poor+sick→
+desperate→crime, emotionalReact wired into economy, full render clean with night+blackout+rain+storm
+stacked. 1-day stability: clean, max stuck 60, 13 survive, economy healthy.
+
+**STILL PENDING (Carlo's accumulated batches):** the SEPARATE ACTIONS MENU (pull avatar-ops out of the
+inspect panel into its own panel — partially done via Wave-1 click-to-target). Wave 4 CHARACTER-CREATION
+overhaul (still outstanding, wants it rethought + text-clipping fixed). Deeper: Phase 3-5 embodied ops
+(NPC reactions/animations/stealth-depth/polish — Claude can't validate visuals/audio), pre-commit witness
+readout (design Q), the pawn-AI perf pass (parked). The mechanics-completeness audit could go deeper.
+
+---
+
+## ⚡ WAVES C+D+E — emotional reactivity, mechanics pass, infection loop (prior session) ⚡
+
+**WAVE C — EMOTIONAL REACTIVITY:** interactions now produce VISIBLE, proportional emotion (the sim used to
+change stats silently). New `emotionalReact(p,kind,intensity,opts)` — one place that applies a fitting
+emote + mood/stress shift scaled by intensity (0..1), plus optional memory (strong events) + relationship
+colouring + a float. 14 emotional profiles (joy/delight/connected/anger/fear/distress/grief/betrayed/etc.).
+Wired into: ROBBERY victim (was silent stress → now visible distress, "ROBBED!" float, grudge); BURGLARY
+victim (fear, "BURGLED!", feels unsafe); a GOOD CONVERSATION (both wisps lift, scaled by their bond —
+friends get a bigger boost, flavour connected/joy/amused by relationship). VERIFIED: distress drops mood +
+raises stress, joy lifts mood, intensity scales correctly (0.2→+2.8, 1.0→+14), strong events leave memory.
+
+**WAVE E — INFECTION STRATIFIED BY WEALTH (full loop):** the divide now has teeth. Poor wisps (credits<15)
+catch infections 1.8× more, decay 1.6× faster, recover 0.6× slower. Comfortable wisps (credits>60) catch
+0.45×, resist contagion (0.5×), decay 0.6×, recover 1.6× (constant care). DESPERATION: a poor + sick +
+failing (hp<45) wisp gets `p.desperate` set → chooseJob spikes crime/steal (×2.4) + burgle (×1.8) + treat
+(×1.5) → the divide drives survival crime. They also emote distress + remember the grievance. VERIFIED:
+poor averaged 2.3 infected/sample vs wealthy 0.0 — stark divide; poor+sick+failing wisp correctly marked
+desperate. Ties start-to-finish: poverty → infection → decay → desperation → desperate action.
+
+**WAVE D — MECHANICS-COMPLETENESS PASS:** audited player abilities/activities for dead-ends. FINDINGS: the
+avatar ops (all 9) already have complete consequence chains (success/partial/failure with real effects —
+blackmail turns informants, etc.); RECRUITMENT is a complete loop (intel cost → radicalPotential+Guile
+chance → success recruits/fail risks exposure+informant); informants DO feed the regime (raise awareness).
+The real GAP was ANONYMOUS TIPS — they had no visible story. BUILT: when exposure>35, an informant
+occasionally (4% per insurrection tick, 0.6-day cooldown) drops a VISIBLE anonymous tip → heat +8-16,
+awareness up, a narrative leak ("your cell's meeting spot"/"a face seen at the last action"/etc.), banner +
+chronicle, and nearby recruited wisps notice + resent the snitch (relationship + anger reaction). Also added
+emotional payoff to recruitment (a joining wisp feels "inspired"). VERIFIED: tips fire + produce heat
+repercussions. NOTE: this connects to Wave B — sabotage disillusionment feeds radicalPotential feeds
+recruitment, so the systems now CHAIN.
+
+**STABILITY (touched core infection + chooseJob + interactions):** clean full day, max stuck 28, 13 survive,
+employment 100%, save/load round-trip stable with all new state. Smoke 20/20, no dead/dupe, CSS balanced.
+`p.desperate`/`p.disillusion` are transient pawn fields (don't need explicit serialization — they re-derive).
+
+**STILL PENDING (Carlo's batch):** the SEPARATE ACTIONS MENU (pull avatar-ops out of the inspect panel into
+its own easy-access panel — partially addressed by the Wave-1 click-to-target menu but Carlo wants it fully
+separate). Wave 4 CHARACTER-CREATION overhaul (still outstanding, Carlo wants it rethought + the text-
+clipping fixed). Deeper passes: Phase 3-5 of embodied ops (NPC reactions/animations/stealth-depth/polish —
+Claude can't validate visuals/audio), the perf finding (pawnTick ~1.9ms/pawn, parked), pre-commit witness
+readout (design Q). The Wave-D audit could go deeper (it hit the highest-impact gaps: tips; the ops + 
+recruitment were already complete) — more activities could be swept if Carlo wants an exhaustive pass.
+
+---
+
+## ⚡ DAY/NIGHT RHYTHM + SABOTAGE LOOP (prior session) ⚡
+
+**WAVE A — DAY/NIGHT RHYTHM (foundational):**
+- Strengthened the EXISTING per-wisp schedule (`p.sched` w/ sleepAt/wake/workStart etc., generated from
+  personality ~line 2967, already had an `owl` night-owl chronotype). The enforcement was too weak (sleep
+  multiplier only 1.9×). NOW: in their sleep window the pull to sleep is 4.5× (dominant), outside it sleep
+  only wins if genuinely exhausted (rest<15), and daytime sleep is actively suppressed (×0.3 when rested).
+- RESULT: **night is now the operative's window** — verified 92% of adults asleep at 3am, only 8% at noon.
+  Staggered as Carlo chose: owls + enforcer stay up, so night is SAFER not EMPTY. Full-day stable, max
+  stuck 55t, 13 survive, rest needs healthy (avg 86), full activity variety intact.
+
+**WAVE B — THE SABOTAGE LOOP (start to finish, the centerpiece):** A sabotage now sets a whole sequence in
+motion, every stage visible. New system near insurrectionTick: `registerSabotage(s,perp,crit)` +
+`sabotageTick()` (runs EVERY tick) + `resolveSabotageInvestigation(s,enf)`.
+  1. **TARGET:** power stations exist (`utility:"power"`). Sabotage op now calls `registerSabotage` →
+     snapshots WITNESSES by how much each saw (Phase 2 `canSee`), seeds the scene state on the struct
+     (`s.sabState`).
+  2. **EFFECT:** `ST.blackoutUntil` set → the city goes dark (existing blackout visual + production halt).
+  3. **REACTION:** while down, nearby wisps (within 22) feel it every 20 ticks — emote anger/sweat/gross,
+     mood/stress hit, and gain `p.disillusion` (moderate, builds over time — Carlo's call: a nudge, not an
+     instant flip) + a small allegiance lean toward the cause + sometimes a memory.
+  4. **CONSEQUENCE:** `disillusion` feeds `radicalPotential` (+0.25× per point) → disillusioned wisps are
+     more recruitable / turnable. Verified +3 potential swing.
+  5. **REPAIR:** an assigned worker or nearby loyal-ish wisp (who'll INTERRUPT their routine — power is
+     urgent) walks to the station (`_repairing` flag holds them on task) and repairs over 90 ticks → power
+     restores. Verified completes.
+  6. **INVESTIGATION (full arc):** after 60-140t the enforcer is dispatched (`_investigating` holds them on
+     task), walks to the scene (stage 1→2), questions wisps (stage 2→3). `resolveSabotageInvestigation`: the
+     strongest WILLING witness (loyal-ish, not a sympathizer, not gang) fingers you by how much they saw —
+     strength>0.8 = clean ID (heat +12-20, awareness up, enforcer MARKS you); >0.3 = vague description
+     (suspicion); else the trail goes cold. EMERGENT: a witness the sabotage radicalized won't snitch.
+- **KEY BUG FIXED:** the `goto` job used `gotoCell(...,0)` (path ONTO the tile) but station tiles are solid,
+  so repair/investigation walkers stalled ~5 tiles out and gave up. Added an `adj` field to the goto job
+  (`gotoCell(...,j.adj||0)`); all sabotage gotos use `adj:1` (path ADJACENT). Also added `_repairing`/
+  `_investigating` guards in pawnTick so routine AI doesn't pull the fixer/enforcer off task.
+- VERIFIED end-to-end: all investigation stages 0→1→2→3, repair 90/90, disillusionment accrues, blackout
+  fires. **STABILITY (touched pawnTick + goto): clean full day, max stuck 4, 13 survive, employment 100%,
+  avatar goto still works.** Smoke 20/20, no dead/dupe, CSS balanced, render-with-blackout clean.
+- State: `ST.sabotages` (key list) added to init + serialize + deserialize; `s.sabState` rides on the struct.
+
+**STILL PENDING (Carlo's batch, in planned order):** Wave C = emotional reactivity between wisps (robbed
+victim angers/distresses, good conversation lifts both — sim under-reacts now). Wave D = mechanics-
+completeness AUDIT (every activity/ability/interaction → find dead-ends, build the missing end using the
+sabotage loop as the template). Wave E = infection loop (wealthy wisps get constant care → infected less;
+poor wisps infected more → stat decay → desperate/scripted actions). SEPARATE ACTIONS MENU (pull the
+avatar-ops action menu out of the inspect panel into its own easy panel). Also Wave 4 character-creation
+overhaul from the prior batch. NOTE: a PARTIAL/failed sabotage doesn't register the full scene (only
+opSuccess does) — by design, but could add a weaker scene for partials later if Carlo wants.
+
+---
+
+## ⚡ PLAYTEST WAVES 1+2 — control model + station depth (prior session) ⚡
+
+**WAVE 1 — control model + daily-annoyance UI fixes:**
+- **INSPECT PANEL CLOSE BUTTON (+Esc):** the always-on character panel now has a top-right × (`#insp-close`)
+  that clears ST.sel + hides it; Esc also closes it. Fixed "panel is hard to close, always on screen."
+- **CLICK-TO-TARGET ACTION MENU (the big control fix):** "we are the avatar" — clicking a wisp now surfaces
+  an OPERATIONS section right in their panel showing the ops valid AGAINST them (surveil/bribe/blackmail/
+  frame/assassinate), range-aware + gated (blackmail needs a known secret, frame/assassinate need a regime
+  target). Clicking an op runs it directly on that wisp — NO more "pick op, then click target." Researched
+  the convention (immersive-sim/CRPG: select+act-in-one-gesture beats radial menus for readability). Wired
+  via `.wisp-op` buttons + `data-wop` handler in the inspect click listener. `→` marks out-of-range ops.
+- **AUTO/MANUAL TOGGLE (`ST.avatarManual`):** the operative dock now has a MODE button. AUTO = avatar lives
+  autonomously between commands (old behavior). MANUAL = avatar waits idle for your orders (no autonomy
+  fighting your control) — BUT still handles critical survival (eats when food<18, sleeps when rest<12) so
+  neglect can't kill your operative. Gated in pawnTick before chooseJob. Switching to manual drops current
+  busywork. VERIFIED: auto acts (jobs picked), manual idles (0 busywork), manual+starving seeks food,
+  manual still accepts move/op commands.
+
+**WAVE 2 — unique-use stations + capacity + emotional reactions:**
+- **UNIQUE-USE STATIONS:** the root problem was `nearestStruct(p,isWorkable)` ignored occupancy — any number
+  of wisps piled on one station. NOW: `workersAt(s,exclude)` counts current workers, `workCapacity(s)` is
+  the seat limit (most stations = 1 seat; farmplot/loggingcamp/mineshaft/sporevat = 3; cafeteria/market/bar
+  = 2; override per-DEF via `workSlots`), `hasFreeWorkSlot(s,p)` gates selection. `isOpenWork` replaces
+  `isWorkable` in the work-picker so wisps only claim a station with a free seat. VERIFIED: a single
+  workstation now seats ≤1 wisp at a time (was unlimited); employment stays 100% healthy (72 workable
+  structures / 133 capacity / 12 adults in a fresh map).
+- **FRUSTRATION REACTION:** when a wisp wants to work but EVERY fitting station is full (`allWorkFull`), they
+  react — emote anger/sweat/gross/cry, take a stress (+3-7) and mood (−2-5) hit, a small allegiance dent,
+  sometimes a memory ("sick of waiting to work"), and back off retrying briefly. Throttled per-wisp
+  (workFrustCd). VERIFIED: 4 wisps hit frustration when forced to compete for one station.
+- **STABILITY:** full day clean, max stuck 39t (well under 140 cap), 13 survive, economy intact (touched
+  core job AI — stuck-loop + employment + economy all re-validated). Smoke 20/20, no dead/dupe, CSS balanced.
+
+**STILL PENDING (Carlo's playtest batch):** Wave 3 = a sabotage TEST SCENARIO (the stealth loop is already
+built — Phase 2 perception + embodied ops — so this is mostly runnable instructions, implement only if a gap
+shows). Wave 4 = FULL character-creation overhaul (Carlo wants it rethought, not just de-clipped — current
+screen at the YOUR OPERATIVE modal; CC working state via `window.PENDING_AVATAR`, `CC` object,
+`ccStats/ccPointsUsed/ccRemaining` helpers, #modal handler data-ccbg/ccinc/ccdec/cc-begin/cc-back). NOTE:
+text clipping on the right edge of background descriptions was visible in Carlo's screenshot — fix in Wave 4.
+Also still open from before: pre-commit witness readout (design Q unanswered), Phase 3-5 (reactions/
+animations/stealth-depth/polish), the perf finding (pawnTick ~1.9ms/pawn, parked).
+
+---
+
+## ⚡ FULL DOC-VS-CODE AUDIT + ABORT-ON-MOVE (prior session) ⚡
+
+- **AUDIT RESULT — all doc-claimed systems verified:** canSee, witnessPenalty, runWitnessCheck,
+  advanceActiveOp, resolveAvatarOp, inOpRange, resolveOpTarget, opState, bribeReceptivity, renderOpDock,
+  opDockState all present + wired (call sites confirmed). The 5 "Findings" the doc claims fixed all hold in
+  code: F1 move-to-tile works, F2 AI doesn't interrupt an op (the critical one — 0 jobs grabbed mid-op),
+  F3 stuck-detector exempt, F4 zero drift against a crowd, F5 snapPawn nulls activeOp + clean serialize.
+  Behavioral claims verified: positioning gates the op (far blocked/near stages), op holds position +
+  advances, a witness arriving MID-op affects the outcome (resolve-time computation works), darkness blinds
+  witnesses at range.
+- **DOC-VS-CODE DISCREPANCY FOUND + FIXED:** the doc says "a move command mid-op ABORTS the op (Operation
+  abandoned)," but the Phase 1 code actually BLOCKED movement during an op (the `!selA.activeOp` guard).
+  Code now matches the doc (and the better UX): clicking to move during an op ABORTS it ("Operation
+  abandoned.") and starts the walk — you can break off if the heat shifts. Fixed in BOTH clickSelect +
+  tapAction. VERIFIED: mid-op move-click clears activeOp + issues the goto.
+- **DOC-VS-CODE NAMING DRIFT (not a bug):** the doc's pseudocode names a `beginAvatarOp` staging function;
+  the actual staging logic lives INSIDE `runAvatarOp` (same behavior — validates cost/range/secret then
+  sets activeOp). Functionality is complete; only the name differs. Noted, not changed.
+- **PERFORMANCE PROFILE (honest finding, NOT fixed — out of scope + risky):** Phase 2 perception is
+  negligible (witnessPenalty 0.002ms, only runs at resolve; separatePawns 0% of tick; renderOpDock
+  0.001ms). BUT the core `pawnTick` is ~1.9ms/pawn (95% of tick time) — pre-existing AI/pathing cost, NOT
+  from the ops/UI work. At normal speed it's a non-issue (~1 tick per 6 frames); only at MAX fast-forward
+  could 10 ticks/frame approach the budget. chooseJob is 0.18ms, gotoCell 0.011ms — the cost is spread
+  across the rest of the per-pawn AI (needs/mood/relationships). Optimizing the core sim is a deep, risky,
+  separate undertaking that could destabilize the validated simulation — deliberately NOT attempted here.
+  Flagged for a future dedicated perf pass if max-speed stutter ever bothers Carlo.
+- **VALIDATION:** smoke 20/20, no dead/dupe, CSS balanced, full render clean (dock + reactive panel + op +
+  ring all active).
+
+---
+
+## ⚡ EMBODIED OPS PHASE 2 — PERCEPTION & WITNESSES (prior session) ⚡
+NPCs who can see you raise the difficulty of an op's roll, and being seen escalates fallout. Stealth
+positioning (where + WHEN you act) is now a real mechanic.
+
+- **canSee(obs, av, op):** the reusable perception query. Returns 0 (can't see) or a positive weight (how
+  damning the witness is). Factors: distance vs `op.sightRange`, DARKNESS (`lightLevel(hourN())>0.3` shrinks
+  sight ×0.62 — acting at night lets you slip closer unseen; a `nearLamp` hook ×1.4 is stubbed for later),
+  ATTENTION (working ×0.6 / socializing ×0.7 / sleeping ×0.2 / idle 1.0), PROXIMITY falloff, and WHO is
+  watching (enforcer/regime ×2.6, hostile loyalist ×1.8, sympathizer ×0.5, gang ×0.15, children/sleepers 0).
+- **witnessPenalty(av, op):** sums the weighted witnesses who can currently see you → `{pen, count}`,
+  scaled by `op.witnessK` (loudness). Wired into `resolveAvatarOp`'s difficulty: `opsCheck(stat,
+  diff+expPenalty+wit.pen)`. Computed at RESOLVE time, so a wisp who wandered into view mid-op still counts
+  — long ops in busy/lit places are genuinely riskier.
+- **AVATAR_OPS loudness profile:** each op gained `sightRange` + `witnessK`. Quiet ops (bribe/blackmail
+  sight4/K0.4, intel/surveil sight5/K0.5) vs loud (assassinate sight8/K1.4, sabotage sight8/K1.2,
+  dissent sight9/K0.8). A whispered bribe is barely noticed; a loud assassination is seen from across the block.
+- **runWitnessCheck(p, op, check, count, pen):** post-act fallout, generalizing witnessCrime. If anyone
+  saw it: awareness + heat rise (scaled by count + whether the op failed/botched); an enforcer who can see
+  you MARKS you (`grudgeTarget`, especially on a visible failure); witnesses emote alarm (excl/shock);
+  sympathizers look away. Nobody saw = clean getaway, no extra fallout.
+- **VERIFIED:** alone = 0 witnesses/penalty; enforcer adjacent = penalty 5 + canSee 2.44; +3 wisps = 4
+  witnesses/penalty 11; sleeping enforcer = 0 (blind); DARKNESS proven — a witness at 6 tiles sees you at
+  midday (canSee 0.63) but is COMPLETELY BLIND at deep night (canSee 0, penalty 0). Full-day stability:
+  16 ops, no crash, 13 survive. Witnessed steal → awareness 14 + heat 5 + enforcer mark vs ~0 alone.
+  Smoke 20/20, no dead/dupe, CSS balanced.
+- **BUG FIXED THIS SESSION:** a str_replace inserting `runWitnessCheck` consumed the `function opSuccess`
+  declaration → "unexpected }" cascade. LESSON RE-CONFIRMED: `node --check` reads a temp file; must
+  RE-EXTRACT the script before every check or a stale "valid" misleads. Diagnosed via per-function brace-depth walk.
+
+**STILL PENDING — Phases 3-5 (NOT built this session):** Phase 3 = NPC behavioral reactions (flee/
+investigate/gossip beyond the emotes) + per-op ACTION ANIMATIONS (the `anim` field — plant/strike/confer/
+tail/rally/lift — is set on every activeOp and ready to drive drawPawn) + a live on-map witness pip. Phase
+4 = stealth depth (the `nearLamp` hook, enforcer patrol gaps, diversion synergy, cover/line-of-sight).
+Phase 5 = animation polish + AI-narrated outcomes + audio (NOTE: Claude CANNOT see animations or hear audio
+— Phase 5 needs Carlo's eyes/ears). The architecture doc Section 7 has the full plan.
+**PRE-COMMIT READOUT (open design Q):** showing witness count + difficulty BEFORE committing an op is
+designed but NOT built — Carlo was asked which he prefers (readable pre-commit vs opaque read-the-room) and
+hasn't answered yet. That's the natural Phase 3 UI addition.
+
+---
+
+## ⚡ REACTIVE OPS UI + OPERATIVE DOCK (prior session) ⚡
+A focused UI pass for the avatar-driven embodied-ops play, built to Carlo's preference for "organized,
+reactive, hideable menus." Guiding rule: **disable the impossible, signal the dangerous, hide the
+irrelevant.** Also did 5 deep verification passes on Phase 1 first (all green) + a pending-mechanics audit.
+
+- **REACTIVE OPS PANEL:** the operations menu is now organized into 3 CATEGORIES (INTELLIGENCE:
+  intel/surveil · INFLUENCE: dissent/bribe/blackmail/frame · DIRECT ACTION: sabotage/steal/assassinate)
+  via `OP_CATEGORY`/`OP_CAT_ORDER`. New `opState(opKey)` is the brain: returns `{ok,reason,risk,targeted}`.
+  PREREQUISITES (no intel / no secret) → the button is DISABLED (real impossibility). RISK (exposure +
+  REG().awareness) → the op stays AVAILABLE but shows a danger tier (low/raised/high/extreme) with a
+  colored dot (◈/◈◈/⚠) — loud ops (strike/plant anims) get +1 risk at high heat. Design choice (deliberate,
+  defensible): heat NEVER blocks an op — a desperate high-risk strike in a hot district is a story beat, not
+  a bug. Only impossibility disables. CSS: `.opcat`, `.i-op.armed` (pulsing glow when targeting), `.opdis`.
+- **OPERATIVE DOCK (collapsible):** a quiet persistent status strip bottom-LEFT (`#op-dock`, doesn't
+  collide with the centered toolbar) that ALWAYS shows what your operative is doing (idle / "Moving to
+  position…" / "Gather Intel — 33%" with a live progress bar) and EXPANDS on tap into a control panel
+  (SELECT = jump camera+select, FOLLOW = camera toggle, intel/exposure readout). Collapses when tapped
+  again. `renderOpDock()` + `opDockState(av)` + `OP_DOCK_OPEN` flag; called from `syncHUD` and refreshed
+  every 3 ticks in the loop while an op/goto is live so progress animates. Uses existing `--cy`/`--disp`
+  tokens — native to the established cyberpunk look. Click handler on `#op-dock` (strip toggle + jump +
+  follow). Mobile-responsive (@media narrows it).
+- **REPUTATION-GATED BRIBES (pending mechanic, now built):** `bribeReceptivity(target)` — a FEARED
+  operative (rep < -20) buys silence more easily (+0.18), a BELOVED one meets more resistance to outright
+  corruption (-0.12), scaled by the target's integrity. Wired into the bribe partial-outcome refusal check
+  (was a flat intg>60; now reputation shifts the threshold). VERIFIED: feared 0.63 vs beloved 0.33
+  receptivity on the same target.
+
+**VERIFICATION — Phase 1 re-audited (5 passes, all green) BEFORE the UI work:** (1) all 9 ops individually
+through staging — each stages+resolves; (2) integration seams — non-avatar pawns never get activeOp, avatar
+autonomy intact, state transitions clean (work→goto→op→resumed), old p.cmd works; (3) edge cases — target
+dies mid-op (clean abort), double-stage rejected, low-intel rejected, avatar dies mid-op (no crash); (4)
+assassinate→election cascade intact through staging; (5) full save→load round-trip (activeOp cleared on
+load, dossier preserved, loaded game runs 400t stable, can stage ops after load). **UI: 3 cycles green** —
+reactive states + render, dock in all states, full-day stability (48 renders, 13 survive). Smoke 20/20, no
+dead/dupe, CSS balanced, full render clean.
+
+**PENDING MECHANICS AUDIT (Carlo asked):** Still pending — Phase 2 perception/witnesses (the big next one:
+canSee, witnessPenalty, pre-commit readout); AI-narrated op outcomes; richer investigation layer; agent
+requests (REQUESTS_ENABLED=false, deferred); weekly city-council session (the recurring "natural next");
+building footprint reorg/resize + furniture for new buildings; rain/thunder audio (can't verify); camera
+auto-pan (only button built). NOTE: exposure→op-availability gating is now PARTLY addressed (signaled in
+the reactive panel, not hard-blocked — by design). HONEST UNTESTED: the dock + reactive panel are
+structurally validated but Claude can't SEE them render — Carlo should eyeball the dock strip/expand feel,
+the category layout, the risk-dot colors, and that the dock doesn't overlap anything at his resolution.
+
+---
+
+## ⚡ EMBODIED OPS PHASE 1 (prior session) ⚡
+Implemented all four outstanding audit findings + the activeOp staging machinery. Ops are no longer
+instant menu-buttons — the avatar now physically performs them over time, in position.
+
+- **STAGING MACHINERY:** `runAvatarOp(opKey,target)` no longer resolves instantly — it STAGES an
+  `activeOp={opKey,target:desc,prog,duration,startTick,anim}` on the avatar (after validating intel cost,
+  range, and secret-gate), then nulls `p.job`. `advanceActiveOp(p)` ticks `prog` each tick and aborts if
+  the target vanishes. `resolveAvatarOp(p)` fires the banded `opsCheck` roll + consequence switch (the
+  former runAvatarOp body — opSuccess/opPartial/opFailure, all unchanged) ONLY on completion. Targets are
+  stored as serialization-safe descriptors (`{kind:"s",key}` or `{kind:"pawn",id}`), resolved live via
+  `resolveOpTarget()`. `inOpRange(av,op,target)` gates targeted ops (range-0 ops always pass).
+- **AVATAR_OPS extended:** each op gained `range`, `duration`, `anim` fields. intel(r0,d60), surveil(r3.5,
+  d90), dissent(r0,d70), sabotage(r1.8,d100), steal(r0,d80), bribe(r1.8,d55), frame(r1.8,d90), blackmail
+  (r1.8,d60), assassinate(r1.6,d75).
+- **FINDING 2 (the critical one) FIXED:** `if(p.isAvatar&&p.activeOp){advanceActiveOp(p);return;}` is now
+  placed in pawnTick BEFORE the `if(!p.job)p.job=chooseJob(p)` line, so an in-flight op holds and the AI
+  does NOT re-grab a job. VERIFIED: 30 ticks into an op, zero jobs grabbed, avatar held position.
+- **FINDING 4 FIXED:** `separatePawns` now exempts `activeOp` avatars (`if(a.activeOp)continue` +
+  `if(b.activeOp)continue`). VERIFIED: avatar held with ZERO drift even when 3 pawns crowded onto it
+  through 20 separation passes.
+- **FINDING 5 FIXED:** `snapPawn` now nulls `activeOp` (added to its Object.assign null-list). VERIFIED:
+  full serialize+stringify mid-op succeeds (182KB, no circular-ref crash); saved avatar has null activeOp.
+  An op cancels cleanly on reload (acceptable/safe).
+- **RANGE-AWARE TARGETING:** the `clickSelect` op-targeting branches (utility/regime/anyPawn) now check
+  `inOpRange` BEFORE staging; out of range → "Too far — walk your operative next to it, then pick it
+  again" and KEEPS targeting active so the player can move + re-click. VERIFIED: sabotage from dist 88
+  REJECTED, from dist 0.7 STAGED.
+- **IN-FLIGHT UI:** the OPERATIONS panel shows "▸ OPNAME — performing… N%" + a progress bar + "Move your
+  operative to abandon" instead of the op grid while an op runs. The avatar gets an on-map filling
+  progress RING in drawPawn, tinted by op type (strike=red, confer=gold, plant=orange, lift=green,
+  rally=cyan, tail=purple). VERIFIED: panel + ring render clean; grid returns after resolve.
+- **MOVE-GUARD:** the existing avatar move-on-click is gated by `!selA.activeOp`, so you can't walk the
+  avatar mid-op (the op holds). NOTE: this is "can't move during op," NOT "move aborts op" — a deliberate
+  simpler choice that reinforces the commit-to-the-deed tension. Flipping to abort-on-move is a small
+  change if Carlo prefers it.
+
+**VALIDATION: all 5 cycles + the full battery pass.** Cycle 1 (stage/hold/perform/resolve + Finding 2),
+Cycle 2 (range gate far-rejected/near-staged + sabotage success path), Cycle 3 (Finding 4 zero-drift +
+Finding 5 clean save), Cycle 4 (full-day stability, 14 ops, max stuck 4t, 0 overlaps, 13 survive), Cycle 5
+(move-guard holds + in-flight render clean). Smoke 20/20, no dead/dupe, CSS balanced.
+
+**NEXT: Phase 2 (perception/witness pressure)** — `canSee(observer,avatar,op)`, `witnessPenalty` into
+resolveAvatarOp's difficulty, generalize `witnessCrime` into `runWitnessCheck`, pre-commit difficulty +
+witness readout. The architecture doc (Section 7) has the full Phase 2-5 plan. The `anim` field is set on
+every activeOp and ready for the Phase 3 action animations (plant/strike/confer/tail/rally/lift in
+drawPawn). HONEST UNTESTED: the on-map ring + panel are structurally validated but Claude can't SEE them
+render — Carlo should eyeball that the ring fills smoothly and the tints read right.
+
+---
+
+## ⚡ AVATAR CLICK-TO-MOVE + ARCHITECTURE PLAN (prior session) ⚡
+
+- **AVATAR CLICK-TO-MOVE (shipped, validated):** the player can now directly position the avatar. With the
+  operative SELECTED, clicking an empty walkable tile issues a new `goto` job (`{t:"goto",x,y}`) that walks
+  it there via `gotoCell`, then CLEARS on arrival so the avatar RESUMES its autonomy (it goes back to
+  living its life — eats/sleeps/works). You take the wheel only when you choose to. Wired into BOTH click
+  handlers (`clickSelect` ~6470 and `tapAction`), gated by `selA.isAvatar && !selA.activeOp &&
+  colCost(c.x,c.y)>=0`. The `goto` case was added to the pawnTick job switch (right after `idle`). The
+  `!selA.activeOp` guard is a safe forward-reference (activeOp doesn't exist yet — it's Phase 1 of the ops
+  build — so the guard is always true now and correctly future-proofs). VERIFIED end-to-end: avatar walks
+  from (51,71) to a clicked tile, job clears at arrival, resumes normal AI (picked up a work job after);
+  no stuck-loops (max 3t), spacing intact (0 overlaps), 13 survive. This RESOLVES "Finding 1" of the
+  architecture audit (the missing move-to-tile prerequisite).
+
+- **EMBODIED OPERATIONS ARCHITECTURE PLAN (16-page Word doc):** a comprehensive technical design for
+  turning avatar ops from instant menu-buttons into PHYSICAL DEEDS the avatar travels to and performs in a
+  world that witnesses and reacts. Owner's 3 decisions drive it: (1) manual positioning gates the op (walk
+  into range, button arms), (2) witnesses RAISE dice difficulty live + stealth positioning is the core
+  skill, (3) mechanics + animation both, in phases. Core insight: difficulty becomes a function of
+  who-can-see-you, computed at RESOLVE time (so a witness wandering in mid-act still counts). Built on
+  existing systems: the job model (`gotoCell→arr→prog`), `witnessCrime`/`onlookersReact` (perception),
+  banded `opsCheck` (the live-difficulty lever), `drawPawn` procedural animation. 5 subsystems, 5 validated
+  phases. **The doc includes a SECOND-PASS CODE AUDIT (Section 10)** that stress-tested the plan against
+  index.html and found 5 real issues (now corrected in the doc):
+    1. Move-to-tile didn't exist — NOW RESOLVED (the click-to-move above).
+    2. CRITICAL: setting `avatar.job=null` during an op does NOT suspend AI — line ~3549
+       `if(!p.job)p.job=chooseJob(p)` runs every tick and immediately re-grabs a job. The `activeOp` check
+       must intercept + `return` BEFORE that line.
+    3. The 140t stuck-detector is already exempt (it gates on `p.job`; activeOp lives outside job).
+    4. `separatePawns` would push a performing avatar off its spot — needs an `activeOp` exemption + position pin.
+    5. `snapPawn` doesn't null `activeOp` — store target as ID/key (not object ref) + null on save, cancel on load.
+  The plan is build-ready. NEXT: Phase 1 of the embodied-ops build (the `activeOp` job machinery), with the
+  move-to-tile foundation already in place.
+
+---
+
+## ⚡ INFILTRATOR SYSTEMS (prior session) ⚡
 Carlo's vision: the avatar is the lone infiltrator who brings down the regime through subterfuge; make
 sessions organic via investigation + the dice as the engine of risk/consequence. Built in 4 validated
 stages:

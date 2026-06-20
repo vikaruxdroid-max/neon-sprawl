@@ -86,6 +86,22 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   color:var(--dim);text-transform:uppercase;margin:11px 0 7px;
   display:flex;align-items:center;gap:7px}
 .ordsec::after{content:"";flex:1;height:1px;background:var(--bd)}
+/* reactive ops menu */
+.opcat{font-family:var(--disp);font-weight:600;font-size:8px;letter-spacing:.18em;
+  color:var(--dim);opacity:.75;text-transform:uppercase;margin:7px 0 0;
+  display:flex;align-items:center;gap:6px}
+.opcat::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--bd),transparent)}
+.i-op{transition:border-color .15s,color .15s,box-shadow .15s,transform .08s}
+.i-op:active{transform:scale(.96)}
+.i-op.armed{animation:oparm 1s ease-in-out infinite}
+@keyframes oparm{0%,100%{box-shadow:0 0 0 rgba(255,210,74,0)}50%{box-shadow:0 0 9px rgba(255,210,74,.5)}}
+.i-op.opdis{cursor:not-allowed;opacity:.7}
+.optargethint{padding:5px 8px;background:rgba(255,210,74,.08);border-radius:5px;border:1px solid rgba(255,210,74,.25)}
+/* act-on-wisp operation buttons */
+.wisp-ops{display:flex;flex-direction:column;gap:3px;margin:4px 0}
+.wisp-op{text-align:left;font-size:9px;padding:5px 8px;letter-spacing:.03em;transition:border-color .15s,color .15s,box-shadow .15s}
+.wisp-op:not(.dim):hover{box-shadow:0 0 8px rgba(34,221,255,.3)}
+.wisp-op.dim{cursor:default}
 .ordgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
 .ob{font-family:var(--disp);font-weight:600;font-size:10px;
   background:rgba(0,212,255,.06);border:1px solid var(--bd);color:var(--tx);
@@ -159,6 +175,36 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   pointer-events:none;letter-spacing:.02em}
 
 /* ── TOOLBAR ── */
+/* ── OPERATIVE DOCK — a quiet persistent status strip that expands into controls on demand ── */
+#op-dock{position:fixed;left:10px;bottom:8px;z-index:17;font-family:var(--mono);
+  display:flex;flex-direction:column;gap:0;max-width:280px;user-select:none}
+#op-dock .od-strip{display:flex;align-items:center;gap:8px;cursor:pointer;
+  background:rgba(4,10,22,.95);border:1px solid var(--bd);border-radius:8px;
+  padding:6px 11px;box-shadow:0 -2px 14px rgba(0,0,0,.4);transition:border-color .15s,box-shadow .15s}
+#op-dock .od-strip:hover{border-color:var(--cy);box-shadow:0 0 12px rgba(34,221,255,.25)}
+#op-dock .od-glyph{font-size:13px;color:var(--cy);filter:drop-shadow(0 0 4px rgba(34,221,255,.6))}
+#op-dock .od-title{font-family:var(--disp);font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--cy)}
+#op-dock .od-state{font-size:9.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+#op-dock .od-state b{color:var(--tx);font-weight:600}
+#op-dock .od-chev{margin-left:auto;font-size:9px;color:var(--dim);transition:transform .2s}
+#op-dock.expanded .od-chev{transform:rotate(180deg)}
+#op-dock .od-panel{display:none;background:rgba(4,10,22,.97);border:1px solid var(--bd);
+  border-bottom:none;border-radius:8px 8px 0 0;padding:9px 11px;margin-bottom:-1px;
+  box-shadow:0 -4px 18px rgba(0,0,0,.5);animation:odrise .18s ease-out}
+#op-dock.expanded .od-panel{display:block}
+#op-dock.expanded .od-strip{border-radius:0 0 8px 8px}
+@keyframes odrise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+#op-dock .od-row{display:flex;gap:6px;margin-top:7px}
+#op-dock .od-btn{flex:1;background:rgba(8,18,36,.85);border:1px solid var(--bd);color:var(--tx);
+  font-family:var(--disp);font-size:9.5px;font-weight:600;letter-spacing:.06em;
+  padding:6px 4px;border-radius:6px;cursor:pointer;transition:border-color .15s,color .15s,box-shadow .15s}
+#op-dock .od-btn:hover{border-color:var(--cy);color:var(--cy);box-shadow:0 0 9px rgba(34,221,255,.3)}
+#op-dock .od-btn.on{border-color:var(--cy);color:var(--cy);background:rgba(34,221,255,.12)}
+#op-dock .od-stat{display:flex;gap:11px;font-size:9px;color:var(--dim);margin-top:2px}
+#op-dock .od-stat b{font-weight:700}
+#op-dock .od-prog{height:4px;background:rgba(255,210,74,.15);border-radius:3px;margin-top:6px;overflow:hidden}
+#op-dock .od-prog i{display:block;height:100%;background:var(--yl);border-radius:3px;transition:width .2s}
+@media(max-width:760px){#op-dock{max-width:220px}#op-dock .od-state{max-width:110px}}
 #toolbar{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);
   display:flex;gap:5px;padding:5px;max-width:96vw;overflow-x:auto;
   background:rgba(4,10,22,.95);border:1px solid var(--bd);border-radius:8px;
@@ -391,11 +437,15 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
     <button class="tb" id="b-save" title="Save">💾</button>
     <button class="tb" id="b-load" title="Load">📂</button>
     <button class="tb" id="b-fs" title="Fullscreen">⛶</button>
-    <button class="tb" id="b-atmo" title="Rain & fog"><span class="hud-icon">☂</span></button>
-    <button class="tb" id="b-storm" title="Lightning"><span class="hud-icon">⚡</span></button>
+    <button class="tb" id="b-weather" title="Weather"><span class="hud-icon">☁</span></button>
     <button class="tb" id="b-mute" title="Sound">🔊</button>
     <button class="tb" id="b-help" title="Help">?</button>
   </div>
+</div>
+<div id="weather-menu" style="display:none;position:fixed;top:52px;right:12px;z-index:30;background:rgba(4,10,22,.97);border:1px solid var(--bd);border-radius:10px;padding:8px;box-shadow:0 6px 24px rgba(0,0,0,.5);min-width:150px">
+  <div style="font-family:var(--disp);font-size:9px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin:2px 4px 7px">Weather</div>
+  <button class="wx-opt" id="wx-rain" style="display:flex;align-items:center;gap:9px;width:100%;background:rgba(8,18,36,.7);border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:11px;padding:7px 9px;border-radius:7px;cursor:pointer;margin-bottom:5px"><span class="hud-icon">☂</span> Rain &amp; Fog <span id="wx-rain-state" style="margin-left:auto;font-size:9px;color:var(--dim)">off</span></button>
+  <button class="wx-opt" id="wx-storm" style="display:flex;align-items:center;gap:9px;width:100%;background:rgba(8,18,36,.7);border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:11px;padding:7px 9px;border-radius:7px;cursor:pointer"><span class="hud-icon">⚡</span> Lightning <span id="wx-storm-state" style="margin-left:auto;font-size:9px;color:var(--dim)">off</span></button>
 </div>
 
 <div id="checklist" class="panel"><ul id="ck"></ul></div>
@@ -418,6 +468,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   </div>
 </div>
 <div id="submenu" class="panel"></div>
+<div id="op-dock"></div>
 <div id="toolbar">
   <button class="tb mode" id="t-build">⛏ BUILD</button>
   <button class="tb mode" id="t-zone">▦ ZONE</button>
@@ -955,6 +1006,7 @@ function radicalPotential(p){
   if(p.homeless)r+=18;
   if((p.mood||50)<35)r+=12;
   if((p.pers&&p.pers.intg||50)<40)r+=8;       // the disaffected
+  if(p.disillusion)r+=Math.round((p.disillusion||0)*0.25);   // faith eroded by regime failures (sabotage) → recruitable
   if(p.informant)r-=60;                        // turned against you
   return r;
 }
@@ -997,8 +1049,180 @@ function roleForcesTick(){
   }
   // INFORMANT — leaks: an active, un-flipped informant steadily raises regime awareness.
   const informants=ST.pawns.filter(p=>p.informant&&p.hp>0&&!isChild(p));
-  if(informants.length){reg.awareness=clamp((reg.awareness||0)+informants.length*0.15,0,100);}
+  if(informants.length){reg.awareness=clamp((reg.awareness||0)+informants.length*0.15,0,100);
+    // ANONYMOUS TIP — when your exposure is high, an informant occasionally drops a tip that lands as a
+    // VISIBLE event with a story and a real repercussion (a lead on you → heat). The whisper has weight.
+    if((m.exposure||0)>35&&ST.tick>(ST.lastTipT||0)+TPD*0.6&&Math.random()<0.04){
+      ST.lastTipT=ST.tick;
+      const snitch=CH(informants);
+      const heatJump=RI(8,16);ST.heat=Math.min(100,(ST.heat||0)+heatJump);
+      reg.awareness=clamp((reg.awareness||0)+RI(6,12),0,100);
+      tryEmote(snitch,"scheme",150);
+      // the tip names something the regime now "knows" — give it narrative texture
+      const leaks=["your cell's meeting spot","a face seen at the last action","where the intel's been flowing","one of your contacts"];
+      const leak=CH(leaks);
+      log("\u260e An anonymous tip reached the regime — they've got a lead on "+leak+". Heat rises.","bad");
+      chronicle("An informant tipped the regime about "+leak+".","\u260e");
+      banner&&banner("TIPPED OFF","bad");
+      // a recruited wisp near the snitch may notice and resent them (story repercussion)
+      for(const r of ST.pawns){if(r.recruited&&!isChild(r)&&DIST(r.px,r.py,snitch.px,snitch.py)<8&&Math.random()<0.4){
+        relAdj(r.id,snitch.id,-15);emotionalReact(r,"anger",0.4,{toward:snitch.id});}}
+    }
+  }
 }
+// ═══════════════════════ THE SABOTAGE LOOP — start to finish ═══════════════════════
+// A sabotage isn't a one-shot stat hit; it sets a whole sequence in motion: the city goes dark → wisps
+// feel it and lose faith → that disillusionment makes them recruitable → NPCs eventually REPAIR it →
+// the regime INVESTIGATES (enforcer walks the scene, questions wisps; a witness who saw enough fingers
+// you) → heat and consequence. Every stage is visible.
+
+// record the crime scene the moment a power/water station is hit
+function registerSabotage(s,perp,crit){
+  if(!s)return;
+  const util=DEF[s.type]&&DEF[s.type].utility;
+  // who could SEE it happen? snapshot the witnesses by how much they perceived (Phase 2 canSee)
+  const witnesses=[];
+  if(perp){for(const q of ST.pawns){const w=canSee(q,perp,AVATAR_OPS.sabotage);
+    if(w>0)witnesses.push({id:q.id,strength:w});}}
+  s.sabState={
+    at:ST.tick, util:util||"power", crit:!!crit,
+    perpId:perp?perp.id:null,
+    witnesses,                              // [{id,strength}] — strength = how damning their view was
+    repairProg:0, repairBy:null,            // NPC repair progress
+    investigated:false, investStage:0,      // 0 none · 1 enforcer en route · 2 questioning · 3 resolved
+    reactedPawns:{}                          // wisps who've already had their blackout reaction (throttle)
+  };
+  if(!ST.sabotages)ST.sabotages=[];
+  ST.sabotages.push(K(s.x,s.y));
+  // the district NOTICES immediately — a beat of collective alarm
+  onlookersReact&&onlookersReact(s.x,s.y,"shock",10);
+}
+
+// per-tick: drive every active sabotage's lifecycle (reaction → repair → investigation)
+function sabotageTick(){
+  if(!ST.sabotages||!ST.sabotages.length)return;
+  const reg=REG(),m=M();
+  for(let i=ST.sabotages.length-1;i>=0;i--){
+    const key=ST.sabotages[i];const s=ST.structs.get(key);
+    if(!s||!s.sabState){ST.sabotages.splice(i,1);continue;}
+    const st=s.sabState;const down=s.sabotaged>ST.tick;
+
+    // ── 1. BLACKOUT REACTION — while the utility is down, nearby wisps feel it and lose faith ──
+    if(down&&ST.tick%20===0){
+      const radius=22;   // the affected blocks
+      for(const p of ST.pawns){if(isChild(p)||p.isAvatar||p.sleeping)continue;
+        if(DIST(p.px,p.py,s.x,s.y)>radius)continue;
+        if(st.reactedPawns[p.id]&&ST.tick-st.reactedPawns[p.id]<400)continue;   // throttle per wisp
+        st.reactedPawns[p.id]=ST.tick;
+        // frustration/anger at the outage, and an erosion of faith in the regime that failed them
+        const r=Math.random();
+        tryEmote(p,r<0.45?"anger":r<0.7?"sweat":"gross",90);
+        p.mood=clamp((p.mood||50)-RI(2,5),0,100);
+        p.stress=clamp((p.stress||0)+RI(2,5),0,100);
+        // DISILLUSIONMENT — moderate, builds over time (your call: a nudge, not an instant flip).
+        // it leans the wisp toward the insurrection and makes them more recruitable.
+        p.disillusion=clamp((p.disillusion||0)+RI(2,4),0,100);
+        p.allegiance=clamp((p.allegiance||0)+RI(1,2),-100,100);    // small lean toward the cause
+        if(r<0.15)remember(p,st.util==="power"?"the grid went dark again — the regime can't even keep the lights on":"no water again — what good is this government?");
+        if(r<0.08&&typeof aiReactLine==="function")aiReactLine(p,st.util==="power"?"the power just went out across the whole block again":"the water's been cut off again");
+      }
+    }
+
+    // ── 2. NPC REPAIR — an assigned worker (or a brave volunteer) goes to fix it; power restores ──
+    if(down&&!st.repairBy){
+      // prefer the station's own worker; else a nearby loyal-ish or civic wisp who'll drop what they're
+      // doing to deal with the emergency (don't require them to already be idle — power is urgent)
+      let fixer=ST.pawns.find(p=>!isChild(p)&&!p.isAvatar&&!p.sleeping&&p.assigned===key&&p.hp>0);
+      if(!fixer)fixer=ST.pawns.find(p=>!isChild(p)&&!p.isAvatar&&!p.sleeping&&p.hp>0&&(p.allegiance||0)>-15&&DIST(p.px,p.py,s.x,s.y)<28&&!p.activeOp&&(!p.job||p.job.t!=="sleep"));
+      if(fixer){st.repairBy=fixer.id;fixer.job={t:"goto",x:s.x,y:s.y,adj:1};fixer._repairing=key;}
+    }
+    if(down&&st.repairBy){
+      const fixer=ST.pawns.find(p=>p.id===st.repairBy);
+      if(!fixer||fixer.hp<=0||fixer.sleeping){st.repairBy=null;}     // lost the fixer; try again next pass
+      else if(DIST(fixer.px,fixer.py,s.x,s.y)<2){
+        // on site — repair progresses
+        fixer._repairing=key;
+        st.repairProg+=1;
+        if(st.repairProg%30===0)tryEmote(fixer,"sweat",120);else if(st.repairProg%12===0)tryEmote(fixer,"idea",200);
+        if(st.repairProg>=90){    // fixed!
+          s.sabotaged=0;
+          // power restores if no OTHER power station is also down
+          const otherDown=[...ST.structs.values()].some(o=>o!==s&&DEF[o.type]&&DEF[o.type].utility==="power"&&o.sabotaged>ST.tick);
+          if(st.util==="power"&&!otherDown)ST.blackoutUntil=Math.min(ST.blackoutUntil||ST.tick,ST.tick);
+          log("\u26a1 "+fixer.name+" repaired the "+DEF[s.type].name+" — "+(st.util==="power"?"power flickers back on.":"water flows again."),"good");
+          tryEmote(fixer,"happy",150);
+          fixer._repairing=null;fixer.job=null;
+        }
+      } else if(!fixer._repairing||(fixer.job&&fixer.job.t!=="goto")){
+        // they wandered off task — send them back (the emergency overrides their routine)
+        fixer.job={t:"goto",x:s.x,y:s.y,adj:1};fixer._repairing=key;
+      }
+    }
+
+    // ── 3. INVESTIGATION — once the regime registers the strike, the enforcer works the scene ──
+    if(!st.investigated&&ST.tick-st.at>RI(60,140)){
+      st.investigated=true;st.investStage=1;
+      const enf=ST.pawns.find(p=>p.role==="enforcer"&&p.hp>0&&(p.allegiance||0)<10);
+      if(enf){st.enfId=enf.id;enf.job={t:"goto",x:s.x,y:s.y,adj:1};enf._investigating=key;
+        log("\u2696 An enforcer is heading to the sabotaged "+DEF[s.type].name+" to investigate.","warn");
+      } else { st.investStage=3; }   // no enforcer to investigate
+    }
+    if(st.investStage===1&&st.enfId){
+      const enf=ST.pawns.find(p=>p.id===st.enfId);
+      if(!enf||enf.hp<=0){st.investStage=3;}
+      else if(DIST(enf.px,enf.py,s.x,s.y)<3){st.investStage=2;st.questionAt=ST.tick;tryEmote(enf,"ques",150);}
+    }
+    if(st.investStage===2&&st.enfId){
+      const enf=ST.pawns.find(p=>p.id===st.enfId);
+      if(!enf||enf.hp<=0){st.investStage=3;}
+      else if(ST.tick-st.questionAt>RI(40,80)){
+        // QUESTIONING — a witness who saw enough fingers the culprit, weighted by how much they saw
+        resolveSabotageInvestigation(s,enf);
+        st.investStage=3;enf._investigating=null;
+      }
+    }
+
+    // ── retire the record once the outage is over AND the investigation has run ──
+    if(!down&&st.investStage>=3){
+      delete s.sabState;ST.sabotages.splice(i,1);
+    }
+  }
+}
+
+// the enforcer questions witnesses; one who saw clearly enough can identify the avatar → heat/marked
+function resolveSabotageInvestigation(s,enf){
+  const st=s.sabState;if(!st)return;
+  // the strongest witness present and willing (loyal-ish, not a sympathizer) talks
+  let bestW=null;
+  for(const w of st.witnesses){const q=ST.pawns.find(p=>p.id===w.id);
+    if(!q||q.hp<=0)continue;
+    if((q.allegiance||0)>25)continue;                  // a sympathizer won't snitch
+    if(pawnGang(q))continue;                            // gang stays silent
+    const willing=w.strength*(1+((q.allegiance||0)<-20?0.6:0));   // loyalists talk more readily
+    if(!bestW||willing>bestW.willing)bestW={q,willing,strength:w.strength};
+  }
+  const av=theAvatar();
+  if(bestW&&bestW.strength>0.8&&av){
+    // a clear ID — the avatar is fingered
+    ST.heat=Math.min(100,(ST.heat||0)+RI(12,20));
+    if(reg=REG())reg.awareness=clamp((reg.awareness||0)+RI(10,18),0,100);
+    enf.grudgeTarget=av.id;relAdj(enf.id,av.id,-25);
+    tryEmote(enf,"excl",150);tryEmote(bestW.q,"chat",120);
+    log("\u2696 "+bestW.q.name+" described the saboteur to the enforcer — they're onto you. Heat spikes.","bad");
+    chronicle(bestW.q.name+" fingered you for the "+DEF[s.type].name+" sabotage.","\u2696");
+  } else if(bestW&&bestW.strength>0.3){
+    // a partial description — suspicion rises but no clean ID
+    ST.heat=Math.min(100,(ST.heat||0)+RI(5,10));
+    if(reg=REG())reg.awareness=clamp((reg.awareness||0)+RI(4,8),0,100);
+    tryEmote(bestW.q,"ques",120);
+    log("\u2696 A witness gave the enforcer a vague description — suspicion is rising.","warn");
+  } else {
+    // nobody saw enough — the trail is cold
+    log("\u2696 The enforcer questioned the block but no one could identify the saboteur. The trail goes cold.","good");
+    chronicle("The "+DEF[s.type].name+" sabotage went unsolved.","\u2715");
+  }
+}
+
 function insurrectionTick(){
   const m=M(),reg=REG();
   roleForcesTick();   // the named regime cast (Mayor/Enforcer/Informant) act as active forces
@@ -1095,7 +1319,7 @@ function recruitWisp(p){
     p.recruited=true;p.allegiance=clamp((p.allegiance||0)+25,-100,100);
     p.cellRole=ST.pawns.filter(x=>x.recruited).length%4===0?"leader":"member";
     if(p.cellRole==="leader")m.cells=(m.cells||0)+1;
-    remember(p,"joined the cause — there's something worth fighting for now");
+    emotionalReact(p,"inspired",0.7,{memory:"joined the cause — there's something worth fighting for now"});
     log(p.name+" joined your movement.","good");
     return true;
   }else{
@@ -1121,23 +1345,23 @@ function goToGround(){
    REPUTATION (feared/respected), which colors how wisps react to you. */
 // op definitions: stat = which ops attribute, diff = base difficulty, cost = intel, target = needs a target?
 const AVATAR_OPS={
-  intel:     {name:"Gather Intel", stat:"insight", diff:11, cost:0, target:null,
+  intel:     {name:"Gather Intel", stat:"insight", diff:11, cost:0, target:null, range:0, duration:60, anim:"tail", sightRange:5, witnessK:0.5,
     desc:"Work your contacts and surveil the block. Success feeds your network intel. Failure tips off the regime."},
-  surveil:   {name:"Surveil a Wisp", stat:"insight", diff:12, cost:4, target:"anyPawn",
+  surveil:   {name:"Surveil a Wisp", stat:"insight", diff:12, cost:4, target:"anyPawn", range:3.5, duration:90, anim:"tail", sightRange:5, witnessK:0.5,
     desc:"Tail a specific wisp to dig up their secret. Knowing their dirt unlocks blackmail. Discreet — but not risk-free."},
-  dissent:   {name:"Spread Dissent", stat:"presence", diff:12, cost:6, target:null,
+  dissent:   {name:"Spread Dissent", stat:"presence", diff:12, cost:6, target:null, range:0, duration:70, anim:"rally", sightRange:9, witnessK:0.8,
     desc:"Stir the block against the regime — raise support. A rousing op moves people; a clumsy one exposes you."},
-  sabotage:  {name:"Sabotage Infrastructure", stat:"tradecraft", diff:13, cost:10, target:"utility",
+  sabotage:  {name:"Sabotage Infrastructure", stat:"tradecraft", diff:13, cost:10, target:"utility", range:1.8, duration:100, anim:"plant", sightRange:8, witnessK:1.2,
     desc:"Knock out a power or water building — blackout, chaos, a blow to the regime's grip. Failure means you're spotted."},
-  steal:     {name:"Steal Regime Funds", stat:"tradecraft", diff:13, cost:8, target:null,
+  steal:     {name:"Steal Regime Funds", stat:"tradecraft", diff:13, cost:8, target:null, range:0, duration:80, anim:"lift", sightRange:6, witnessK:0.9,
     desc:"Skim the regime's coffers into your movement. A clean lift funds the cause; a bungle brings heat down hard."},
-  bribe:     {name:"Bribe a Wisp", stat:"guile", diff:11, cost:6, target:"anyPawn",
+  bribe:     {name:"Bribe a Wisp", stat:"guile", diff:11, cost:6, target:"anyPawn", range:1.8, duration:55, anim:"confer", sightRange:4, witnessK:0.4,
     desc:"Buy a wisp's loyalty or silence with credits. The corruptible bend; the principled may report the offer."},
-  frame:     {name:"Frame a Regime Asset", stat:"guile", diff:14, cost:14, target:"regime",
+  frame:     {name:"Frame a Regime Asset", stat:"guile", diff:14, cost:14, target:"regime", range:1.8, duration:90, anim:"plant", sightRange:6, witnessK:1.0,
     desc:"Plant evidence on a regime loyalist — turn the district against them, weaken their grip. Hard and risky."},
-  blackmail: {name:"Blackmail a Wisp", stat:"presence", diff:12, cost:6, target:"anyPawn", needsSecret:true,
+  blackmail: {name:"Blackmail a Wisp", stat:"presence", diff:12, cost:6, target:"anyPawn", needsSecret:true, range:1.8, duration:60, anim:"confer", sightRange:4, witnessK:0.4,
     desc:"Use a secret you've uncovered to coerce a wisp — turn an informant, force compliance. Requires known dirt."},
-  assassinate:{name:"Assassinate", stat:"nerve", diff:16, cost:20, target:"regime",
+  assassinate:{name:"Assassinate", stat:"nerve", diff:16, cost:20, target:"regime", range:1.6, duration:75, anim:"strike", sightRange:8, witnessK:1.4,
     desc:"Eliminate a regime figure outright. The ultimate strike — and the regime WILL hunt whoever did it. Last resort."},
 };
 // reputation: -100 (feared/ruthless) .. +100 (beloved/respected). Built by op outcomes + their nature.
@@ -1178,6 +1402,45 @@ function maybeSurfaceSecret(){
 // does the player KNOW a usable secret on this wisp? (gates the blackmail op)
 function knownSecret(p){return p&&p.secretKnown&&p.secret?p.secret:null;}
 
+/* ═══════════ REACTIVE OP STATE — the brain of the reactive operations menu. For any op, returns its
+   current playability: ready / blocked-impossible / risky-but-possible. The guiding rule is "disable only
+   the impossible, signal the dangerous." Prerequisites (no intel, no secret, no target in range) are real
+   impossibilities → disabled. Heat/exposure are RISK, never a block → the op stays available but flagged. */
+// categories group the toolkit so the menu reads as organized intent, not a flat wall of buttons.
+const OP_CATEGORY={
+  intel:"INTELLIGENCE", surveil:"INTELLIGENCE",
+  dissent:"INFLUENCE", bribe:"INFLUENCE", blackmail:"INFLUENCE", frame:"INFLUENCE",
+  sabotage:"DIRECT ACTION", steal:"DIRECT ACTION", assassinate:"DIRECT ACTION",
+};
+const OP_CAT_ORDER=["INTELLIGENCE","INFLUENCE","DIRECT ACTION"];
+function opState(opKey){
+  const op=AVATAR_OPS[opKey];const m=M();const a=theAvatar();
+  if(!op||!a)return {ok:false,reason:"unavailable",label:""};
+  // PREREQUISITES (real impossibilities → the button is disabled)
+  if((m.intel||0)<op.cost)return {ok:false,reason:"intel",label:"Need "+op.cost+" intel"};
+  // targeted ops: need a valid target selected/in range. We can only fully check at click; here we mark
+  // whether the op REQUIRES targeting so the UI can prompt the positioning step.
+  const needsDirt=op.needsSecret&&!ST.pawns.some(q=>!q.isAvatar&&!isChild(q)&&knownSecret(q));
+  if(needsDirt)return {ok:false,reason:"secret",label:"Surveil someone first"};
+  // RISK (never a block — exposure/awareness raise a visible danger tier)
+  const exp=m.exposure||0, aware=(REG()&&REG().awareness)||0;
+  let risk=0;
+  if(exp>60)risk+=2; else if(exp>35)risk+=1;
+  if(aware>60)risk+=2; else if(aware>35)risk+=1;
+  // loud ops (assassinate/sabotage/frame) are extra risky when the heat is up
+  if(risk>0&&(op.anim==="strike"||op.anim==="plant"))risk+=1;
+  const riskTier=risk>=4?"extreme":risk>=2?"high":risk>=1?"raised":"low";
+  return {ok:true, reason:"ready", risk:riskTier, targeted:!!op.target, range:op.range};
+}
+// bribe receptivity: a feared operative buys silence more easily; a beloved one meets resistance to
+// outright corruption (people don't expect it of them). Reputation now shapes a real outcome.
+function bribeReceptivity(target){
+  const rep=avatarRep();const base=(target&&(100-(target.pers.intg||50))/100)||0.5;
+  const repMod=rep<-20?0.18:rep>30?-0.12:0;   // feared → easier, beloved → slightly harder
+  return clamp(base+repMod,0.05,0.95);
+}
+
+
 // running an op trains the stat used (diminishing as it climbs toward 10)
 function trainOpStat(stat){const a=theAvatar();if(!a||!a.ops)return;
   a.opXp=a.opXp||{};a.opXp[stat]=(a.opXp[stat]||0)+1;
@@ -1187,37 +1450,115 @@ function trainOpStat(stat){const a=theAvatar();if(!a||!a.ops)return;
     float(a.px,a.py,stat.toUpperCase()+" \u2191","#22ddff");}
 }
 // the unified op runner. opKey ∈ AVATAR_OPS, target = optional pawn/struct depending on the op.
+// ── EMBODIED OPS (Phase 1): an op is no longer instant. It STAGES an activeOp the avatar physically
+// performs over time; the banded roll fires only on completion (resolveAvatarOp). runAvatarOp is kept as
+// the entry point but now stages rather than resolves. Targets are stored as ID/key (never object refs)
+// so saves stay clean.
+function inOpRange(av,op,target){
+  if(!op.target)return true;                 // self/broadcast ops have no positional gate
+  if(!target)return false;
+  if(op.target==="utility"){ // a structure
+    return DIST(av.px,av.py,target.x+0.5,target.y+0.5)<=op.range;
+  }
+  return DIST(av.px,av.py,target.px,target.py)<=op.range;   // a pawn
+}
+// resolve a target descriptor {kind, id|key} into the live object (or null if it's gone).
+function resolveOpTarget(desc){
+  if(!desc)return null;
+  if(desc.kind==="s")return ST.structs.get(desc.key)||null;
+  if(desc.kind==="pawn")return ST.pawns.find(p=>p.id===desc.id)||null;
+  return null;
+}
+// STAGE an op: validate, then attach an activeOp to the avatar (the perform phase runs in pawnTick).
 function runAvatarOp(opKey,target){
   const op=AVATAR_OPS[opKey];if(!op)return false;
   const m=M(),a=theAvatar();
   if(!a){flashMsg&&flashMsg("No operative");return false;}
+  if(a.activeOp){flashMsg&&flashMsg("Already running an operation");return false;}
   if((m.intel||0)<op.cost){flashMsg&&flashMsg("Need "+op.cost+" intel for this op");return false;}
-  // exposure makes ops harder — the more the regime suspects you, the riskier everything is
+  if(op.needsSecret&&target&&!knownSecret(target)){flashMsg&&flashMsg("No dirt on them — surveil first");return false;}
+  if(!inOpRange(a,op,target)){flashMsg&&flashMsg("Move closer to begin this operation");return false;}
+  // build a serialization-safe target descriptor
+  let desc=null;
+  if(op.target==="utility"&&target)desc={kind:"s",key:K(target.x,target.y)};
+  else if(target&&target.id!=null)desc={kind:"pawn",id:target.id};
+  a.activeOp={opKey,target:desc,prog:0,duration:op.duration,startTick:ST.tick,anim:op.anim};
+  a.job=null;                                 // the op supersedes normal AI (intercepted in pawnTick)
+  if(typeof SFX!=="undefined"&&SFX.ui)SFX.ui();
+  log("\u25b8 Operation underway: "+op.name+"\u2026","info");
+  return true;
+}
+// advance an in-flight op each tick; resolve on completion, abort if the target vanishes.
+function advanceActiveOp(p){
+  const ao=p.activeOp;if(!ao)return;
+  const op=AVATAR_OPS[ao.opKey];if(!op){p.activeOp=null;return;}
+  // target gone mid-op -> abort cleanly
+  if(op.target){const tgt=resolveOpTarget(ao.target);
+    if(!tgt){log("\u25b8 Operation aborted \u2014 the target slipped away.","warn");p.activeOp=null;return;}}
+  ao.prog++;
+  if(ao.prog>=ao.duration)resolveAvatarOp(p);
+}
+// fire the banded roll + consequences on completion (this is the former runAvatarOp body).
+function resolveAvatarOp(p){
+  const ao=p.activeOp;if(!ao){return;}
+  const op=AVATAR_OPS[ao.opKey];const m=M();
+  const target=op.target?resolveOpTarget(ao.target):null;
+  // tag the live object with the kind hint the consequence fns expect
+  if(target){if(ao.target.kind==="s")target.kind="s";else target.kind="pawn";}
+  p.activeOp=null;                            // op is done regardless of outcome
   const expPenalty=Math.floor((m.exposure||0)/25);     // +0..4 to difficulty
-  const check=opsCheck(op.stat,op.diff+expPenalty);
+  // PERCEPTION: witnesses who can see you right now raise the difficulty. Computed at resolve, so a wisp
+  // who wandered into view mid-op still counts — long ops in busy places are genuinely riskier.
+  const wit=witnessPenalty(p,op);
+  const check=opsCheck(op.stat,op.diff+expPenalty+wit.pen);
+  ao._witCount=wit.count;ao._witPen=wit.pen;           // remembered for the post-act fallout
   m.intel-=op.cost;
   trainOpStat(op.stat);                                // practice regardless of outcome
-  // BANDED OUTCOME — the roll selects which story you get. Each band has its own trace + consequence.
   switch(check.band){
     case "critwin":
-      opSuccess(opKey,target,check,true);              // clean + a bonus, minimal trace
+      opSuccess(ao.opKey,target,check,true);
       m.exposure=clamp((m.exposure||0)+1,0,100);
-      return true;
+      break;
     case "success":
-      opSuccess(opKey,target,check,false);
+      opSuccess(ao.opKey,target,check,false);
       m.exposure=clamp((m.exposure||0)+4,0,100);
-      return true;
+      break;
     case "partial":
-      opPartial(opKey,target,check);                   // it half-works, but with a complication
-      m.exposure=clamp((m.exposure||0)+8,0,100);       // messy — more trace
-      return true;
+      opPartial(ao.opKey,target,check);
+      m.exposure=clamp((m.exposure||0)+8,0,100);
+      break;
     case "critfail":
-      opFailure(opKey,target,check,true);              // botched — the worst outcome
-      return false;
-    default: // "fail"
-      opFailure(opKey,target,check,false);
-      return false;
+      opFailure(ao.opKey,target,check,true);
+      break;
+    default:
+      opFailure(ao.opKey,target,check,false);
+      break;
   }
+  runWitnessCheck(p,op,check,ao._witCount,ao._witPen);   // who saw it → fallout
+  if(typeof syncHUD==="function")syncHUD();
+  if(typeof renderInspect==="function")renderInspect();
+}
+// post-act fallout from being seen. Generalizes witnessCrime: witnesses escalate awareness/heat; an
+// enforcer witness can mark you; a botched op in front of people is the worst case.
+function runWitnessCheck(p,op,check,witCount,witPen){
+  if(!witCount)return;                          // nobody saw — clean getaway, no extra fallout
+  const m=M();const botch=check.band==="critfail";const failed=check.band==="fail"||botch;
+  // awareness/heat rise with how many saw + how badly it went
+  const sev=(witCount*1.5)+(failed?6:0)+(botch?6:0);
+  if(REG())REG().awareness=clamp((REG().awareness||0)+sev,0,100);
+  ST.heat=Math.min(100,(ST.heat||0)+Math.round(sev*0.6));
+  // an enforcer who can see you marks you (pursuit fuel) — especially on a visible failure
+  const enf=ST.pawns.find(q=>(q.role==="enforcer"||q.regimeForce)&&canSee(q,p,op)>0);
+  if(enf){
+    tryEmote&&tryEmote(enf,"excl",120);
+    if(botch||failed||Math.random()<0.5){enf.grudgeTarget=p.id;relAdj(enf.id,p.id,-20);
+      log("\u2696 An enforcer saw you \u2014 you've been marked.","bad");}
+  } else if(botch){
+    log("\u26a0 You were seen botching it \u2014 word will spread.","warn");
+  }
+  // witnesses emote alarm; sympathizers may just look away
+  let alarmed=0;
+  for(const q of ST.pawns){if(canSee(q,p,op)>0&&(q.allegiance||0)<25&&!pawnGang(q)){if(alarmed<3){tryEmote&&tryEmote(q,alarmed===0?"excl":"shock",90);alarmed++;}}}
 }
 function opSuccess(opKey,target,check,crit){
   const m=M();
@@ -1230,6 +1571,8 @@ function opSuccess(opKey,target,check,crit){
         ST.heat=Math.min(100,(ST.heat||0)+8);
         m.support=clamp((m.support||0)+(crit?10:6),0,100);              // a visible blow rallies people
         REG().grip=Math.max(0,(REG().grip||60)-(crit?9:5));
+        // ── record the CRIME SCENE so the full loop (repair + investigation) can play out ──
+        registerSabotage(target,theAvatar(),crit);
         log("\u2715 You sabotaged the "+DEF[target.type].name+" — "+(util==="power"?"the grid's down.":"the block runs dry.")+(crit?" A flawless strike — the regime reels hard.":" The regime reels."),"good");
         banner(crit?"CLEAN SABOTAGE":"SABOTAGE","good");if(SFX&&SFX.alert)SFX.alert();
         chronicle("You struck the "+DEF[target.type].name+" — "+util+" sabotage.","\u2715");
@@ -1385,8 +1728,10 @@ function opPartial(opKey,target,check){
       break;}
     case "bribe":{
       if(target&&target.kind==="pawn"){
-        // they take it but don't fully commit — or worse, a principled wisp balks
-        if((target.pers.intg||50)>60){
+        // they take it but don't fully commit — or worse, a principled wisp balks. Reputation shifts the
+        // odds: a feared operative meets less resistance, a beloved one a touch more.
+        const receptive=bribeReceptivity(target);
+        if(receptive<0.4){
           if(theAvatar())relAdj(target.id,theAvatar().id,-10);
           REG().awareness=clamp((REG().awareness||0)+8,0,100);
           log("\u25c9 "+target.name+" refused your bribe and looked offended — that could get back to the wrong people.","warn");
@@ -1778,9 +2123,11 @@ function separatePawns(){
   for(let i=0;i<n;i++){
     const a=P[i];
     if(a.sleeping)continue;             // sleepers rest in place
+    if(a.activeOp)continue;             // an avatar performing an op stays anchored to its target
     for(let j=i+1;j<n;j++){
       const b=P[j];
       if(b.sleeping)continue;
+      if(b.activeOp)continue;           // don't push a performing avatar off its spot
       // socializing pairs are meant to stand together — don't shove them apart
       if(a.socWith===b.id||b.socWith===a.id)continue;
       const dx=b.px-a.px,dy=b.py-a.py;
@@ -2484,6 +2831,38 @@ function repairRobo(s){
 }
 // daily: robots decay slowly + drain upkeep; broken robots stop earning until repaired
 function roboTick(){
+  // ── UNIVERSAL ATTENDANTS — every building that should have someone running it gets one. A wisp is
+  // always preferred (they spend wages back into the block); but any building left with NO wisp worker
+  // gets a robot so it's never dark/unattended. Robots cost upkeep — coverage isn't free. ──
+  for(const s of ST.structs.values()){
+    if(s.bp||s.roboStaffed)continue;
+    const d=DEF[s.type];if(!d)continue;
+    // does this building type take an attendant? (anything that produces, refines, vends, or is a civic/
+    // utility post). Pure furniture/decor/walls don't.
+    const needsAttendant=d.prod||d.refine||d.vendor||d.utility||d.canteen||d.civic||d.security||d.roleHome;
+    if(!needsAttendant)continue;
+    // is a living wisp assigned + actually able to work it?
+    const hasWisp=ST.pawns.some(p=>p.assigned===K(s.x,s.y)&&p.hp>0&&!isChild(p));
+    if(hasWisp){s._unstaffedDays=0;continue;}
+    // role buildings (precinct/villa/fixer corner) wait for their role-holder — don't robot-staff those
+    if(d.roleHome){const holder=ST.pawns.find(p=>p.role===d.roleHome&&p.hp>0);if(holder)continue;}
+    // WISPS GET FIRST CLAIM — only robot-staff a building that's sat unstaffed a while (utilities are urgent
+    // so they get a robot faster). This leaves room for wisps to take the jobs they'd actually work.
+    s._unstaffedDays=(s._unstaffedDays||0)+1;
+    const isUtility=!!d.utility;
+    const patience=isUtility?1:3;     // utilities staffed next day; others get 3 days for a wisp to claim
+    if(s._unstaffedDays<patience)continue;
+    if(!isUtility&&(ST.income||0)<2)continue;   // can't afford a robot for non-essential right now
+    s.roboStaffed=true;s.roboHp=ROBO_MAXHP;s.autoStaffed=true;   // mark as auto (vs player-chosen)
+  }
+  // auto-staffed robots YIELD to wisps: if an unemployed wisp could work an auto-robot building, free it
+  {const idleWorkers=ST.pawns.filter(p=>!isChild(p)&&!p.isAvatar&&p.hp>0&&!p.assigned&&!p.role);
+   if(idleWorkers.length){for(const s of ST.structs.values()){
+     if(!s.roboStaffed||!s.autoStaffed)continue;const d=DEF[s.type];if(!d||d.utility)continue;  // keep utility bots
+     if(idleWorkers.length===0)break;
+     // hand this job back to a wisp
+     s.roboStaffed=false;s.roboHp=0;s.autoStaffed=false;idleWorkers.pop();
+   }}}
   let upkeep=0;
   for(const s of ST.structs.values()){
     if(!s.roboStaffed)continue;
@@ -2901,6 +3280,25 @@ function nearestStruct(p,fn){let best=null,bd=1e9;
     {const ho=homeOwnerAt(s.x,s.y);if(ho&&ho!==p&&!canEnterHome(p,ho))continue;}
     const d=DIST(p.px,p.py,s.x+.5,s.y+.5);if(d<bd){bd=d;best=s}}
   return best}
+// how many OTHER wisps are currently working at this station? (each station seats a limited number)
+function workersAt(s,excludeId){
+  let n=0;
+  for(const q of ST.pawns){if(q.id===excludeId)continue;
+    if(q.job&&q.job.t==="work"&&q.job.s===s)n++;}
+  return n;
+}
+// a station's seat capacity. Most are single-seat (one wisp per station — they occupy space now); a few
+// communal/large workplaces seat more. This is what makes stations UNIQUE-USE.
+function workCapacity(s){
+  const d=DEF[s.type];if(!d)return 1;
+  if(d.workSlots!=null)return d.workSlots;
+  // communal/large workplaces seat a few; default single-seat
+  if(s.type==="farmplot"||s.type==="loggingcamp"||s.type==="mineshaft"||s.type==="sporevat")return 3;
+  if(s.type==="cafeteria"||s.type==="market"||s.type==="bar")return 2;
+  return 1;
+}
+// is this station workable AND has a free seat for this pawn?
+function hasFreeWorkSlot(s,p){return workersAt(s,p.id)<workCapacity(s);}
 function mkEat(p){
   const home=(!p.homeless)&&homeFixture(p,"fridge");
   const src=home||nearestStruct(p,s=>(s.type==="fridge"||s.type==="counter"||s.type==="bar"||s.type==="cafeteria")&&!s.bp&&!isBroken(s));
@@ -2921,7 +3319,14 @@ function scoreJobs(p){
   const bpStr=nearestStruct(p,s=>(s.bp||s.decon)&&!s.res);
   const hyg=p.needs.hyg??80,fun=p.needs.fun??70,socN=p.needs.socN??70,soc=p.pers.soc;
   const showStr=(!p.homeless&&(homeFixture(p,"shower")||homeFixture(p,"toilet")))||nearestStruct(p,s=>(s.type==="shower"||s.type==="toilet")&&!s.bp&&!isBroken(s));
-  const funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar"||s.type==="park"||s.type==="arcade"||s.type==="couch")&&!s.bp&&!isBroken(s));
+  // leisure venue — biased by personality: sociable wisps gravitate to the bar, impulsive ones to the
+  // arcade (where they may gamble), calmer/curious ones to the park or home. Falls back to nearest fun spot.
+  let funStr=null;
+  {const soc=(p.pers&&p.pers.soc)||50,imp=(p.pers&&p.pers.imp)||50,cred=p.credits||0;
+   const wantBar=soc>55&&cred>=5, wantArcade=imp>55&&cred>=8;
+   if(wantBar)funStr=nearestStruct(p,s=>s.type==="bar"&&!s.bp&&!isBroken(s));
+   if(!funStr&&wantArcade)funStr=nearestStruct(p,s=>s.type==="arcade"&&!s.bp&&!isBroken(s));
+   if(!funStr)funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar"||s.type==="park"||s.type==="arcade"||s.type==="couch")&&!s.bp&&!isBroken(s));}
   let mate=null,_md=1e9;
   // after a conversation, a pawn won't immediately start another (prevents endless re-socialize loops)
   if(!(p.socCd&&ST.tick<p.socCd))
@@ -2936,10 +3341,16 @@ function scoreJobs(p){
     if(dd<_md){_md=dd;mate=q}}
   const cred=p.credits??40;
   const isWorkable=s=>!s.bp&&!s.roboStaffed&&(DEF[s.type].prod||DEF[s.type].refine||DEF[s.type].vendor);
+  // a workplace this pawn can actually take a seat at (unique-use: skip stations that are full)
+  const isOpenWork=s=>isWorkable(s)&&hasFreeWorkSlot(s,p);
   const assignedStr=p.assigned?ST.structs.get(p.assigned):null;
-  // prefer a workplace matching this pawn's vocation; fall back to nearest workable
-  const vocStr=ST.tick>(p.workCd||0)?nearestStruct(p,s=>isWorkable(s)&&fitsVocation(p,s.type)):null;
-  const workStr=ST.tick>(p.workCd||0)?((assignedStr&&!assignedStr.bp)?assignedStr:(vocStr||nearestStruct(p,isWorkable))):null;
+  // prefer a workplace matching this pawn's vocation; fall back to nearest workable — but only OPEN ones
+  const vocStr=ST.tick>(p.workCd||0)?nearestStruct(p,s=>isOpenWork(s)&&fitsVocation(p,s.type)):null;
+  const assignedOpen=assignedStr&&!assignedStr.bp&&hasFreeWorkSlot(assignedStr,p);
+  const workStr=ST.tick>(p.workCd||0)?(assignedOpen?assignedStr:(vocStr||nearestStruct(p,isOpenWork))):null;
+  // are there workplaces that exist but are all FULL? (drives the frustration reaction)
+  const wantsWork=ST.tick>(p.workCd||0)&&!workStr;
+  const allWorkFull=wantsWork&&[...ST.structs.values()].some(s=>isWorkable(s)&&fitsVocation(p,s.type));
   // hospital preferred over medbed (better care); fall back to either
   const medStr=nearestStruct(p,s=>(s.type==="hospital"||s.type==="medbed")&&!s.bp);
   // school: citizens with spare time and ambition train skills
@@ -3021,8 +3432,17 @@ function scoreJobs(p){
     // curiosity drives learning, but EASES when fun is critically low (a bored wisp wants fun, not a textbook)
     learn:(0.4+p.pers.amb/150+cur/150)*(fun<25?0.55:1)};                       // curiosity drives learning harder
   const sm={eat:1,sleep:1,build:1,idle:1,hygiene:1,recreate:1,socialize:1,work:1,treat:1,substance:1,crime:1,steal:1,buygear:1,learn:1,visit:1,burgle:1,homicide:1};
+  // DESPERATION (Wave E): a poor, sick, failing wisp is pushed toward survival crime — the wealth/health
+  // divide has teeth. their desperation makes theft/robbery far more likely than their nature alone would.
+  if(p.desperate&&ST.tick<p.desperate){sm.crime*=2.4;sm.steal*=2.4;sm.burgle*=1.8;sm.treat*=1.5;}
   if(p.sched){const S=p.sched,hr=hourN();
-    sm.sleep*=inWin(hr,S.sleepAt,S.wake)?1.9:(rest<18?0.7:0.12);
+    // STRONG night rhythm: in their sleep window, the pull to sleep is dominant (so most wisps are home
+    // asleep at night and OUT during the day). Owls/enforcer have later windows → night is the operative's
+    // advantage but not empty. Outside the window, sleep only wins if genuinely exhausted.
+    sm.sleep*=inWin(hr,S.sleepAt,S.wake)?4.5:(rest<15?0.8:0.05);
+    // and during waking daytime hours, suppress sleep hard so they stay out and active
+    const deepNight=lightLevel(hr)>0.5;       // the dark core of night
+    if(!inWin(hr,S.sleepAt,S.wake)&&!deepNight&&rest>30)sm.sleep*=0.3;
     sm.work*=inWin(hr,S.workStart,S.workEnd)?1.6:0.6;
     sm.eat*=(nearWin(hr,S.bf,0.9)||nearWin(hr,S.lunch,0.8)||nearWin(hr,S.dinner,1.0))?1.7:0.7;
     if(nearWin(hr,S.wake+0.6,1.0))sm.hygiene*=1.7;
@@ -3043,6 +3463,20 @@ function scoreJobs(p){
   }else if(night){sm.sleep*=1.4}
   if(inj){sm.eat*=1.3;sm.sleep*=1.3}
   const bias=p.bias;
+  // FRUSTRATION — a wisp who wants to work but finds every station occupied reacts (and it sours their
+  // mood). Stations are unique-use now, so a crowded shift floor breeds real friction. Throttled per-wisp.
+  if(allWorkFull&&!isChild(p)&&ST.tick>(p.workFrustCd||0)){
+    p.workFrustCd=ST.tick+RI(180,360);
+    const r=Math.random();
+    const emo=r<0.4?"anger":r<0.7?"sweat":r<0.85?"gross":"cry";   // frustration / discomfort / disgust / dejection
+    tryEmote(p,emo,90);
+    p.stress=clamp((p.stress||0)+RI(3,7),0,100);
+    p.mood=clamp((p.mood||50)-RI(2,5),0,100);
+    if((p.allegiance||0)>-100)p.allegiance=clamp((p.allegiance||0)-1,-100,100); // a daily grind grievance
+    // occasionally voice it
+    if(r<0.25&&typeof remember==="function")remember(p,"no open station again — sick of waiting to work");
+    p.workCd=ST.tick+RI(120,260);   // back off trying for a bit (don't spam)
+  }
   const acts=[
     {k:"eat",    mk:()=>mkEat(p)},
     {k:"sleep",  mk:()=>mkSleep(p)},
@@ -3332,6 +3766,47 @@ function crimeTick(){
   }
 }
 // SNITCHING: a witness to a crime may report the perp, spiking heat on them
+/* ═══════════ PHASE 2 — PERCEPTION. canSee(observer, av, op) answers "can this NPC perceive the avatar
+   acting right now," composing the witnessCrime model with spatial nuance. It's the basis for both the
+   live difficulty penalty and the post-act witness fallout. The skill being tested is positioning:
+   acting where/when no one can see you. Darkness, distance, attention-state, and allegiance all matter. */
+function canSee(obs,av,op){
+  if(!obs||!av||obs===av||obs.id===av.id)return 0;
+  if(obs.hp<=0||obs.sleeping)return 0;          // the dead and the sleeping see nothing
+  if(isChild(obs))return 0;                      // children aren't witnesses that matter
+  const d=DIST(obs.px,obs.py,av.px,av.py);
+  // base sight radius — loud ops are noticeable from farther; subtle ops only up close
+  let sight=op?(op.sightRange||7):7;
+  // DARKNESS shrinks sight (Phase 4 leans on this; wired now so night already matters a little)
+  const dark=lightLevel(hourN())>0.3;
+  if(dark)sight*=0.62;                            // after dark you can get much closer unseen
+  // a lamp-lit tile near the observer restores some range (light pools expose you)
+  if(dark&&typeof nearLamp==="function"&&nearLamp(av.px,av.py))sight*=1.4;
+  if(d>sight)return 0;                            // out of perception range
+  // ATTENTION — a busy NPC is a worse witness than an idle one looking around
+  let attn=1;
+  if(obs.job&&obs.job.t==="work")attn=0.6;        // heads-down working
+  else if(obs.socWith)attn=0.7;                   // absorbed in conversation
+  else if(obs.job&&obs.job.t==="sleep")attn=0.2;
+  // a closer observer perceives more reliably (linear falloff inside the radius)
+  const prox=1-(d/sight)*0.5;                     // 1.0 at point-blank → 0.5 at the edge
+  // WHO is watching weights the threat: an enforcer/loyalist is a dangerous witness; a sympathizer less so
+  let weight=1;
+  if(obs.role==="enforcer"||obs.regimeForce)weight=2.6;
+  else if((obs.allegiance||0)<-25)weight=1.8;     // hostile loyalist
+  else if((obs.allegiance||0)>30)weight=0.5;      // sympathizer may look the other way
+  if(pawnGang(obs))weight=0.15;                    // gang never really reports
+  return attn*prox*weight;                         // >0 means "can see," magnitude = how damning
+}
+// sum the weighted witnesses who can currently see the avatar performing op → added difficulty.
+function witnessPenalty(av,op){
+  if(!av)return 0;
+  let pen=0,n=0;
+  for(const q of ST.pawns){const w=canSee(q,av,op);if(w>0){pen+=w;n++;}}
+  // scale by the op's loudness (a quiet bribe is punished less for being seen than a loud assassination)
+  const k=op&&op.witnessK!=null?op.witnessK:1;
+  return {pen:Math.round(pen*k*1.6), count:n};
+}
 function witnessCrime(perp,x,y){
   // THE ENFORCER — if a loyal enforcer is near the crime, they reliably report it (it's their job).
   const enf=ST.pawns.find(p=>p.role==="enforcer"&&p.hp>0&&!p.sleeping&&(p.allegiance||0)<10&&DIST(p.px,p.py,x,y)<14);
@@ -3411,8 +3886,19 @@ function pawnTick(p){
   if(p.cd>0)p.cd--;
   if(!p.sleeping&&!p.sick&&p.hp<100&&p.needs.food>30&&ST.tick%10===0&&!foeNear(p,10))
     p.hp=Math.min(100,p.hp+0.1);
-  if(ST.procgen!==false&&!p.sick&&ST.tick%60===0&&Math.random()<0.002+(p.needs.hyg<35?(35-p.needs.hyg)/35*0.12:0)){
-    p.sick=true;addMod(p,"sick","Infection",-10,TPD);float(p.px,p.py,"INFECTED","#ff4757");emote(p,"gross");log(p.name+" caught an infection.","warn")}
+  // ── WAVE E — INFECTION STRATIFIED BY WEALTH ──
+  // the better-off afford clean living + constant care: infected less, recover faster. the poor live in
+  // worse conditions and can't access care: infected more, decay harder, recover slower. it's a divide
+  // that drives desperation.
+  const wealth=(p.credits||0);
+  const poor=wealth<15, comfortable=wealth>60;
+  if(ST.procgen!==false&&!p.sick&&ST.tick%60===0){
+    let infectChance=0.002+(p.needs.hyg<35?(35-p.needs.hyg)/35*0.12:0);
+    if(poor)infectChance*=1.8;          // worse conditions, more exposure
+    else if(comfortable)infectChance*=0.45;   // clean living, preventive care
+    if(Math.random()<infectChance){
+      p.sick=true;addMod(p,"sick","Infection",-10,TPD);float(p.px,p.py,"INFECTED","#ff4757");emote(p,"gross");log(p.name+" caught an infection.","warn")}
+  }
   if(p.sick&&ST.tick%60===0){  // contagion: spread to nearby citizens
     const spreadRate=0.006*(p.needs.hyg<30?3:1);  // dirty carrier spreads 3x
     for(const q of ST.pawns){if(q===p||q.sick)continue;
@@ -3420,22 +3906,31 @@ function pawnTick(p){
       // bar and clinic are social hotspots — double spread rate there
       const atHotspot=nearestStruct(p,s=>(s.type==="bar"||s.type==="medbed")&&!s.bp&&
         DIST(p.px,p.py,s.x+.5,s.y+.5)<3);
-      if(Math.random()<spreadRate*(atHotspot?2:1)){
+      // the comfortable resist catching it (better baseline health / quicker private care)
+      const qResist=(q.credits||0)>60?0.5:1;
+      if(Math.random()<spreadRate*(atHotspot?2:1)*qResist){
         q.sick=true;q.sickSource=p.id;
         addMod(q,"sick","Infection",-10,TPD);float(q.px,q.py,"INFECTED","#ff4757");
         remember(q,"caught something — probably from "+p.name);
         log(q.name+" caught an infection from "+p.name+".","warn")}}}
   if(p.sick){
-    if(ST.tick%60===0)p.hp-=1;   // slower decay — bigger map means longer trips to care
+    // poor wisps without access to care decay faster; the comfortable have constant care that slows it
+    if(ST.tick%60===0){let decay=1;if(poor)decay=1.6;else if(comfortable)decay=0.6;p.hp-=decay;}
     if(p.hp<=0){killPawn(p,"died of an untreated infection");return}
-    // recovery: better hygiene/health speeds it, but even a rough sleeper can eventually shake it off —
-    // so being sick isn't a near-permanent trap (sickness blocks work, which suppresses the hygiene that
-    // recovery used to strictly require — that was a chronic-illness spiral).
+    // recovery: better hygiene/health/WEALTH speeds it (the comfortable can afford constant treatment)
     if(p.hp>35&&ST.tick%80===0){
       const clean=(p.needs.hyg||50)>50, healthy=p.hp>55;
-      const recoverChance=clean&&healthy?0.14:(p.needs.hyg||50)>30?0.07:0.035;
+      let recoverChance=clean&&healthy?0.14:(p.needs.hyg||50)>30?0.07:0.035;
+      if(comfortable)recoverChance*=1.6;      // constant care
+      else if(poor)recoverChance*=0.6;        // no access — it lingers
       if(Math.random()<recoverChance){p.sick=false;p.quarantine=false;log(p.name+" shook off the infection.","good");}
-    }}
+    }
+    // DESPERATION — a poor, sick wisp whose health is failing is pushed toward desperate measures.
+    // mark them so chooseJob's crime/steal weights spike (the divide drives them to act out).
+    if(poor&&p.hp<45){p.desperate=ST.tick+400;
+      if(ST.tick%120===0){emotionalReact(p,"distress",0.5,{memory:"sick, broke, and no one's helping — something has to give"});}
+    }
+  }
   if(ST.tick%100===0){
     let sp=-3;
     if(p.sick)sp+=3;
@@ -3546,9 +4041,38 @@ function pawnTick(p){
     }
   } else { p._stuckT=0; }
 
+  // EMBODIED OPS: an in-flight operation supersedes normal AI. Must run BEFORE the chooseJob line below,
+  // because a null job would otherwise make the AI immediately grab a new one (interrupting the op).
+  if(p.isAvatar&&p.activeOp){advanceActiveOp(p);return;}
+  // MANUAL MODE: when the player has taken direct control, the avatar doesn't pick its own busywork —
+  // it waits for orders. It STILL handles critical survival (eating when starving, sleeping when
+  // exhausted) so neglect can't accidentally kill your operative; everything else is the player's call.
+  if(p.isAvatar&&ST.avatarManual&&!p.job&&!p.cmd){
+    const starving=(p.needs&&p.needs.food!=null&&p.needs.food<18);
+    const exhausted=(p.needs&&p.needs.rest!=null&&p.needs.rest<12);
+    if(!starving&&!exhausted)return;                // idle, awaiting command (survival still overrides)
+  }
+  // a wisp actively repairing sabotage stays on the job — don't let routine AI pull them away
+  if(p._repairing){const rs=ST.structs.get(p._repairing);
+    if(rs&&rs.sabotaged>ST.tick){
+      if(DIST(p.px,p.py,rs.x,rs.y)<2){p.job=null;return;}            // on site: hold, sabotageTick drives repair
+      if(!p.job||p.job.t!=="goto"){p.job={t:"goto",x:rs.x,y:rs.y,adj:1};}   // still walking there
+    } else {p._repairing=null;}   // station fixed or gone
+  }
+  // the enforcer working a sabotage scene stays on task until the investigation resolves
+  if(p._investigating){const cs=ST.structs.get(p._investigating);
+    if(cs&&cs.sabState&&cs.sabState.investStage<3){
+      if(DIST(p.px,p.py,cs.x,cs.y)<3){p.job=null;return;}            // on scene: hold for questioning
+      if(!p.job||p.job.t!=="goto"){p.job={t:"goto",x:cs.x,y:cs.y,adj:1};}
+    } else {p._investigating=null;}
+  }
   if(!p.job)p.job=chooseJob(p);
   const j=p.job;if(!j)return;
   switch(j.t){
+    case "goto":{   // player-issued move order (avatar walks to a clicked tile, then resumes autonomy)
+      const r=gotoCell(p,j.x,j.y,j.adj||0);
+      if(r==="arr"||r==="fail"){p.job=null;}
+      break;}
     case "idle":{if(ST.tick>j.until){p.job=null;break}
       // admiring art: an idling wisp near a working art piece pauses to appreciate it —
       // a brief mood lift, more for the affluent (status). Light, no trekking across town.
@@ -3633,7 +4157,23 @@ function pawnTick(p){
           // premium entertainment — small fee feeds district income, big fun + stress relief
           if((p.credits||0)>=4){p.credits-=4;ST.income=(ST.income||0)+3;}
           p.stress=Math.max(0,(p.stress||0)-18);
-          addMod(p,"arcade","Lost in the arcade",6,TPD*.5)}
+          addMod(p,"arcade","Lost in the arcade",6,TPD*.5);
+          // GAMBLING — an impulsive wisp with credits to spare bets on the machines. The house edge means
+          // they lose more often than win; a big loss stings and can push a marginal wisp toward trouble.
+          const imp=(p.pers&&p.pers.imp)||50;
+          if(imp>52&&(p.credits||0)>=12&&Math.random()<(imp-50)/90){
+            const stake=clamp(RI(6,Math.min(30,Math.floor((p.credits||0)*0.4))),6,30);
+            const win=Math.random()<0.38;   // house edge — you lose more than you win
+            if(win){const pot=Math.round(stake*RI(15,28)/10);p.credits+=pot;
+              float(p.px,p.py,"WON +"+pot+"c","#5cff9e");emotionalReact(p,"delight",0.55,{memory:"hit a jackpot at the arcade"});
+            } else {p.credits=Math.max(0,(p.credits||0)-stake);ST.income=(ST.income||0)+Math.round(stake*0.5);
+              float(p.px,p.py,"LOST -"+stake+"c","#ff6b6b");
+              const bigLoss=stake>(p.credits||0)*0.5||(p.credits||0)<8;
+              emotionalReact(p,bigLoss?"distress":"disgust",bigLoss?0.55:0.35,{memory:bigLoss?"lost more than I could afford at the arcade — chasing it now":null});
+              // a wisp who gambled themselves near-broke is now more recruitable/desperate
+              if((p.credits||0)<8)p.disillusion=clamp((p.disillusion||0)+RI(2,5),0,100);
+            }
+          }}
         else if(s.type==="couch"){
           // relaxing at home: good stress relief, scaled by the couch's quality;
           // a SOCIAL spot — if someone else is on/near the couch, they bond.
@@ -3668,6 +4208,12 @@ function pawnTick(p){
         j.prog++;
         // complete on job progress OR the hard time cap (whichever first) — guarantees release
         if(j.prog>=40||elapsed>=70){p.needs.socN=100;o.needs.socN=Math.min(100,(o.needs.socN||70)+25);relAdj(p.id,o.id,3.5);
+          // EMOTIONAL PAYOFF — a good conversation lifts both, more so between wisps who like each other
+          const bond=relGet(p.id,o.id);
+          const lift=clamp(0.35+bond/160,0.2,0.85);   // friends get a bigger boost
+          const flavour=bond>45?"connected":bond>15?"joy":"amused";
+          emotionalReact(p,flavour,lift,{toward:o.id});
+          emotionalReact(o,flavour,lift,{toward:p.id});
           p.socWith=null;o.socWith=null;p.socUntil=0;o.socUntil=0;p.socHoldStart=null;o.socHoldStart=null;
           // cooldowns so they don't immediately re-initiate with each other (was an endless-loop bug)
           p.socCd=ST.tick+300;o.socCd=ST.tick+300;
@@ -3812,7 +4358,8 @@ function pawnTick(p){
           remember(p,"robbed "+v.name+" for "+take+" creds in the sprawl");
           float(p.px,p.py,"+"+take+"c ROBBED","#ff4757");emote(p,"excl");onlookersReact(p.px,p.py,"shock",7);
           v.stress=Math.min(100,(v.stress||0)+25);addMod(v,"robbed","Just got robbed",-12,TPD*.5);
-          remember(v,"got robbed by "+p.name+" — lost "+take+" creds, still shaking");
+          // the VICTIM visibly reacts — fear/distress, not a silent stat bump
+          emotionalReact(v,"distress",0.8,{toward:p.id,relDelta:-30,float:"ROBBED!",memory:"got robbed by "+p.name+" — lost "+take+" creds, still shaking",aiEvent:"you were just robbed at knifepoint and lost "+take+" credits"});
           relAdj(p.id,v.id,-50);
           for(const w of ST.pawns){if(w===p||w===v)continue;
             if(DIST(w.px,w.py,p.px,p.py)<8){relAdj(w.id,p.id,-12);remember(w,"watched "+p.name+" rob "+v.name)}}
@@ -3899,9 +4446,9 @@ function pawnTick(p){
             v.stress=Math.min(100,(v.stress||0)+25);
             relAdj(p.id,v.id,-55);ST.heat=(ST.heat||0)+12;
             if(!v.grudgeTarget)v.grudgeTarget=p.id;     // burglary breeds a grudge
-            float(p.px,p.py,"BURGLED!","#ff2d95");
             addMod(v,"burgled","Someone broke into my home",-14,TPD*.7);
-            remember(v,p.name+" broke into my home and took "+take+"c");
+            // the victim is visibly shaken — their home was violated
+            emotionalReact(v,"fear",0.85,{toward:p.id,relDelta:-35,float:"BURGLED!",memory:p.name+" broke into my home and took "+take+"c — I don't feel safe"});
             remember(p,"got made breaking into "+v.name+"'s place");
             log(p.name+" broke into "+v.name+"'s home — and was seen.","warn");
             chronicle&&chronicle(p.name+" burgled "+v.name+"'s home","crime");
@@ -4496,6 +5043,7 @@ function tick(){ST.tick++;
   // (roguelike vat-protein production + beacon-extraction win removed — the city has neither)
   for(let i=ST.pawns.length-1;i>=0;i--)pawnTick(ST.pawns[i]);
   separatePawns();   // soft personal-space: keep wisps from stacking on top of each other
+  sabotageTick();    // drive any active sabotage's lifecycle (reaction → repair → investigation)
   for(let i=ST.floats.length-1;i>=0;i--)if(--ST.floats[i].ttl<=0)ST.floats.splice(i,1);
   if(ST.says)for(let i=ST.says.length-1;i>=0;i--)if(--ST.says[i].ttl<=0)ST.says.splice(i,1);
   tickEmotes();
@@ -4654,17 +5202,42 @@ function tick(){ST.tick++;
        if(!hasPower)addMod(q,"nopower","No power on the block",-4,TPD+50);
        if(!hasWater){addMod(q,"nowater","No clean water",-3,TPD+50);if(ST.tick%TPD===0)q.needs.hyg=Math.max(8,(q.needs.hyg||50)-4);}}}
     for(const q of ST.pawns){if(isChild(q))continue;
-      // SUBSISTENCE: everyone scrapes a little from odd jobs/scavenging/hustling, so the unemployed
-      // aren't doomed to a death spiral. Employed wisps still earn more from their shifts on top.
-      const subsist=q.homeless?6:10;
-      q.credits=(q.credits||0)+subsist-(ST.crisis?16:11);
-      if(q.credits<0&&!q.homeless){
-        q.rentDebt=(q.rentDebt||0)+1;
-        if(q.rentDebt===2)log(q.name+" is falling behind on rent.","warn");
-        if(q.rentDebt>=4){q.homeless=true;q.rentDebt=0;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad");loseProperty(q,"couldn't make rent — got evicted, sleeping rough now and it stings to lose my place");q.home=null;}
+      // ═══ ECONOMIC LOOP — daily pay, accumulating weekly rent, personality-driven leisure ═══
+      // SUBSISTENCE floor so the unemployed aren't doomed (odd jobs/scavenging). Shift wages are paid
+      // live on work completion elsewhere; this is the daily reconciliation.
+      const subsist=q.homeless?6:9;
+      q.credits=(q.credits||0)+subsist;
+      // RENT accrues DAILY but is only DUE weekly (a buffer — one bad day isn't eviction). Rent scales
+      // with home quality: a nicer place costs more.
+      if(!q.homeless&&q.home){
+        const hr=homeRoom&&homeRoom(q);const q5=hr?roomQuality(hr):3;
+        const dailyRent=clamp(6+Math.round(q5*0.8),5,16);
+        q.rentAccrued=(q.rentAccrued||0)+dailyRent;
       }
-      else if(q.credits>=0){if(q.rentDebt)q.rentDebt=0;
-        if(q.homeless){q.homeless=false;log(q.name+" cleared their back rent.","good");}}}
+      // weekly rent DAY (every 7 in-game days) — settle the accrued balance
+      const dayNum=Math.floor(ST.tick/TPD);
+      if(!q.homeless&&q.home&&dayNum>0&&dayNum%7===0&&q.rentAccrued>0&&(q._lastRentDay||-1)!==dayNum){
+        q._lastRentDay=dayNum;
+        const due=q.rentAccrued;q.rentAccrued=0;
+        if((q.credits||0)>=due){
+          q.credits-=due;if(q.rentDebt)q.rentDebt=0;
+          if(q.homeless){q.homeless=false;}
+          // payday-survivors who comfortably made rent feel a flicker of security
+          if((q.credits||0)>40&&Math.random()<0.3)emotionalReact(q,"relief",0.35);
+        } else {
+          // couldn't cover it — partial payment, the rest becomes debt toward eviction
+          const shortfall=due-(q.credits||0);q.credits=0;
+          q.rentDebt=(q.rentDebt||0)+1;
+          if(q.rentDebt===1)log(q.name+" missed rent this week — falling behind.","warn");
+          if(Math.random()<0.5)emotionalReact(q,"distress",0.45,{memory:"couldn't make rent — the eviction notice is coming"});
+          if(q.rentDebt>=3){q.homeless=true;q.rentDebt=0;q.rentAccrued=0;float(q.px,q.py,"EVICTED","#ff9f2d");log(q.name+" couldn't make rent — evicted.","bad");loseProperty(q,"couldn't make rent — got evicted, sleeping rough now and it stings to lose my place");q.home=null;emotionalReact(q,"grief",0.7,{aiEvent:"you were just evicted from your home and have nowhere to sleep"});}
+        }
+      }
+      // crisis still bites everyone a little
+      if(ST.crisis)q.credits=Math.max(0,(q.credits||0)-5);
+    }
+    // LEISURE SPENDING is personality-driven and happens via chooseJob (recreate/bar/arcade) during the day,
+    // not in this daily block — see the leisure weights in chooseJob (sociable → bar, impulsive → arcade).
     // soft collapse: track debt days
     if(ST.income<0){ST.debtDays=(ST.debtDays||0)+1;
       if(ST.debtDays===4&&!ST.crisis){ST.crisis=true;
@@ -5667,6 +6240,34 @@ function onlookersReact(x,y,kind,radius){
     tryEmote(q,kind,90);
   }
 }
+// ═══ WAVE C — EMOTIONAL REACTIVITY. A single place that makes a wisp's feelings VISIBLE and proportional
+// to what just happened: mood + stress shift, a fitting emote, and (for strong events) a lasting memory and
+// a relationship colouring. Interactions used to change stats silently; now they read on the wisp's face. ═══
+// kind drives the emotional flavour; intensity (0..1) scales the magnitude.
+function emotionalReact(p,kind,intensity,opts){
+  if(!p||p.hp<=0||isChild(p)&&!(opts&&opts.allowChild))return;
+  intensity=clamp(intensity==null?0.5:intensity,0,1);opts=opts||{};
+  // emotional profiles: [emote, moodDelta, stressDelta] at full intensity
+  const PROFILES={
+    joy:["happy",  +14, -10], delight:["heart",+18,-12], amused:["party", +12,-6],
+    connected:["love",+16,-9], inspired:["idea",+10,-5],  proud:["smug",  +12,-4],
+    anger:["anger", -8, +16],  fear:["shock",  -10,+20],  distress:["cry",-16,+22],
+    disgust:["gross",-6, +8],  shame:["sweat", -8, +10],  grief:["cry",   -22,+14],
+    betrayed:["anger",-14,+18],unsettled:["ques",-4,+6],  relief:["happy",+10,-14],
+  };
+  const prof=PROFILES[kind]||PROFILES.unsettled;
+  tryEmote(p,opts.emote||prof[0],opts.gap||80);
+  p.mood=clamp((p.mood||50)+prof[1]*intensity,0,100);
+  p.stress=clamp((p.stress||0)+prof[2]*intensity,0,100);
+  // strong moments stick as a memory
+  if(opts.memory&&intensity>0.45&&typeof remember==="function")remember(p,opts.memory);
+  // and a really strong, visible moment can make them SPEAK an AI-generated reaction (if AI is enabled)
+  if(opts.aiEvent&&intensity>0.5&&typeof aiReactLine==="function")aiReactLine(p,opts.aiEvent);
+  // and can colour a relationship with whoever caused it
+  if(opts.toward!=null&&opts.relDelta)relAdj(p.id,opts.toward,opts.relDelta);
+  // a float for the most visceral ones (robbed, attacked, overjoyed)
+  if(opts.float&&typeof float==="function")float(p.px,p.py,opts.float,prof[1]>=0?"#5cff9e":"#ff6b6b");
+}
 // draw NPC speech bubbles — a small rounded bubble above the speaker with their line, fading in/out.
 function roundRectPath(x,y,w,h,r){
   ctx.beginPath();
@@ -5915,6 +6516,14 @@ function drawPawn(p){
     ctx.strokeStyle="#22ddff";ctx.globalAlpha=pul;ctx.lineWidth=1.6;
     ctx.beginPath();ctx.arc(X,Y,11,0,7);ctx.stroke();ctx.globalAlpha=1;
     ctx.fillStyle="#22ddff";ctx.beginPath();ctx.moveTo(X,Y-13);ctx.lineTo(X-4,Y-18);ctx.lineTo(X+4,Y-18);ctx.closePath();ctx.fill();
+    // OP IN FLIGHT: a filling arc shows the deed performing, tinted by op type
+    if(p.activeOp){const ao=p.activeOp;const frac=Math.max(0,Math.min(1,ao.prog/ao.duration));
+      const oc=ao.anim==="strike"?"#ff4757":ao.anim==="confer"?"#ffd24a":ao.anim==="plant"?"#ff8c42":ao.anim==="lift"?"#5cff9e":ao.anim==="rally"?"#22ddff":"#b06fff";
+      ctx.strokeStyle=oc;ctx.lineWidth=2.4;ctx.globalAlpha=0.95;
+      ctx.beginPath();ctx.arc(X,Y,15,-Math.PI/2,-Math.PI/2+frac*Math.PI*2);ctx.stroke();ctx.globalAlpha=1;
+      // a faint full-circle track behind it
+      ctx.strokeStyle=oc;ctx.globalAlpha=0.18;ctx.lineWidth=2.4;ctx.beginPath();ctx.arc(X,Y,15,0,7);ctx.stroke();ctx.globalAlpha=1;
+    }
   }}
 function toolColor(){if(!TOOL)return "#00e5ff";
   return TOOL.k==="salv"?"#ff9f2d":(TOOL.k==="decon"||TOOL.k==="cancel")?"#ff4757":"#00e5ff"}
@@ -6263,6 +6872,17 @@ function render(){
   else{const k=(hr-19)/2;tintR=8+50*k;tintG=10+10*k;tintB=16+6*k;}  // dusk warm-orange
   const vg=vignetteGradient(tintR|0,tintG|0,tintB|0);
   ctx.fillStyle=vg;ctx.fillRect(0,0,VW,VH);
+  // ── DAY/NIGHT VISUAL CYCLE — tint the whole district by the time of day (tied to the same lightLevel the
+  // wisps' schedules use, so the world visibly darkens when they go home to sleep and brightens by day).
+  {const ll=lightLevel(hourN());   // 0 in daylight → ~0.78 deep night
+   if(ll>0.01){
+     // cool blue night wash; deepens toward the small hours. A touch of magenta at the edges = neon dusk.
+     const a=Math.min(0.6,ll*0.72);
+     ctx.fillStyle="rgba(6,12,30,"+a.toFixed(3)+")";ctx.fillRect(0,0,VW,VH);
+     // dusk/dawn warmth: when light is changing (not full night), a faint warm band
+     const hr=hourN();
+     if((hr>17&&hr<20)||(hr>5&&hr<7.5)){ctx.fillStyle="rgba(60,20,50,0.06)";ctx.fillRect(0,0,VW,VH);}
+   }}
   // blackout: drop the district into darkness with a faint flicker
   if(ST.blackoutUntil&&ST.tick<ST.blackoutUntil){
     const flick=0.62+0.06*Math.sin(performance.now()*0.02)+(Math.random()<0.03?0.1:0);
@@ -6439,32 +7059,44 @@ function paintTo(c){if(!PT.lastC){PT.lastC=c;paintCell(c.x,c.y);return}
 function clickSelect(c){const p=pawnAt(c.wx,c.wy);
   // AVATAR OP TARGETING: if we're picking a target for sabotage/frame, resolve it here
   if(ST.opTargeting){
-    const opKey=ST.opTargetingOp;const need=ST.opTargeting;
+    const opKey=ST.opTargetingOp;const need=ST.opTargeting;const opDef=AVATAR_OPS[opKey];
     if(need==="utility"){
       const s=structAt(c.x,c.y);
       if(s&&DEF[s.type]&&DEF[s.type].utility&&!s.bp){
-        s.kind="s";runAvatarOp(opKey,s);ST.opTargeting=null;ST.opTargetingOp=null;
+        if(!inOpRange(theAvatar(),opDef,s)){flashMsg&&flashMsg("Too far \u2014 walk your operative next to the building, then pick it again.");return;}
+        s.kind="s";if(runAvatarOp(opKey,s)){ST.opTargeting=null;ST.opTargetingOp=null;}
         ST.sel=ST.sel&&ST.sel[0]&&ST.sel[0].isAvatar?ST.sel:[theAvatar()].filter(Boolean);
         renderInspect();syncHUD();return;
       }else{flashMsg&&flashMsg("Not a power/water building — pick a utility, or tap the op again to cancel.");return;}
     }else if(need==="regime"){
       if(p&&!p.isAvatar&&!isChild(p)&&(p.regimeForce||p.informant||(p.allegiance||0)<-20)){
-        p.kind="pawn";runAvatarOp(opKey,p);ST.opTargeting=null;ST.opTargetingOp=null;
+        if(!inOpRange(theAvatar(),opDef,p)){flashMsg&&flashMsg("Too far \u2014 move your operative close to them, then pick them again.");return;}
+        p.kind="pawn";if(runAvatarOp(opKey,p)){ST.opTargeting=null;ST.opTargetingOp=null;}
         ST.sel=[theAvatar()].filter(Boolean);renderInspect();syncHUD();return;
       }else{flashMsg&&flashMsg("Not a regime asset — pick a loyalist/enforcer/informant, or tap the op again to cancel.");return;}
     }else if(need==="anyPawn"){
       if(p&&!p.isAvatar&&!isChild(p)&&p.hp>0){
         // blackmail requires a KNOWN secret on this target
-        if(AVATAR_OPS[opKey]&&AVATAR_OPS[opKey].needsSecret&&!knownSecret(p)){
+        if(opDef&&opDef.needsSecret&&!knownSecret(p)){
           flashMsg&&flashMsg("You have no dirt on "+p.name.split(" ")[0]+" — surveil them first to find their secret.");return;
         }
-        p.kind="pawn";runAvatarOp(opKey,p);ST.opTargeting=null;ST.opTargetingOp=null;
+        if(!inOpRange(theAvatar(),opDef,p)){flashMsg&&flashMsg("Too far \u2014 move your operative close to them, then pick them again.");return;}
+        p.kind="pawn";if(runAvatarOp(opKey,p)){ST.opTargeting=null;ST.opTargetingOp=null;}
         ST.sel=[theAvatar()].filter(Boolean);renderInspect();syncHUD();return;
       }else{flashMsg&&flashMsg("Pick a wisp (not a child), or tap the op again to cancel.");return;}
     }
   }
   if(p){ST.sel=[p];renderInspect();return}
   const s=structAt(c.x,c.y);if(s){ST.sel=[s];renderInspect();return}
+  // AVATAR MOVE-ON-CLICK: if your operative is selected and you click an empty walkable tile, walk it there.
+  // If an op is in flight, moving ABORTS it (a deliberate bail) — you can break off if the heat changes.
+  const selA=ST.sel&&ST.sel[0];
+  if(selA&&selA.isAvatar&&colCost(c.x,c.y)>=0){
+    if(selA.activeOp){selA.activeOp=null;flashMsg&&flashMsg("Operation abandoned.");}
+    selA.job={t:"goto",x:c.x,y:c.y};selA.cmd=null;
+    if(typeof SFX!=="undefined"&&SFX.ui)SFX.ui();
+    return;
+  }
   ST.sel=[];renderInspect()}
 function marqueeSelect(m){
   const ax=Math.min(m.x0,m.x1),bx=Math.max(m.x0,m.x1);
@@ -6479,6 +7111,14 @@ function tapAction(c){
   if(p){ST.sel=[p];renderInspect();syncHUD();return}
   const s=structAt(c.x,c.y);
   if(s){ST.sel=[s];renderInspect();return}
+  // AVATAR MOVE-ON-CLICK: operative selected + empty walkable tile -> walk there (aborts an op if in flight)
+  const selA=ST.sel&&ST.sel[0];
+  if(selA&&selA.isAvatar&&colCost(c.x,c.y)>=0){
+    if(selA.activeOp){selA.activeOp=null;flashMsg&&flashMsg("Operation abandoned.");}
+    selA.job={t:"goto",x:c.x,y:c.y};selA.cmd=null;
+    if(typeof SFX!=="undefined"&&SFX.ui)SFX.ui();
+    return;
+  }
   ST.sel=[];renderInspect()}
 
 
@@ -6534,6 +7174,8 @@ window.addEventListener("keydown",e=>{const k=e.key.toLowerCase();
   if($("modal").classList.contains("open")){
     if(k==="escape"&&ST.phase==="run")hideModal();return}
   if(ST.phase!=="run")return;
+  // Esc closes the inspect/operative panel if it's showing
+  if(k==="escape"&&ST.sel&&ST.sel.length){ST.sel=[];$("inspect").style.display="none";SFX.ui&&SFX.ui();return;}
   if(k===" "){togglePause();e.preventDefault()}
   else if(k==="1")setSpeed(1);else if(k==="2")setSpeed(2);else if(k==="3")setSpeed(3);
   else if(k==="j")openOverlay("diary");
@@ -7321,7 +7963,49 @@ $("modal").addEventListener("click",e=>{const id=e.target.id;
   else if(id==="m-continue"){SFX.wake();SFX.ambientStart();SFX.ui();hideModal();openLoadSlots()}
   else if(id==="m-close"){SFX.ui();hideModal()}});
 
+let OP_DOCK_OPEN=false;
+// the operative dock: a quiet status strip (always shows what your operative is doing) that expands into
+// quick controls. Reactive — its content reflects live operative state (idle / walking / performing an op).
+function opDockState(av){
+  if(!av)return {glyph:"\u25c7",txt:"No operative",prog:null};
+  if(av.activeOp){const opD=AVATAR_OPS[av.activeOp.opKey];const pct=Math.round(av.activeOp.prog/av.activeOp.duration*100);
+    return {glyph:"\u25c6",txt:"<b>"+opD.name+"</b> \u2014 "+pct+"%",prog:pct,busy:true};}
+  if(av.job&&av.job.t==="goto")return {glyph:"\u25c8",txt:"Moving to position\u2026",prog:null};
+  if(av.job&&av.job.t)return {glyph:"\u25c7",txt:"<b>"+jobLabel(av).replace(/^.*?: ?/,"")+"</b>",prog:null};
+  return {glyph:"\u25c7",txt:"Idle",prog:null};
+}
+function renderOpDock(){
+  const dock=document.getElementById("op-dock");if(!dock)return;
+  if(ST.phase!=="run"){dock.style.display="none";return;}
+  dock.style.display="flex";
+  const av=theAvatar();const m=M();const st=opDockState(av);
+  const isSel=ST.sel&&ST.sel[0]&&ST.sel[0].isAvatar;
+  let h="";
+  // expandable control panel (only when open)
+  h+="<div class='od-panel'>";
+  h+="<div class='od-stat'>Intel <b style='color:var(--cy)'>"+(m.intel|0)+"</b> \u00b7 Exposure <b style='color:"+((m.exposure|0)>40?"var(--rd)":"var(--dim)")+"'>"+(m.exposure|0)+"</b></div>";
+  if(st.prog!=null)h+="<div class='od-prog'><i style='width:"+st.prog+"%'></i></div>";
+  h+="<div class='od-row'>";
+  h+="<button class='od-btn' id='od-jump'>\u25c9 SELECT</button>";
+  h+="<button class='od-btn"+(cam.follow&&av&&cam.follow===av.id?" on":"")+"' id='od-follow'>\u25ce FOLLOW</button>";
+  h+="</div>";
+  h+="<div class='od-row'>";
+  h+="<button class='od-btn"+(ST.avatarManual?" on":"")+"' id='od-mode' title='"+(ST.avatarManual?"Manual: your operative waits for your commands (still eats/sleeps to survive)":"Auto: your operative lives autonomously between your commands")+"'>"+(ST.avatarManual?"\u270b MANUAL":"\u27f3 AUTO")+"</button>";
+  h+="</div>";
+  h+="<div class='sub' style='font-size:8.5px;opacity:.6;margin-top:6px'>"+(isSel?"Click an empty tile to move \u00b7 click a target to operate":"Select your operative to command it")+"</div>";
+  h+="</div>";
+  // the always-visible strip
+  h+="<div class='od-strip' id='od-strip'>";
+  h+="<span class='od-glyph'>"+st.glyph+"</span>";
+  h+="<span class='od-title'>OPERATIVE</span>";
+  h+="<span class='od-state'>"+st.txt+"</span>";
+  h+="<span class='od-chev'>\u25b2</span>";
+  h+="</div>";
+  dock.innerHTML=h;
+  dock.classList.toggle("expanded",OP_DOCK_OPEN);
+}
 function syncHUD(){
+  renderOpDock();
   $("h-pop").textContent=ST.pawns.length;
   $("h-cred").textContent=Math.round(ST.pawns.reduce((s,p)=>s+(p.credits||0),0));
   const inc=$("h-income");
@@ -7384,6 +8068,8 @@ function renderInspectCore(){const el=$("inspect");
     false?false:structAt(e.x,e.y)===e);
   if(!ST.sel.length){el.style.display="none";return}
   el.style.display="block";
+  // CLOSE BUTTON — always top-right, clears selection so the panel can be dismissed
+  const closeBtn="<button id='insp-close' title='Close (Esc)' style='position:absolute;top:8px;right:8px;z-index:5;width:24px;height:24px;border:1px solid var(--bd);background:rgba(8,18,36,.9);color:var(--dim);border-radius:6px;font-size:14px;line-height:1;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center'>\u00d7</button>";
   if(ST.sel.length>1){
     el.innerHTML="<h3>"+ST.sel.length+" RUNNERS</h3><div class='sub'>squad selected</div>";return}
   const e=ST.sel[0];
@@ -7427,21 +8113,45 @@ function renderInspectCore(){const el=$("inspect");
         h+="<div class='ordsec' style='color:#22ddff;margin-top:10px'>OPERATIONS</div>";
         h+="<div class='sub' style='font-size:10px'>Intel <span style='color:#22ddff;font-weight:600'>"+(m.intel|0)+"</span> \u00b7 Exposure <span style='color:#ff5470;font-weight:600'>"+(m.exposure|0)+"</span> \u00b7 Rep <span style='color:"+repCol+";font-weight:600'>"+repLbl+"</span></div>";
         if((m.exposure|0)>40)h+="<div class='sub' style='font-size:9px;color:#ff8c42'>\u26a0 High exposure \u2014 ops are riskier. Lie low to cool off.</div>";
-        h+="<div class='opsgrid' style='display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px'>";
-        // short, scannable labels for the button face
+        // IN-FLIGHT: if an operation is performing, show its progress instead of the op grid
+        if(e.activeOp){const ao=e.activeOp;const opD=AVATAR_OPS[ao.opKey];const pct=Math.round(ao.prog/ao.duration*100);
+          h+="<div class='sub' style='font-size:11px;color:#ffd24a;margin-top:6px;font-weight:600'>\u25b8 "+opD.name.toUpperCase()+" \u2014 performing\u2026 "+pct+"%</div>";
+          h+="<div class='bar' style='margin-top:2px'><i style='width:"+pct+"%;background:#ffd24a'></i></div>";
+          h+="<div class='sub' style='font-size:9px;opacity:.7'>Move your operative to abandon the operation.</div>";
+        } else {
+        // REACTIVE OPS MENU — grouped by category; each op shows its live state. Risk is signaled,
+        // prerequisites are disabled. (Rule: disable the impossible, signal the dangerous.)
         const OP_LBL={intel:"GATHER INTEL",surveil:"SURVEIL",dissent:"SPREAD DISSENT",sabotage:"SABOTAGE",steal:"STEAL FUNDS",bribe:"BRIBE",frame:"FRAME ASSET",blackmail:"BLACKMAIL",assassinate:"ASSASSINATE"};
-        // do we hold dirt on anyone? (gates blackmail's usability hint)
-        const haveDirt=ST.pawns.some(q=>!q.isAvatar&&!isChild(q)&&knownSecret(q));
-        for(const ok in AVATAR_OPS){const op=AVATAR_OPS[ok];
-          const needsDirt=op.needsSecret&&!haveDirt;
-          const afford=(m.intel||0)>=op.cost&&!needsDirt;
-          const lbl=(OP_LBL[ok]||op.name.toUpperCase())+(op.cost?" ("+op.cost+")":"");
-          const tip=op.desc+(needsDirt?" \u2014 [need a secret: surveil someone first]":"");
-          h+="<button class='tb i-op' data-op='"+ok+"' title='"+tip+"' style='font-size:8.5px;padding:5px 3px;letter-spacing:.02em;border-color:"+(afford?"rgba(34,221,255,.4)":"rgba(120,140,160,.25)")+";color:"+(afford?"#bfe8ff":"#6a7a8c")+"'>"+lbl+(needsDirt?" \uD83D\uDD12":"")+"</button>";
+        const RISK_COL={low:"",raised:"#ffd24a",high:"#ff9a52",extreme:"#ff5470"};
+        const RISK_DOT={low:"",raised:"\u25c8",high:"\u25c8\u25c8",extreme:"\u26a0"};
+        for(const cat of OP_CAT_ORDER){
+          const opsInCat=Object.keys(AVATAR_OPS).filter(ok=>OP_CATEGORY[ok]===cat);
+          if(!opsInCat.length)continue;
+          h+="<div class='opcat'>"+cat+"</div>";
+          h+="<div class='opsgrid' style='display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:3px 0 5px'>";
+          for(const ok of opsInCat){const op=AVATAR_OPS[ok];const st=opState(ok);
+            const lbl=(OP_LBL[ok]||op.name.toUpperCase())+(op.cost?" ("+op.cost+")":"");
+            const armed=ST.opTargeting&&ST.opTargetingOp===ok;
+            let bc,tc,suffix="",tip=op.desc;
+            if(!st.ok){ // disabled — a real prerequisite is missing
+              bc="rgba(120,140,160,.2)";tc="#5d6b7c";
+              suffix=" \uD83D\uDD12";tip=op.desc+" \u2014 ["+st.label+"]";
+            } else { // available; show risk tier
+              const rc=RISK_COL[st.risk];
+              bc=rc?("rgba("+(st.risk==="extreme"?"255,84,112":st.risk==="high"?"255,154,82":"255,210,74")+",.55)"):"rgba(34,221,255,.4)";
+              tc=rc||"#bfe8ff";
+              if(RISK_DOT[st.risk])suffix=" <span style='color:"+rc+"'>"+RISK_DOT[st.risk]+"</span>";
+              if(st.targeted)tip=op.desc+" \u2014 [needs a target in range]";
+              if(st.risk!=="low")tip+=" \u26a0 "+st.risk+" risk at current heat";
+            }
+            if(armed){bc="#ffd24a";tc="#ffd24a";}
+            h+="<button class='tb i-op"+(armed?" armed":"")+(st.ok?"":" opdis")+"' data-op='"+ok+"' title='"+tip.replace(/'/g,"&#39;")+"' style='font-size:8.5px;padding:5px 3px;letter-spacing:.02em;border-color:"+bc+";color:"+tc+"'>"+lbl+suffix+"</button>";
+          }
+          h+="</div>";
         }
-        h+="</div>";
-        h+="<button class='tb' id='i-lielow' style='font-size:9px;padding:4px;margin-top:4px;border-color:rgba(122,162,255,.4);color:#aebfff'>\u25ad LIE LOW \u2014 reduce exposure (12 intel)</button>";
-        if(ST.opTargeting)h+="<div class='sub' style='font-size:10px;color:#ffd24a;margin-top:4px'>\u25c9 Select a "+(ST.opTargeting==='utility'?"power/water building":ST.opTargeting==='regime'?"regime asset":"wisp")+" to "+ST.opTargetingOp+", or tap an op again to cancel.</div>";
+        h+="<button class='tb' id='i-lielow' style='font-size:9px;padding:4px;margin-top:2px;border-color:rgba(122,162,255,.4);color:#aebfff'>\u25ad LIE LOW \u2014 reduce exposure (12 intel)</button>";
+        if(ST.opTargeting)h+="<div class='sub optargethint' style='font-size:10px;color:#ffd24a;margin-top:4px'>\u25c9 Select a "+(ST.opTargeting==='utility'?"power/water building":ST.opTargeting==='regime'?"regime asset":"wisp")+" to "+ST.opTargetingOp+" \u2014 walk into range, then tap it. (Tap the op again to cancel.)</div>";
+        }
       }
     }
     else if(tab==="person"){
@@ -7499,6 +8209,34 @@ function renderInspectCore(){const el=$("inspect");
       h+="<button class='tb' id='i-force' style='border-color:rgba(255,84,112,.5);color:#ff8da3;margin-top:4px'>\u26a1 FORCE COMPLIANCE (10 intel)</button>";
       h+="<div class='sub' style='font-size:9px;opacity:.6'>They refused. Forcing works but breeds resentment.</div>";
     }
+    // ── ACT ON THIS WISP — the operative's options against this target, surfaced directly (no "pick op
+    //    first, then click"). We are the avatar; clicking a wisp shows what we can do TO them, range-aware. ──
+    if(!isChild(e)&&!e.isAvatar){
+      const av=theAvatar();
+      if(av&&!av.activeOp){
+        const inRange=op=>{const o=AVATAR_OPS[op];return DIST(av.px,av.py,e.px,e.py)<=o.range;};
+        const wispOps=["surveil","bribe","blackmail","frame","assassinate"].filter(ok=>{
+          const o=AVATAR_OPS[ok];
+          if(ok==="blackmail"&&!knownSecret(e))return false;          // need dirt
+          if(ok==="frame"&&!(e.regimeForce||e.informant||(e.allegiance||0)<-20))return false;  // regime only
+          if(ok==="assassinate"&&!(e.regimeForce||e.informant||(e.allegiance||0)<-20))return false;
+          return true;
+        });
+        if(wispOps.length){
+          h+="<div class='ordsec' style='color:#22ddff'>OPERATIONS</div>";
+          h+="<div class='wisp-ops'>";
+          const OP_ICON={surveil:"\u25c9",bribe:"\u25c8",blackmail:"\u2756",frame:"\u2624",assassinate:"\u2620"};
+          for(const ok of wispOps){const o=AVATAR_OPS[ok];const m=M();
+            const near=inRange(ok);const afford=(m.intel||0)>=o.cost;
+            const ready=near&&afford;
+            const why=!afford?"need "+o.cost+" intel":!near?"walk closer":o.desc;
+            h+="<button class='tb wisp-op"+(ready?"":" dim")+"' data-wop='"+ok+"' title='"+why.replace(/'/g,"&#39;")+"' style='border-color:"+(ready?"rgba(34,221,255,.45)":"rgba(120,140,160,.2)")+";color:"+(ready?"#bfe8ff":"#6a7a8c")+"'>"+OP_ICON[ok]+" "+o.name.replace(/ a Wisp| a Regime Asset/,"").toUpperCase()+(o.cost?" ("+o.cost+")":"")+(near?"":" \u2192")+"</button>";
+          }
+          h+="</div>";
+          if(!wispOps.some(inRange))h+="<div class='sub' style='font-size:9px;color:#ffd24a;opacity:.85'>\u25c9 Walk your operative closer to act (\u2192 = out of range)</div>";
+        }
+      }
+    }
     h+="<div class='ordsec'>DIRECT ORDERS</div><div class='ordgrid'><button class='ob' data-o='work'><span>\u2692</span>Work</button><button class='ob' data-o='sleep'><span>\u263e</span>Rest</button><button class='ob' data-o='eat'><span>\u2295</span>Feed</button><button class='ob' data-o='hygiene'><span>\u2248</span>Cleanse</button><button class='ob' data-o='recreate'><span>\u25c8</span>Wander</button><button class='ob' data-o='socialize'><span>\u2687</span>Commune</button></div>";
     if(aiReady())h+="<button class='tb i-talk' id='i-talk'>\u25c6 TALK</button>";
     // ELECTION: if a vote is underway and this wisp could hold the seat, let the player back them
@@ -7508,7 +8246,7 @@ function renderInspectCore(){const el=$("inspect");
     }
     h+="<button class='tb' id='i-follow'>"+(cam.follow===e.id?"\u25c9 FOLLOWING":"\u25ce FOLLOW")+"</button>";
     h+="<button class='tb' id='i-profile'>\u2630 FULL PROFILE</button>";
-    el.innerHTML=h}
+    el.innerHTML=closeBtn+h}
   else if(e.kind==="foe"){
     el.innerHTML="<h3 style='color:"+e.col+"'>"+e.name+"</h3>"+
       "<div class='sub'>hostile</div>"+barHtml("HP",e.hp/e.maxHp*100,"#ff4757")}
@@ -7563,8 +8301,19 @@ function renderInspectCore(){const el=$("inspect");
       h+="<button class='tb' id='i-salv'>"+(e.desig?"UNMARK":"SALVAGE")+"</button>";
     else if(e.type==="ruin"||d.cat==="b")
       h+="<button class='tb' id='i-decon'>"+(e.decon?"CANCEL DECON":"DECONSTRUCT")+"</button>";
-    el.innerHTML=h}}
+    el.innerHTML=closeBtn+h}}
 $("inspect").addEventListener("click",e=>{
+  // CLOSE BUTTON — dismiss the panel
+  if(e.target.closest&&e.target.closest("#insp-close")){SFX.ui&&SFX.ui();ST.sel=[];$("inspect").style.display="none";return;}
+  // ACT-ON-WISP: an operation button on the selected target — run it directly (we are the avatar)
+  const wopBtn=e.target.closest&&e.target.closest(".wisp-op");
+  if(wopBtn){
+    const ok=wopBtn.dataset.wop;const tgt=ST.sel[0];
+    if(tgt&&tgt.kind==="pawn"){SFX.ui&&SFX.ui();tgt.kind="pawn";
+      if(runAvatarOp(ok,tgt)){ST.sel=[theAvatar()].filter(Boolean);}
+      renderInspect();syncHUD();}
+    return;
+  }
   // character-panel tab switch
   const tabBtn=e.target.closest&&e.target.closest("[data-itab]");
   if(tabBtn){SFX.ui&&SFX.ui();INSPECT_TAB=tabBtn.dataset.itab;renderInspect();return;}
@@ -7714,6 +8463,25 @@ function sayLine(p,txt){ if(!p||!txt)return;
   ST.says=ST.says.filter(s=>s.id!==p.id);
   ST.says.push({id:p.id,txt:txt.slice(0,90),ttl:240,t0:240});
   if(ST.says.length>4)ST.says.shift();
+}
+// ═══ AI REACTIONS — when something dramatic happens to a wisp the player is watching, have them SAY a
+// line generated in the moment (richer than a canned string). Gated, throttled, and budget-aware so it
+// stays a treat, not a flood. Ties into the emotional events built this session (robbery, blackout, etc.). ═══
+let AIREACT={inFlight:false,lastT:0};
+async function aiReactLine(p,event){
+  if(!p||!aiReady()||!AMBIENT.enabled||AIREACT.inFlight)return;
+  if(!playerWatching(p.px,p.py))return;               // only for wisps on screen
+  if(ST.tick-(AIREACT.lastT||0)<120)return;           // throttle so it's occasional
+  if(Math.random()<0.5)return;                         // not every time — keep it special
+  AIREACT.inFlight=true;AIREACT.lastT=ST.tick;
+  try{
+    const sys="You ARE "+p.name+", a resident of a neon-noir megacity block, 2087. You come across as "+
+      axTraits(p)+". Something just happened: "+event+". React in ONE short spoken line — raw, in the "+
+      "moment, under 14 words. No quotes, no name prefix, no stage directions.";
+    const line=await aiChat(sys,[{role:"user",content:"(react)"}],AI_MODEL_AMBIENT);
+    if(line)sayLine(p,line);
+  }catch(e){/* AI unreachable or budget — silently fall back to the emote/float already shown */}
+  AIREACT.inFlight=false;
 }
 async function tickNpcConvo(){
   if(NPCCONVO.inFlight||!aiReady()||!AMBIENT.enabled)return;
@@ -8083,6 +8851,29 @@ $("submenu").addEventListener("click",e=>{
 $("t-build").onclick=()=>{SFX.ui();openSub("b")};
 $("t-zone").onclick=()=>{SFX.ui();openSub("z")};
 $("t-command").onclick=()=>{SFX.ui();openSub("c")};
+// OPERATIVE DOCK interactions
+$("op-dock").addEventListener("click",e=>{
+  const strip=e.target.closest("#od-strip");
+  if(strip&&!e.target.closest(".od-btn")){OP_DOCK_OPEN=!OP_DOCK_OPEN;SFX.ui&&SFX.ui();renderOpDock();return;}
+  const av=theAvatar();if(!av)return;
+  if(e.target.closest("#od-jump")){ // jump camera to + select the operative
+    SFX.ui&&SFX.ui();ST.sel=[av];setFollow(av);
+    cam.x=av.px*T-VW/cam.z/2;cam.y=av.py*T-VH/cam.z/2;if(typeof clampCam==="function")clampCam();
+    renderInspect();syncHUD();return;
+  }
+  if(e.target.closest("#od-follow")){ // toggle camera follow
+    SFX.ui&&SFX.ui();
+    if(cam.follow===av.id){stopFollow();}else{setFollow(av);}
+    renderOpDock();return;
+  }
+  if(e.target.closest("#od-mode")){ // toggle auto/manual control
+    SFX.ui&&SFX.ui();
+    ST.avatarManual=!ST.avatarManual;
+    if(ST.avatarManual&&av.job&&av.job.t!=="goto")av.job=null;   // drop autonomous busywork on switch
+    flashMsg&&flashMsg(ST.avatarManual?"Manual control — your operative awaits orders":"Auto — your operative acts on its own");
+    renderOpDock();return;
+  }
+});
 $("b-save").onclick=()=>{SFX.ui();openSaveSlots()};
 $("b-fs").onclick=()=>{SFX.ui();
   const el=document.documentElement;
@@ -8093,12 +8884,18 @@ $("b-fs").onclick=()=>{SFX.ui();
   }
 };
 $("b-load").onclick=()=>{SFX.ui();openLoadSlots()};
-$("b-atmo").onclick=()=>{SFX.ui();ATMO.on=!ATMO.on;ATMO.fog=0;
-  const b=$("b-atmo");if(b){b.style.color=ATMO.on?"#22ddff":"";b.title=ATMO.on?"Rain & fog: ON":"Rain & fog: OFF";}
-};
-$("b-storm").onclick=()=>{SFX.ui();STORM.on=!STORM.on;STORM.flash=0;STORM.nextAt=0;
-  const b=$("b-storm");if(b){b.style.color=STORM.on?"#ffe066":"";b.title=STORM.on?"Lightning: ON":"Lightning: OFF";}
-};
+// WEATHER MENU — one button opens a panel with both toggles (icons kept inside)
+function syncWeatherMenu(){
+  const rs=$("wx-rain-state"),ss=$("wx-storm-state");
+  if(rs){rs.textContent=ATMO.on?"on":"off";rs.style.color=ATMO.on?"#22ddff":"var(--dim)";}
+  if(ss){ss.textContent=STORM.on?"on":"off";ss.style.color=STORM.on?"#ffe066":"var(--dim)";}
+  const wb=$("b-weather");if(wb)wb.style.color=(ATMO.on||STORM.on)?"#22ddff":"";
+}
+$("b-weather").onclick=(e)=>{SFX.ui();const mn=$("weather-menu");if(mn){const show=mn.style.display==="none";mn.style.display=show?"block":"none";if(show)syncWeatherMenu();}if(e)e.stopPropagation();};
+$("wx-rain").onclick=()=>{SFX.ui();ATMO.on=!ATMO.on;ATMO.fog=0;syncWeatherMenu();};
+$("wx-storm").onclick=()=>{SFX.ui();STORM.on=!STORM.on;STORM.flash=0;STORM.nextAt=0;syncWeatherMenu();};
+// click outside closes the weather menu
+document.addEventListener("click",(e)=>{const mn=$("weather-menu");if(mn&&mn.style.display!=="none"&&!e.target.closest("#weather-menu")&&!e.target.closest("#b-weather"))mn.style.display="none";});
 $("b-diary").onclick=()=>{SFX.ui();openOverlay("diary")};
 $("b-crew").onclick=()=>{SFX.ui();openOverlay("crew")};
 $("b-tasks").onclick=()=>{SFX.ui();openOverlay("tasks")};
@@ -8326,14 +9123,14 @@ function hasSave(){
     for(const n of SLOTS)if(localStorage.getItem(SLOT_KEY(n)))return true;
   }catch(e){}
   return false}
-function snapPawn(p){return Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,unre:undefined,pi:0,pTx:-1,pTy:-1,claim:0})}
+function snapPawn(p){return Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,activeOp:null,unre:undefined,pi:0,pTx:-1,pTy:-1,claim:0})}
 function snapStruct(s){return Object.assign({},s,{res:0})}
 function serializeState(){
   return{v:2,tick:ST.tick,grp:ST.grp,rel:ST.rel,relMeta:ST.relMeta||{},cliques:ST.cliques||[],nextEv:ST.nextEv,lastCrackdown:ST.lastCrackdown,
     goods:ST.goods,income:ST.income,debtDays:ST.debtDays||0,crisis:ST.crisis||false,
     savedAt:Date.now(),
     gangs:(ST.gangs||[]).map(g=>({...g,turf:[...g.turf]})),
-    stats:ST.stats,flags:ST.flags,milestones:ST.milestones||[],tierReached:ST.tierReached||1,contrabandPolicy:ST.contrabandPolicy||"crackdown",hintsSeen:ST.hintsSeen||{},pendingDisaster:ST.pendingDisaster||null,blackoutUntil:ST.blackoutUntil||0,caravan:ST.caravan||null,election:ST.election||null,electionQueue:ST.electionQueue||[],chronicle:CHRONICLE.slice(0,80),
+    stats:ST.stats,flags:ST.flags,milestones:ST.milestones||[],tierReached:ST.tierReached||1,contrabandPolicy:ST.contrabandPolicy||"crackdown",hintsSeen:ST.hintsSeen||{},pendingDisaster:ST.pendingDisaster||null,blackoutUntil:ST.blackoutUntil||0,sabotages:ST.sabotages||[],caravan:ST.caravan||null,election:ST.election||null,electionQueue:ST.electionQueue||[],chronicle:CHRONICLE.slice(0,80),
     mov:ST.mov,regime:ST.regime,cases:ST.cases||[],caseSeq:ST.caseSeq||0,
     ter:Array.from(ST.ter),
     structs:[...ST.structs.values()].map(snapStruct),
@@ -8348,7 +9145,7 @@ function applyState(d){
   ST.goods=d.goods||{data:0,chem:0,parts:0,stims:0,gear:0,food:0,scrap:0};ST.income=d.income||0;
   ST.debtDays=d.debtDays||0;ST.crisis=d.crisis||false;
   ST.gangs=(d.gangs||[]).map(g=>({...g,turf:new Set(g.turf||[])}));
-  ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];ST.tierReached=d.tierReached||1;ST.contrabandPolicy=d.contrabandPolicy||"crackdown";ST.hintsSeen=d.hintsSeen||{};ST.pendingDisaster=d.pendingDisaster||null;ST.blackoutUntil=d.blackoutUntil||0;ST.caravan=d.caravan||null;ST.election=d.election||null;ST.electionQueue=d.electionQueue||[];CHRONICLE.length=0;if(Array.isArray(d.chronicle))for(const e of d.chronicle)CHRONICLE.push(e);
+  ST.stats=d.stats||{built:0,deaths:0};ST.flags=d.flags||{};ST.milestones=d.milestones||[];ST.tierReached=d.tierReached||1;ST.contrabandPolicy=d.contrabandPolicy||"crackdown";ST.hintsSeen=d.hintsSeen||{};ST.pendingDisaster=d.pendingDisaster||null;ST.blackoutUntil=d.blackoutUntil||0;ST.sabotages=d.sabotages||[];ST.caravan=d.caravan||null;ST.election=d.election||null;ST.electionQueue=d.electionQueue||[];CHRONICLE.length=0;if(Array.isArray(d.chronicle))for(const e of d.chronicle)CHRONICLE.push(e);
   ST.mov=d.mov||{support:5,exposure:0,intel:0,cells:0,stance:"hidden",doctrine:null,foundedTick:0};
   ST.cases=d.cases||[];ST.caseSeq=d.caseSeq||0;
   ST.regime=d.regime||{grip:60,awareness:0,lastSweep:0,informants:[]};
@@ -8524,7 +9321,7 @@ function newGame(){
   }
   cam.z=1.4;  // start zoomed into the core on the bigger map
   cam.x=64*T-VW/cam.z/2;cam.y=50*T-VH/cam.z/2;clampCam();
-  ST.lastCrackdown=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.rel={};ST.relMeta={};ST.cliques=[];ST.contrabandPolicy="crackdown";ST.hintsSeen={};ST.pendingDisaster=null;ST.blackoutUntil=0;ST.caravan=null;relAdj(vex.id,sta.id,25);ST.heat=0;ST.heatWarn=false;
+  ST.lastCrackdown=0;ST.nextEv=Math.floor(TPD*1.25);ST.requests=[];ST.rel={};ST.relMeta={};ST.cliques=[];ST.contrabandPolicy="crackdown";ST.hintsSeen={};ST.pendingDisaster=null;ST.blackoutUntil=0;ST.caravan=null;relAdj(vex.id,sta.id,25);ST.sabotages=[];ST.heat=0;ST.heatWarn=false;
   $("log").innerHTML="";DIARY_ENTRIES.length=0;CHRONICLE.length=0;renderDiary();renderRoster();
   log("The sprawl wakes — citizens drifting to homes, jobs, and the night's vices.","info");
   log("You watch over the district. Build it out, steer who you can, and keep the block from tearing itself apart.","info");
@@ -8554,6 +9351,8 @@ function loop(ts){requestAnimationFrame(loop);
     if(KEYS.d||KEYS.arrowright)dx+=sp;
     if(dx||dy){cam.x+=dx;cam.y+=dy;clampCam();if(cam.follow)stopFollow();}}
   tickFollow();
+  // keep the operative dock's live progress fresh while an op is performing
+  if(ST.phase==="run"&&!ST.paused){const av=theAvatar();if(av&&(av.activeOp||(av.job&&av.job.t==="goto"))&&ST.tick%3===0)renderOpDock();}
   render()}
 
 window.addEventListener("resize",resize);
