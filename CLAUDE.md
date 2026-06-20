@@ -39,7 +39,48 @@ done yet.
 
 ## ⚡ LATEST STATE (read this first — reconciled from the live VM, June 2026) ⚡
 
-**REACTIVE OPS UI + OPERATIVE DOCK + REPUTATION-GATED BRIBES (most recent session):**
+**EMBODIED OPS PHASE 2 COMPLETE — PERCEPTION & WITNESSES (most recent session): the world now WATCHES.**
+NPCs who can see you raise the difficulty of an op's roll, and being seen escalates fallout. Stealth
+positioning (where + WHEN you act) is now a real mechanic.
+
+- **canSee(obs, av, op):** the reusable perception query. Returns 0 (can't see) or a positive weight (how
+  damning the witness is). Factors: distance vs `op.sightRange`, DARKNESS (`lightLevel(hourN())>0.3` shrinks
+  sight ×0.62 — acting at night lets you slip closer unseen; a `nearLamp` hook ×1.4 is stubbed for later),
+  ATTENTION (working ×0.6 / socializing ×0.7 / sleeping ×0.2 / idle 1.0), PROXIMITY falloff, and WHO is
+  watching (enforcer/regime ×2.6, hostile loyalist ×1.8, sympathizer ×0.5, gang ×0.15, children/sleepers 0).
+- **witnessPenalty(av, op):** sums the weighted witnesses who can currently see you → `{pen, count}`,
+  scaled by `op.witnessK` (loudness). Wired into `resolveAvatarOp`'s difficulty: `opsCheck(stat,
+  diff+expPenalty+wit.pen)`. Computed at RESOLVE time, so a wisp who wandered into view mid-op still counts
+  — long ops in busy/lit places are genuinely riskier.
+- **AVATAR_OPS loudness profile:** each op gained `sightRange` + `witnessK`. Quiet ops (bribe/blackmail
+  sight4/K0.4, intel/surveil sight5/K0.5) vs loud (assassinate sight8/K1.4, sabotage sight8/K1.2,
+  dissent sight9/K0.8). A whispered bribe is barely noticed; a loud assassination is seen from across the block.
+- **runWitnessCheck(p, op, check, count, pen):** post-act fallout, generalizing witnessCrime. If anyone
+  saw it: awareness + heat rise (scaled by count + whether the op failed/botched); an enforcer who can see
+  you MARKS you (`grudgeTarget`, especially on a visible failure); witnesses emote alarm (excl/shock);
+  sympathizers look away. Nobody saw = clean getaway, no extra fallout.
+- **VERIFIED:** alone = 0 witnesses/penalty; enforcer adjacent = penalty 5 + canSee 2.44; +3 wisps = 4
+  witnesses/penalty 11; sleeping enforcer = 0 (blind); DARKNESS proven — a witness at 6 tiles sees you at
+  midday (canSee 0.63) but is COMPLETELY BLIND at deep night (canSee 0, penalty 0). Full-day stability:
+  16 ops, no crash, 13 survive. Witnessed steal → awareness 14 + heat 5 + enforcer mark vs ~0 alone.
+  Smoke 20/20, no dead/dupe, CSS balanced.
+- **BUG FIXED THIS SESSION:** a str_replace inserting `runWitnessCheck` consumed the `function opSuccess`
+  declaration → "unexpected }" cascade. LESSON RE-CONFIRMED: `node --check` reads a temp file; must
+  RE-EXTRACT the script before every check or a stale "valid" misleads. Diagnosed via per-function brace-depth walk.
+
+**STILL PENDING — Phases 3-5 (NOT built this session):** Phase 3 = NPC behavioral reactions (flee/
+investigate/gossip beyond the emotes) + per-op ACTION ANIMATIONS (the `anim` field — plant/strike/confer/
+tail/rally/lift — is set on every activeOp and ready to drive drawPawn) + a live on-map witness pip. Phase
+4 = stealth depth (the `nearLamp` hook, enforcer patrol gaps, diversion synergy, cover/line-of-sight).
+Phase 5 = animation polish + AI-narrated outcomes + audio (NOTE: Claude CANNOT see animations or hear audio
+— Phase 5 needs Carlo's eyes/ears). The architecture doc Section 7 has the full plan.
+**PRE-COMMIT READOUT (open design Q):** showing witness count + difficulty BEFORE committing an op is
+designed but NOT built — Carlo was asked which he prefers (readable pre-commit vs opaque read-the-room) and
+hasn't answered yet. That's the natural Phase 3 UI addition.
+
+---
+
+## ⚡ REACTIVE OPS UI + OPERATIVE DOCK (prior session) ⚡
 A focused UI pass for the avatar-driven embodied-ops play, built to Carlo's preference for "organized,
 reactive, hideable menus." Guiding rule: **disable the impossible, signal the dangerous, hide the
 irrelevant.** Also did 5 deep verification passes on Phase 1 first (all green) + a pending-mechanics audit.

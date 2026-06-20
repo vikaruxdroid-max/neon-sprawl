@@ -1163,23 +1163,23 @@ function goToGround(){
    REPUTATION (feared/respected), which colors how wisps react to you. */
 // op definitions: stat = which ops attribute, diff = base difficulty, cost = intel, target = needs a target?
 const AVATAR_OPS={
-  intel:     {name:"Gather Intel", stat:"insight", diff:11, cost:0, target:null, range:0, duration:60, anim:"tail",
+  intel:     {name:"Gather Intel", stat:"insight", diff:11, cost:0, target:null, range:0, duration:60, anim:"tail", sightRange:5, witnessK:0.5,
     desc:"Work your contacts and surveil the block. Success feeds your network intel. Failure tips off the regime."},
-  surveil:   {name:"Surveil a Wisp", stat:"insight", diff:12, cost:4, target:"anyPawn", range:3.5, duration:90, anim:"tail",
+  surveil:   {name:"Surveil a Wisp", stat:"insight", diff:12, cost:4, target:"anyPawn", range:3.5, duration:90, anim:"tail", sightRange:5, witnessK:0.5,
     desc:"Tail a specific wisp to dig up their secret. Knowing their dirt unlocks blackmail. Discreet — but not risk-free."},
-  dissent:   {name:"Spread Dissent", stat:"presence", diff:12, cost:6, target:null, range:0, duration:70, anim:"rally",
+  dissent:   {name:"Spread Dissent", stat:"presence", diff:12, cost:6, target:null, range:0, duration:70, anim:"rally", sightRange:9, witnessK:0.8,
     desc:"Stir the block against the regime — raise support. A rousing op moves people; a clumsy one exposes you."},
-  sabotage:  {name:"Sabotage Infrastructure", stat:"tradecraft", diff:13, cost:10, target:"utility", range:1.8, duration:100, anim:"plant",
+  sabotage:  {name:"Sabotage Infrastructure", stat:"tradecraft", diff:13, cost:10, target:"utility", range:1.8, duration:100, anim:"plant", sightRange:8, witnessK:1.2,
     desc:"Knock out a power or water building — blackout, chaos, a blow to the regime's grip. Failure means you're spotted."},
-  steal:     {name:"Steal Regime Funds", stat:"tradecraft", diff:13, cost:8, target:null, range:0, duration:80, anim:"lift",
+  steal:     {name:"Steal Regime Funds", stat:"tradecraft", diff:13, cost:8, target:null, range:0, duration:80, anim:"lift", sightRange:6, witnessK:0.9,
     desc:"Skim the regime's coffers into your movement. A clean lift funds the cause; a bungle brings heat down hard."},
-  bribe:     {name:"Bribe a Wisp", stat:"guile", diff:11, cost:6, target:"anyPawn", range:1.8, duration:55, anim:"confer",
+  bribe:     {name:"Bribe a Wisp", stat:"guile", diff:11, cost:6, target:"anyPawn", range:1.8, duration:55, anim:"confer", sightRange:4, witnessK:0.4,
     desc:"Buy a wisp's loyalty or silence with credits. The corruptible bend; the principled may report the offer."},
-  frame:     {name:"Frame a Regime Asset", stat:"guile", diff:14, cost:14, target:"regime", range:1.8, duration:90, anim:"plant",
+  frame:     {name:"Frame a Regime Asset", stat:"guile", diff:14, cost:14, target:"regime", range:1.8, duration:90, anim:"plant", sightRange:6, witnessK:1.0,
     desc:"Plant evidence on a regime loyalist — turn the district against them, weaken their grip. Hard and risky."},
-  blackmail: {name:"Blackmail a Wisp", stat:"presence", diff:12, cost:6, target:"anyPawn", needsSecret:true, range:1.8, duration:60, anim:"confer",
+  blackmail: {name:"Blackmail a Wisp", stat:"presence", diff:12, cost:6, target:"anyPawn", needsSecret:true, range:1.8, duration:60, anim:"confer", sightRange:4, witnessK:0.4,
     desc:"Use a secret you've uncovered to coerce a wisp — turn an informant, force compliance. Requires known dirt."},
-  assassinate:{name:"Assassinate", stat:"nerve", diff:16, cost:20, target:"regime", range:1.6, duration:75, anim:"strike",
+  assassinate:{name:"Assassinate", stat:"nerve", diff:16, cost:20, target:"regime", range:1.6, duration:75, anim:"strike", sightRange:8, witnessK:1.4,
     desc:"Eliminate a regime figure outright. The ultimate strike — and the regime WILL hunt whoever did it. Last resort."},
 };
 // reputation: -100 (feared/ruthless) .. +100 (beloved/respected). Built by op outcomes + their nature.
@@ -1325,7 +1325,11 @@ function resolveAvatarOp(p){
   if(target){if(ao.target.kind==="s")target.kind="s";else target.kind="pawn";}
   p.activeOp=null;                            // op is done regardless of outcome
   const expPenalty=Math.floor((m.exposure||0)/25);     // +0..4 to difficulty
-  const check=opsCheck(op.stat,op.diff+expPenalty);
+  // PERCEPTION: witnesses who can see you right now raise the difficulty. Computed at resolve, so a wisp
+  // who wandered into view mid-op still counts — long ops in busy places are genuinely riskier.
+  const wit=witnessPenalty(p,op);
+  const check=opsCheck(op.stat,op.diff+expPenalty+wit.pen);
+  ao._witCount=wit.count;ao._witPen=wit.pen;           // remembered for the post-act fallout
   m.intel-=op.cost;
   trainOpStat(op.stat);                                // practice regardless of outcome
   switch(check.band){
@@ -1348,8 +1352,31 @@ function resolveAvatarOp(p){
       opFailure(ao.opKey,target,check,false);
       break;
   }
+  runWitnessCheck(p,op,check,ao._witCount,ao._witPen);   // who saw it → fallout
   if(typeof syncHUD==="function")syncHUD();
   if(typeof renderInspect==="function")renderInspect();
+}
+// post-act fallout from being seen. Generalizes witnessCrime: witnesses escalate awareness/heat; an
+// enforcer witness can mark you; a botched op in front of people is the worst case.
+function runWitnessCheck(p,op,check,witCount,witPen){
+  if(!witCount)return;                          // nobody saw — clean getaway, no extra fallout
+  const m=M();const botch=check.band==="critfail";const failed=check.band==="fail"||botch;
+  // awareness/heat rise with how many saw + how badly it went
+  const sev=(witCount*1.5)+(failed?6:0)+(botch?6:0);
+  if(REG())REG().awareness=clamp((REG().awareness||0)+sev,0,100);
+  ST.heat=Math.min(100,(ST.heat||0)+Math.round(sev*0.6));
+  // an enforcer who can see you marks you (pursuit fuel) — especially on a visible failure
+  const enf=ST.pawns.find(q=>(q.role==="enforcer"||q.regimeForce)&&canSee(q,p,op)>0);
+  if(enf){
+    tryEmote&&tryEmote(enf,"excl",120);
+    if(botch||failed||Math.random()<0.5){enf.grudgeTarget=p.id;relAdj(enf.id,p.id,-20);
+      log("\u2696 An enforcer saw you \u2014 you've been marked.","bad");}
+  } else if(botch){
+    log("\u26a0 You were seen botching it \u2014 word will spread.","warn");
+  }
+  // witnesses emote alarm; sympathizers may just look away
+  let alarmed=0;
+  for(const q of ST.pawns){if(canSee(q,p,op)>0&&(q.allegiance||0)<25&&!pawnGang(q)){if(alarmed<3){tryEmote&&tryEmote(q,alarmed===0?"excl":"shock",90);alarmed++;}}}
 }
 function opSuccess(opKey,target,check,crit){
   const m=M();
@@ -3468,6 +3495,47 @@ function crimeTick(){
   }
 }
 // SNITCHING: a witness to a crime may report the perp, spiking heat on them
+/* ═══════════ PHASE 2 — PERCEPTION. canSee(observer, av, op) answers "can this NPC perceive the avatar
+   acting right now," composing the witnessCrime model with spatial nuance. It's the basis for both the
+   live difficulty penalty and the post-act witness fallout. The skill being tested is positioning:
+   acting where/when no one can see you. Darkness, distance, attention-state, and allegiance all matter. */
+function canSee(obs,av,op){
+  if(!obs||!av||obs===av||obs.id===av.id)return 0;
+  if(obs.hp<=0||obs.sleeping)return 0;          // the dead and the sleeping see nothing
+  if(isChild(obs))return 0;                      // children aren't witnesses that matter
+  const d=DIST(obs.px,obs.py,av.px,av.py);
+  // base sight radius — loud ops are noticeable from farther; subtle ops only up close
+  let sight=op?(op.sightRange||7):7;
+  // DARKNESS shrinks sight (Phase 4 leans on this; wired now so night already matters a little)
+  const dark=lightLevel(hourN())>0.3;
+  if(dark)sight*=0.62;                            // after dark you can get much closer unseen
+  // a lamp-lit tile near the observer restores some range (light pools expose you)
+  if(dark&&typeof nearLamp==="function"&&nearLamp(av.px,av.py))sight*=1.4;
+  if(d>sight)return 0;                            // out of perception range
+  // ATTENTION — a busy NPC is a worse witness than an idle one looking around
+  let attn=1;
+  if(obs.job&&obs.job.t==="work")attn=0.6;        // heads-down working
+  else if(obs.socWith)attn=0.7;                   // absorbed in conversation
+  else if(obs.job&&obs.job.t==="sleep")attn=0.2;
+  // a closer observer perceives more reliably (linear falloff inside the radius)
+  const prox=1-(d/sight)*0.5;                     // 1.0 at point-blank → 0.5 at the edge
+  // WHO is watching weights the threat: an enforcer/loyalist is a dangerous witness; a sympathizer less so
+  let weight=1;
+  if(obs.role==="enforcer"||obs.regimeForce)weight=2.6;
+  else if((obs.allegiance||0)<-25)weight=1.8;     // hostile loyalist
+  else if((obs.allegiance||0)>30)weight=0.5;      // sympathizer may look the other way
+  if(pawnGang(obs))weight=0.15;                    // gang never really reports
+  return attn*prox*weight;                         // >0 means "can see," magnitude = how damning
+}
+// sum the weighted witnesses who can currently see the avatar performing op → added difficulty.
+function witnessPenalty(av,op){
+  if(!av)return 0;
+  let pen=0,n=0;
+  for(const q of ST.pawns){const w=canSee(q,av,op);if(w>0){pen+=w;n++;}}
+  // scale by the op's loudness (a quiet bribe is punished less for being seen than a loud assassination)
+  const k=op&&op.witnessK!=null?op.witnessK:1;
+  return {pen:Math.round(pen*k*1.6), count:n};
+}
 function witnessCrime(perp,x,y){
   // THE ENFORCER — if a loyal enforcer is near the crime, they reliably report it (it's their job).
   const enf=ST.pawns.find(p=>p.role==="enforcer"&&p.hp>0&&!p.sleeping&&(p.allegiance||0)<10&&DIST(p.px,p.py,x,y)<14);
