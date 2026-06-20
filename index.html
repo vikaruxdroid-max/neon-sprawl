@@ -2552,10 +2552,14 @@ function runAvatarOp(opKey,target){
     flashMsg&&flashMsg("You're too beloved to make a credible threat — no one believes you'd follow through");return false;}
   // ═══ HARD GATES (strict tech tree) — extreme ops require prerequisite work on the SPECIFIC target ═══
   if(opKey==="assassinate"&&target&&target.kind==="pawn"){
-    // assassination demands you KNOW the target's routine (surveil) AND they're weakened/framed/isolated
-    if(!routineKnownEnough(target)){flashMsg&&flashMsg("You don't know "+target.name.split(" ")[0]+"'s movements — surveil them first");return false;}
-    const weakened=(target.hp||100)<60||target.framed||target.homeless||(target.routine&&target.routine.vulnerable);
-    if(!weakened){flashMsg&&flashMsg("No opening — weaken, frame, or fully surveil "+target.name.split(" ")[0]+" first");return false;}
+    // assassination demands you KNOW the target's routine (surveil) AND they're weakened/framed/isolated.
+    // EXCEPTION: the government envoy is a special, time-limited target — they're exposed during the visit
+    // (no district home, out in the open with the Mayor), so you can strike WITHOUT the full routine dossier.
+    if(!target.isEnvoy){
+      if(!routineKnownEnough(target)){flashMsg&&flashMsg("You don't know "+target.name.split(" ")[0]+"'s movements — surveil them first");return false;}
+      const weakened=(target.hp||100)<60||target.framed||target.homeless||(target.routine&&target.routine.vulnerable);
+      if(!weakened){flashMsg&&flashMsg("No opening — weaken, frame, or fully surveil "+target.name.split(" ")[0]+" first");return false;}
+    }
   }
   if(opKey==="frame"&&target){
     // framing requires you've already corrupted the ground — at least one bribe must have landed
@@ -2584,8 +2588,46 @@ function advanceActiveOp(p){
   const ao=p.activeOp;if(!ao)return;
   const op=AVATAR_OPS[ao.opKey];if(!op){p.activeOp=null;return;}
   // target gone mid-op -> abort cleanly
-  if(op.target){const tgt=resolveOpTarget(ao.target);
-    if(!tgt){log("\u25b8 Operation aborted \u2014 the target slipped away.","warn");p.activeOp=null;return;}}
+  let _tgt=null;
+  if(op.target){_tgt=resolveOpTarget(ao.target);
+    if(!_tgt){log("\u25b8 Operation aborted \u2014 the target slipped away.","warn");p.activeOp=null;return;}}
+  // ── SURVEIL = ACTIVE TAIL — for surveillance ops, the operative SHADOWS the target (follows them at a
+  //    distance) and risks being SPOTTED. This makes tailing tense + skill-driven instead of a freeze-in-place
+  //    timer. The avatar paths to stay near the mark; periodic detection rolls check if the mark notices.
+  if((ao.opKey==="surveil"||ao.opKey==="tail")&&_tgt&&_tgt.kind==="pawn"){
+    const tp=_tgt;
+    const d=DIST(p.px,p.py,tp.px,tp.py);
+    // FOLLOW — keep a tailing distance: close enough to observe (within sightRange), not on top of them.
+    // If they've drifted too far, move to shadow them (a tail-specific goto that doesn't end the op).
+    const tailDist=Math.max(2.5,(op.range||3.5)-0.5);
+    if(d>tailDist){const gx=tp.px|0,gy=tp.py|0;
+      // step toward the target without overshooting onto them
+      gotoCell(p,gx,gy,1);
+    }
+    // DETECTION ROLL — every ~30 ticks, the mark may notice the tail. Chance scales with how visible you are
+    // (canSee composes distance/darkness/the mark's attention) vs your tradecraft. Closer + in-the-open = riskier.
+    if(ao.prog>0&&ao.prog%30===0){
+      const vis=(typeof canSee==="function")?canSee(tp,p,op):0.5;   // 0 (hidden) .. ~1+ (glaring)
+      const tradecraft=(typeof ops==="function")?ops(p,"tradecraft"):5;   // 1..10 operative stat
+      // base spot chance from visibility, reduced by tradecraft (1-10); closer than tailDist raises it
+      let spotChance=Math.max(0,vis*0.35 - (tradecraft-5)*0.03);   // high tradecraft (10) ≈ -0.15; low (1) ≈ +0.12
+      if(d<2.2)spotChance+=0.12;                                    // shadowing too close
+      spotChance=Math.max(0.02,Math.min(0.6,spotChance));
+      if(Math.random()<spotChance){
+        // CAUGHT TAILING — the op blows: the mark notices, exposure spikes, they grow wary, regime may hear.
+        const m=M();
+        m.exposure=clamp((m.exposure||0)+RI(6,12),0,100);
+        REG().awareness=clamp((REG().awareness||0)+RI(2,5),0,100);
+        relAdj(p.id,tp.id,-10);
+        if(typeof tryEmote==="function")tryEmote(tp,"angry",100);
+        float(tp.px,tp.py,"SPOTTED YOU","#ff5470");
+        log("\u25b8 "+tp.name.split(" ")[0]+" caught you tailing them \u2014 the surveillance is blown, and you're exposed.","warn");
+        if(SFX&&SFX.alert)SFX.alert();
+        p.activeOp=null;OPREADOUT=null;
+        return;
+      }
+    }
+  }
   ao.prog++;
   if(ao.prog>=ao.duration)resolveAvatarOp(p);
 }
@@ -2983,6 +3025,10 @@ function opSuccess(opKey,target,check,crit){
       }
       break;}
   }
+  // ═══ ENVOY RESPONSE HOOK (stage 3) — if this successful op was aimed at the envoy or the meeting, it
+  //     counts as the player's RESPONSE to the visit. Set the envoy flags (spied/disrupted/struck) that gate
+  //     the crackdown, and apply envoy-specific payoffs on top of the normal op outcome. Reuses every op as-is. ═══
+  envoyOpHook(opKey,target,crit);
 }
 // PARTIAL — the op half-works but leaves a complication. The interesting middle ground the bands create.
 function opPartial(opKey,target,check){
@@ -5225,6 +5271,9 @@ function seekRevenge(p){
 /* per-tick pawn logic */
 function pawnTick(p){
   if(!p.sleeping&&colCost(p.px|0,p.py|0)<0)nudgeOff(p.px|0,p.py|0);
+  // GOVERNMENT ENVOY — fully driven by envoyTick's state machine (it calls gotoCell to move the envoy to the
+  // Mayor / back to the edge). pawnTick just suppresses all normal citizen AI for the envoy.
+  if(p.isEnvoy)return;
   // ── ambient charm: wisps spontaneously emote based on how they feel ──
   if(ST.tick%45===0&&Math.random()<0.5){
     if(p.sleeping){if(Math.random()<0.4)tryEmote(p,"sleepy",120);}
@@ -6176,6 +6225,8 @@ function maybeCaravan(){
 }
 function caravanTick(){
   maybeCaravan();
+  maybeEnvoy();       // GOVERNMENT ENVOY — the regime's response to the player's heat (see envoyTick)
+  envoyTick();
   const cv=ST.caravan;if(!cv)return;
   // OUTSIDERS — when your operative reaches them, they deliver: intel boost, a piece of news, or a defector
   // who joins the district already sympathetic + recruitable. One payoff per visit.
@@ -6305,6 +6356,240 @@ const STORY_EVENTS=[
       ]}),
   },
 ];
+// ═══════════════════════ GOVERNMENT ENVOY (THE ENVOY) ═══════════════════════
+// A regime emissary visits the district to confer with the Mayor. Triggered by the player's HEAT (the regime
+// responds to the insurrection it can feel). The visit is a decision under pressure: ignore it and the regime
+// cracks down (+ compromises a sympathizer); or use the operative toolkit (surveil / sabotage venue / frame /
+// strike route / strike via cell) to spy on or disrupt the meeting — at real risk. Reuses existing ops; the
+// avatar never just "stands next to the rep." State machine: arriving → conferring → leaving/struck.
+// Spec: NEON_SPRAWL_Government_Representative_Spec.md
+function envoyMeetingSpot(){
+  // the envoy meets the MAYOR — meeting point is at/near the Mayor (or a civic/government building, else center)
+  const mayor=ST.pawns.find(p=>p.role==="mayor"&&p.hp>0);
+  if(mayor)return{x:mayor.px|0,y:mayor.py|0,mayorId:mayor.id};
+  // fallback: a civic/government building
+  for(const s of ST.structs.values()){if(s.bp)continue;const d=DEF[s.type];
+    if(d&&(d.civic||d.security)){return{x:s.x,y:s.y,mayorId:null};}}
+  return{x:Math.floor(MW*0.5),y:Math.floor(MH*0.5),mayorId:null};
+}
+function maybeEnvoy(){
+  if(ST.envoy||ST.caravan)return;                       // one special arrival at a time
+  if(ST.pawns.length<4||ST.tick<TPD*2)return;           // not in the opening
+  // COOLDOWN — a few days minimum between envoys
+  if(ST.lastEnvoy&&ST.tick-ST.lastEnvoy<TPD*3)return;
+  // HEAT-DRIVEN CHANCE — scales with the regime's awareness + the movement's exposure. The hotter the
+  // insurrection, the more likely the regime sends someone. Some randomness so it isn't perfectly predictable.
+  const m=M(),reg=REG();
+  const heat=((reg.awareness||0)/100)*0.6 + ((m.exposure||0)/100)*0.4;   // 0..1
+  // checked on the caravan cadence (~hourly via caravanTick); keep the per-check odds low
+  const chance=0.004 + heat*0.05;                       // ~0.4%/check cold → ~5.4%/check at max heat
+  if(Math.random()>chance)return;
+  spawnEnvoy();
+}
+function spawnEnvoy(){
+  const spot=envoyMeetingSpot();
+  const entry=(typeof edgeCell==="function")?edgeCell():{x:Math.floor(MW*0.5),y:0};
+  // the envoy is an actual wisp — a government figure who arrives, confers, and (hopefully) leaves
+  const e=mkPawn(entry.x,entry.y,"sht");
+  e.name="Envoy "+e.name.split(" ").slice(-1)[0];       // styled as a government envoy
+  e.isEnvoy=true;e.role="envoy";e.allegiance=-90;        // hard regime loyalist
+  e.govt=true;e.accent="#ff5470";                        // regime red, reads as "not local"
+  e.homeless=true;                                       // no district home — just visiting
+  e.dossierImmune=true;                                  // not a normal recruit/surveil target by default
+  ST.pawns.push(e);
+  ST.envoy={
+    id:e.id, stage:"arriving",                           // arriving → conferring → leaving
+    x:spot.x, y:spot.y, mayorId:spot.mayorId,
+    arriveTick:ST.tick,
+    conferStart:0,
+    conferDuration:Math.floor(TPD*0.45),                 // how long the meeting lasts once they reach the Mayor
+    leaveAt:ST.tick+Math.floor(TPD*0.9),                 // hard cap on the whole visit
+    resolved:false, disrupted:false, spied:false, struck:false
+  };
+  ST.lastEnvoy=ST.tick;
+  log("\u25c8 A GOVERNMENT ENVOY has entered the district \u2014 they're moving to confer with the Mayor. The regime is responding to the unrest.","warn");
+  banner("GOVERNMENT ENVOY","warn");if(SFX&&SFX.alert)SFX.alert();
+  panToEvent(e.px,e.py,"#ff5470");
+}
+// drive the envoy's state machine each tick
+function envoyTick(){
+  const ev=ST.envoy;if(!ev)return;
+  const e=ST.pawns.find(p=>p.id===ev.id);
+  if(!e||e.hp<=0){
+    // the envoy is dead — handled by the strike resolution elsewhere; just clear the state
+    ST.envoy=null;return;
+  }
+  // ARRIVING — walk to the Mayor / meeting spot
+  if(ev.stage==="arriving"){
+    // keep the meeting spot synced to the (possibly moving) Mayor
+    const mayor=ev.mayorId?ST.pawns.find(p=>p.id===ev.mayorId&&p.hp>0):null;
+    if(mayor){ev.x=mayor.px|0;ev.y=mayor.py|0;}
+    gotoCell(e,ev.x,ev.y,1);                              // walk toward the Mayor
+    if(DIST(e.px,e.py,ev.x,ev.y)<2.4){
+      ev.stage="conferring";ev.conferStart=ST.tick;
+      log("\u25c8 The envoy has reached the Mayor \u2014 they're conferring now. Act before the meeting concludes.","warn");
+      banner("THE MEETING BEGINS","warn");
+      panToEvent(e.px,e.py,"#ff5470");
+    }
+    return;
+  }
+  // CONFERRING — the meeting is underway; a countdown to conclusion. If the player did NOT disrupt or strike
+  // the meeting, the conference concludes and the regime cracks down (the THREAT). If it was disrupted/struck,
+  // the crackdown is skipped/blunted (handled when those actions fire). Spying reduces the crackdown severity.
+  if(ev.stage==="conferring"){
+    if(ST.tick-ev.conferStart>=ev.conferDuration){
+      ev.stage="leaving";
+      if(!ev.disrupted&&!ev.struck){
+        log("\u25c8 The conference concluded \u2014 the envoy got what they came for.","warn");
+        envoyCrackdown(ev);                              // THREAT: crackdown + compromise a sympathizer
+      } else {
+        log("\u25c8 The conference concluded, but you disrupted it \u2014 the regime leaves with less than it wanted.","good");
+      }
+    }
+    return;
+  }
+  // LEAVING — the envoy departs (resolution consequences handled in a later stage)
+  if(ev.stage==="leaving"){
+    // walk back toward an edge, then despawn
+    const exit=(typeof edgeCell==="function")?edgeCell():{x:e.px|0,y:0};
+    if(!ev._exit){ev._exit=exit;}
+    gotoCell(e,ev._exit.x,ev._exit.y,0);
+    if(DIST(e.px,e.py,ev._exit.x,ev._exit.y)<2||ST.tick>=ev.leaveAt){
+      const idx=ST.pawns.indexOf(e);if(idx>=0)ST.pawns.splice(idx,1);
+      ST.envoy=null;
+    }
+    return;
+  }
+}
+// THE THREAT (stage 2) — when the envoy's meeting concludes uninterrupted, the regime tightens the noose.
+// BOTH consequences (per design): (a) a temporary HARD CRACKDOWN — awareness + grip spike, an intensified
+// sweep; and (b) they COMPROMISE A SYMPATHIZER — the regime IDs one of your sympathetic (not-yet-recruited)
+// wisps and turns them informant. Spying on the meeting first (ev.spied) BLUNTS the crackdown (you saw it
+// coming). It's temporary, not a permanent escalation — painful but recoverable.
+function envoyCrackdown(ev){
+  const reg=REG(),m=M();
+  const spied=ev&&ev.spied;
+  // (a) HARD CRACKDOWN — spike awareness + grip (reduced if you spied), and run an intensified sweep.
+  const awBump=spied?RI(8,14):RI(18,28);
+  const gripBump=spied?RI(3,6):RI(8,14);
+  reg.awareness=clamp((reg.awareness||0)+awBump,0,100);
+  reg.grip=clamp((reg.grip||0)+gripBump,0,100);
+  reg.lastSweep=ST.tick;                                  // patrols intensify from here
+  if(spied)log("\u2696 You saw the crackdown coming \u2014 the network braces, and the worst is blunted.","good");
+  log("\u2696 The regime tightens the noose \u2014 awareness +"+awBump+", patrols surge across the block.","warn");
+  banner("REGIME CRACKDOWN","bad");if(SFX&&SFX.alert)SFX.alert();
+  // run the existing sweep mechanic (burns/turns cell members) — a regular (non-militarized) sweep, blunted if spied
+  if(typeof regimeSweep==="function"){
+    // temporarily soften exposure if spied so the sweep burns less
+    const savedExp=m.exposure;
+    if(spied)m.exposure=Math.max(0,m.exposure-20);
+    regimeSweep(false);
+    if(spied)m.exposure=Math.min(savedExp,m.exposure);   // don't let the spy bonus raise exposure
+  }
+  // (b) COMPROMISE A SYMPATHIZER — the regime turns one sympathetic (not-recruited, not-already-informant)
+  // wisp into an informant. The sharper, personal cost. Spying does NOT prevent this (only the crackdown).
+  const symps=ST.pawns.filter(p=>!p.isAvatar&&!isChild(p)&&!p.recruited&&!p.informant&&(p.allegiance||0)>15);
+  if(symps.length){
+    // prefer the MOST sympathetic (the regime targets your strongest latent ally — the biggest loss)
+    symps.sort((a,b)=>(b.allegiance||0)-(a.allegiance||0));
+    const victim=symps[0];
+    victim.informant=true;reg.informants.push(victim.id);
+    victim.allegiance=clamp((victim.allegiance||0)-25,-100,100);
+    remember&&remember(victim,"was leaned on by the regime after the envoy's visit \u2014 now informing");
+    log("\u2696 The regime learned who's been sympathetic \u2014 "+victim.name+" has been turned. They're informing now.","bad");
+    if(typeof tryEmote==="function")tryEmote(victim,"sweat",120);
+  } else {
+    log("\u2696 The regime hunted for sympathizers to turn \u2014 but found no one ripe. Your network held.","info");
+  }
+  ev.resolved=true;
+}
+// ENVOY RESPONSE — detect + reward ops aimed at the envoy/meeting, setting the flags that gate the crackdown.
+// Approaches (all reuse existing ops):
+//   surveil the envoy/Mayor  → ev.spied   (blunts the crackdown — you saw it coming)
+//   sabotage a venue near the meeting → ev.disrupted (disrupts the conference, blunts the crackdown)
+//   frame the envoy → ev.disrupted + envoy leaves discredited (regime distrusts its own)
+//   assassinate the envoy (on route/via the op) → ev.struck (a major blow; envoy dies)
+// The cell-member strike is a separate action (envoyStrikeViaCell) shown only if you have a cell.
+function envoyOpHook(opKey,target,crit){
+  const ev=ST.envoy;if(!ev)return;
+  const e=ST.pawns.find(p=>p.id===ev.id);if(!e)return;
+  const m=M();
+  const targetIsEnvoy=target&&target.kind==="pawn"&&target.id===ev.id;
+  const targetIsMayor=target&&target.kind==="pawn"&&ev.mayorId&&target.id===ev.mayorId;
+  // SURVEIL the meeting (envoy or Mayor) → you learn the regime's plan; blunts the crackdown.
+  if(opKey==="surveil"&&(targetIsEnvoy||targetIsMayor)){
+    if(!ev.spied){ev.spied=true;
+      m.intel=(m.intel||0)+RI(4,8);
+      log("\u25c6 You surveilled the meeting \u2014 you've learned what the regime is planning. The coming crackdown won't catch you flat-footed.","good");
+      banner("MEETING SURVEILLED","good");
+    }
+    return;
+  }
+  // SABOTAGE the venue (a utility building) WHILE the meeting is on → disrupts the conference.
+  if(opKey==="sabotage"&&target&&target.kind==="s"&&ev.stage==="conferring"){
+    if(!ev.disrupted){ev.disrupted=true;
+      m.support=clamp((m.support||0)+RI(4,8),0,100);
+      log("\u2715 You hit the grid during the conference \u2014 the meeting breaks up in the dark. The regime leaves with less than it came for.","good");
+      banner("CONFERENCE DISRUPTED","good");
+    }
+    return;
+  }
+  // FRAME the envoy → the regime distrusts its own official; they leave discredited (a disruption).
+  if(opKey==="frame"&&targetIsEnvoy){
+    ev.disrupted=true;ev.discredited=true;
+    REG().grip=Math.max(0,(REG().grip||60)-RI(5,9));
+    log("\u2715 You planted evidence against the envoy \u2014 the regime now suspects its own emissary. They leave under a cloud, their word worthless.","good");
+    banner("ENVOY DISCREDITED","good");if(SFX&&SFX.alert)SFX.alert();
+    ev.stage="leaving";   // a discredited envoy cuts the visit short
+    return;
+  }
+  // ASSASSINATE the envoy → a major blow to the regime (handled largely by killPawn, but flag + reward here).
+  if(opKey==="assassinate"&&targetIsEnvoy){
+    ev.struck=true;ev.killed=true;
+    REG().grip=Math.max(0,(REG().grip||60)-RI(12,20));        // killing an envoy hurts the regime hard
+    m.support=clamp((m.support||0)+RI(8,15),0,100);
+    log("\u2620 You struck down the government envoy \u2014 a blow the regime will not forget. The block is electrified.","good");
+    banner("ENVOY ELIMINATED","good");
+    // killPawn already ran in opSuccess; envoyTick will see the envoy gone and clear state
+    return;
+  }
+}
+// STRIKE VIA CELL MEMBER — only available if you have a recruited cell. A cell member carries out the hit on
+// the envoy, so the avatar is never exposed — but the cell member is risked (they may be caught/burned). This
+// rewards building a cell (the option simply isn't offered without one).
+function envoyStrikeViaCell(){
+  const ev=ST.envoy;if(!ev){flashMsg&&flashMsg("No envoy is present");return false;}
+  const e=ST.pawns.find(p=>p.id===ev.id);if(!e){return false;}
+  const m=M();
+  const cell=ST.pawns.filter(p=>p.recruited&&!isChild(p)&&p.hp>0);
+  if(!cell.length){flashMsg&&flashMsg("You have no cell — recruit members before you can act through them");return false;}
+  // pick the cell member best placed to act (closest to the envoy)
+  cell.sort((a,b)=>DIST(a.px,a.py,e.px,e.py)-DIST(b.px,b.py,e.px,e.py));
+  const operative=cell[0];
+  // the strike's success leans on the cell member's allegiance + the regime's grip (harder when grip is high)
+  const chance=clamp(0.5+((operative.allegiance||0)/200)-((REG().grip||60)/300),0.15,0.9);
+  log("\u25b8 "+operative.name+" moves on the envoy at your order\u2026","warn");
+  if(Math.random()<chance){
+    ev.struck=true;ev.killed=true;
+    REG().grip=Math.max(0,(REG().grip||60)-RI(12,20));
+    m.support=clamp((m.support||0)+RI(8,15),0,100);
+    log("\u2620 "+operative.name+" struck down the envoy and melted back into the block \u2014 the regime never saw your hand in it.","good");
+    banner("ENVOY ELIMINATED","good");if(SFX&&SFX.alert)SFX.alert();
+    const idx=ST.pawns.indexOf(e);if(idx>=0)ST.pawns.splice(idx,1);
+    ST.envoy=null;
+    return true;
+  } else {
+    // the cell member is caught — burned, and the regime cracks down harder for the attempt
+    log("\u2716 "+operative.name+" was caught in the attempt \u2014 the strike failed, and the regime answers in force.","bad");
+    banner("STRIKE FAILED","bad");if(SFX&&SFX.alert)SFX.alert();
+    operative.recruited=false;operative.cellRole=null;
+    if(Math.random()<0.5){operative.informant=true;REG().informants.push(operative.id);
+      remember&&remember(operative,"was broken after a failed strike — now informing");}
+    REG().awareness=clamp((REG().awareness||0)+RI(15,25),0,100);
+    ev.disrupted=false;ev.struck=false;   // failed — the crackdown will still land (worse)
+    return false;
+  }
+}
 function maybeStoryEvent(){
   if(activeEvent)return;                          // one at a time
   if(ST.pawns.length<3||ST.tick<TPD*2)return;     // early grace
@@ -6353,6 +6638,73 @@ if(typeof document!=="undefined"&&document.addEventListener)document.addEventLis
     if(fp){ST.sel=[fp];if(typeof setFollow==="function")setFollow(fp);else{cam.x=fp.px*T-VW/cam.z/2;cam.y=fp.py*T-VH/cam.z/2;if(typeof clampCam==="function")clampCam();}renderInspect&&renderInspect();}return;}
   const b=e.target.closest("[data-event-opt]");
   if(b){SFX&&SFX.ui&&SFX.ui();resolveEvent(+b.dataset.eventOpt);}});
+// ═══ ENVOY RESPONSE PANEL (stage 3 UI) — surfaces the decision while the envoy is present. Options are GATED
+//     by what the player can actually do (frame needs prior bribe leverage; cell-strike needs a recruited
+//     cell). Buttons route to the real ops (pre-targeting the envoy) or directly to envoyStrikeViaCell. ═══
+function renderEnvoyPanel(){
+  let el=document.getElementById("envoy-panel");
+  const ev=ST.envoy;
+  // show only while the envoy is here and actionable (arriving or conferring), and not already resolved by a strike
+  if(!ev||(ev.stage!=="arriving"&&ev.stage!=="conferring")){if(el)el.remove();return;}
+  const e=ST.pawns.find(p=>p.id===ev.id);if(!e){if(el)el.remove();return;}
+  if(!el){el=document.createElement("div");el.id="envoy-panel";
+    el.style.cssText="position:fixed;right:14px;top:calc(var(--hud-h) + 14px);width:min(300px,90vw);background:rgba(10,8,16,.97);border:1px solid #ff5470;border-radius:9px;padding:13px 14px;z-index:58;box-shadow:0 6px 28px rgba(0,0,0,.7)";
+    document.body.appendChild(el);}
+  const av=theAvatar();
+  const hasBribe=!!(av&&av.opsDone&&av.opsDone.bribe);
+  const hasCell=ST.pawns.some(p=>p.recruited&&!isChild(p)&&p.hp>0);
+  const m=M();
+  const conferring=ev.stage==="conferring";
+  // remaining time in the meeting (rough), to convey urgency
+  let timeNote="";
+  if(conferring){const left=Math.max(0,ev.conferDuration-(ST.tick-ev.conferStart));
+    const hrs=Math.ceil(left/(TPD/24));timeNote=" \u00b7 ~"+hrs+"h left";}
+  let h="<div style='color:#ff8da3;font-family:var(--disp);font-weight:700;font-size:13px;letter-spacing:.05em;margin-bottom:3px'>\u25C8 GOVERNMENT ENVOY</div>";
+  h+="<div style='color:var(--dim);font-size:10px;margin-bottom:8px'>"+(conferring?"Conferring with the Mayor"+timeNote:"Approaching the Mayor")+"</div>";
+  h+="<div style='color:var(--tx);font-size:10.5px;line-height:1.45;margin-bottom:9px'>Disrupt the meeting or strike now \u2014 or ignore it and the regime cracks down (and turns a sympathizer)."+(ev.spied?" <span style='color:#39ff88'>\u25c9 Spied \u2014 crackdown blunted.</span>":"")+"</div>";
+  h+="<button class='tb' id='env-view' style='width:100%;margin-bottom:7px;font-size:10px;border-color:rgba(34,221,255,.5);color:#22ddff'>\u25C9 VIEW THE ENVOY</button>";
+  h+="<div style='display:flex;flex-direction:column;gap:5px'>";
+  // SURVEIL — always available
+  h+="<button class='tb' data-envoy-act='surveil' style='text-align:left;padding:7px 9px;font-size:11px'>\u25c9 Surveil the meeting<span style='display:block;font-size:9px;opacity:.6;margin-top:1px'>Learn the regime's plan \u2014 blunts the crackdown. (intel)</span></button>";
+  // SABOTAGE VENUE — guidance (player sabotages a utility building during the meeting)
+  h+="<button class='tb' data-envoy-act='sabotage' style='text-align:left;padding:7px 9px;font-size:11px'>\u2715 Sabotage the venue<span style='display:block;font-size:9px;opacity:.6;margin-top:1px'>Cut the power near the meeting to break it up.</span></button>";
+  // FRAME — gated on prior bribe
+  if(hasBribe)h+="<button class='tb' data-envoy-act='frame' style='text-align:left;padding:7px 9px;font-size:11px'>\u2696 Frame the envoy<span style='display:block;font-size:9px;opacity:.6;margin-top:1px'>Turn the regime against its own emissary.</span></button>";
+  else h+="<button class='tb' disabled style='text-align:left;padding:7px 9px;font-size:11px;opacity:.4;cursor:not-allowed'>\u2696 Frame the envoy<span style='display:block;font-size:9px;margin-top:1px'>Locked \u2014 bribe a wisp first to set up leverage.</span></button>";
+  // STRIKE DIRECT — always available (high risk)
+  h+="<button class='tb' data-envoy-act='strike' style='text-align:left;padding:7px 9px;font-size:11px;border-color:rgba(255,84,112,.5);color:#ff8da3'>\u2620 Strike the envoy<span style='display:block;font-size:9px;opacity:.6;margin-top:1px'>Assassinate them directly \u2014 a major blow, but exposes you.</span></button>";
+  // STRIKE VIA CELL — gated on having a cell
+  if(hasCell)h+="<button class='tb' data-envoy-act='cellstrike' style='text-align:left;padding:7px 9px;font-size:11px;border-color:rgba(255,84,112,.5);color:#ff8da3'>\u2620 Strike via a cell member<span style='display:block;font-size:9px;opacity:.6;margin-top:1px'>A recruit does the hit \u2014 you stay clean, but they're at risk.</span></button>";
+  else h+="<button class='tb' disabled style='text-align:left;padding:7px 9px;font-size:11px;opacity:.4;cursor:not-allowed'>\u2620 Strike via a cell member<span style='display:block;font-size:9px;margin-top:1px'>Locked \u2014 recruit a cell member first.</span></button>";
+  h+="</div>";
+  el.innerHTML=h;
+}
+// delegated handler for the envoy response buttons
+if(typeof document!=="undefined"&&document.addEventListener)document.addEventListener("click",e=>{
+  const vw=e.target.closest&&e.target.closest("#env-view");
+  if(vw&&ST.envoy){SFX&&SFX.ui&&SFX.ui();
+    const ep=ST.pawns.find(p=>p.id===ST.envoy.id);
+    if(ep){ST.sel=[ep];if(typeof setFollow==="function")setFollow(ep);else{cam.x=ep.px*T-VW/cam.z/2;cam.y=ep.py*T-VH/cam.z/2;if(typeof clampCam==="function")clampCam();}renderInspect&&renderInspect();}return;}
+  const btn=e.target.closest&&e.target.closest("[data-envoy-act]");
+  if(!btn||!ST.envoy)return;
+  SFX&&SFX.ui&&SFX.ui();
+  const act=btn.dataset.envoyAct;
+  const ep=ST.pawns.find(p=>p.id===ST.envoy.id);if(!ep)return;
+  if(act==="surveil"){
+    // start a surveil op targeting the envoy (the op + its detection rolls run as normal; the hook sets spied)
+    if(runAvatarOp("surveil",ep)){flashMsg&&flashMsg("Tailing the envoy \u2014 stay unseen.");}
+  }else if(act==="sabotage"){
+    // guidance: the player sabotages a utility building during the meeting (uses the normal sabotage flow)
+    flashMsg&&flashMsg("Sabotage a power/water building near the meeting while it's underway \u2014 use the Sabotage op.");
+  }else if(act==="frame"){
+    if(runAvatarOp("frame",ep)){flashMsg&&flashMsg("Framing the envoy\u2026");}
+  }else if(act==="strike"){
+    if(runAvatarOp("assassinate",ep)){flashMsg&&flashMsg("Moving to strike the envoy\u2026");}
+  }else if(act==="cellstrike"){
+    envoyStrikeViaCell();
+  }
+  renderEnvoyPanel();
+});
 // A disaster is announced (telegraph), then strikes after a delay unless mitigated.
 // ST.pendingDisaster = {kind, strikeAt, x, y, warned}
 function maybeScheduleDisaster(){
@@ -6873,7 +7225,7 @@ function tick(){ST.tick++;
         log("Enforcers swept the sprawl — "+tgt.name+" was detained and fined "+fine+"c.","bad");banner("ENFORCER CRACKDOWN","bad")}
       ST.lastCrackdown=ST.tick;ST.heat=Math.max(0,ST.heat-45)}}
   if(ST.tick%10===0){syncHUD();renderRoster()}
-  if(ST.tick%25===0){renderInspectCore();renderRequests()}}
+  if(ST.tick%25===0){renderInspectCore();renderRequests();if(typeof renderEnvoyPanel==="function")renderEnvoyPanel();}}
 
 /* ============================================================
    RENDERING
@@ -8525,6 +8877,35 @@ function render(){
   if(ATMO.on){drawAtmosphere();}
   // ── LIGHTNING (⚡ toggle) — periodic flashes; the flash value also drives sprite-glow elsewhere.
   if(STORM.on){drawLightning();}
+  // ── MAPPED-HOME HIGHLIGHT — when a surveilled wisp is selected and you've mapped where they live, mark
+  //    their house on the map so the intel is VISIBLE (not just "Home: mapped" text in the panel). A pulsing
+  //    bracketed marker over the home tile, color-keyed to surveillance. Only the selected wisp's home shows. ──
+  {const selP=ST.sel&&ST.sel.length===1&&ST.sel[0]&&ST.sel[0].kind!=="struct"?ST.sel[0]:null;
+   if(selP&&selP.routine&&selP.routine.home&&typeof routineStage==="function"&&routineStage(selP)>=1){
+     const hx=selP.routine.home.x,hy=selP.routine.home.y;
+     if(hx!=null&&hy!=null){
+       const cx=hx*T+T/2,cy=hy*T+T/2;
+       const pulse=0.5+0.5*Math.sin(performance.now()*0.004);
+       const r=T*0.62+pulse*3;
+       ctx.save();
+       ctx.strokeStyle="#22ddff";ctx.globalAlpha=0.55+0.35*pulse;ctx.lineWidth=2;
+       // corner brackets around the home tile (a "marked location" look, not a full box)
+       const b=r,gap=r*0.5;
+       const corners=[[-1,-1],[1,-1],[-1,1],[1,1]];
+       for(const [sx,sy] of corners){
+         ctx.beginPath();
+         ctx.moveTo(cx+sx*b, cy+sy*b - sy*gap);
+         ctx.lineTo(cx+sx*b, cy+sy*b);
+         ctx.lineTo(cx+sx*b - sx*gap, cy+sy*b);
+         ctx.stroke();
+       }
+       // a faint "HOME" tag above the marker
+       ctx.globalAlpha=0.8;ctx.fillStyle="#22ddff";ctx.font="bold 7px monospace";ctx.textAlign="center";
+       ctx.fillText("HOME", cx, cy - r - 3);
+       ctx.restore();ctx.globalAlpha=1;ctx.textAlign="left";
+     }
+   }
+  }
   // ── EVENT PING — a pulsing ring marking where something just happened (fire/mugging/caravan/brawl)
   if(eventPing){
     if(ST.tick>=eventPing.until){eventPing=null;}
@@ -9322,11 +9703,17 @@ function collectAlerts(){
     alerts.push({sev:"crit",ic:"\u26a0",t:lbl,s:adv});}
   if(ST.blackoutUntil&&ST.tick<ST.blackoutUntil)
     alerts.push({sev:"warn",ic:"\u26a1",t:"Blackout in effect",s:"Production is halted until power is restored."});
-  // trade caravan opportunity
+  // trade caravan opportunity (guard each mode — "outsiders" has no cv.good, so the old else-branch crashed)
   if(ST.caravan){const cv=ST.caravan;
-    if(cv.mode==="buy"){const have=ST.goods[cv.good]||0;
+    if(cv.mode==="outsiders"){
+      if(!cv.claimed)alerts.push({sev:"info",ic:"\u25C8",t:"Outsiders have arrived",s:"Send your operative to meet them — they carry intel, news, or maybe a defector. They won't wait forever."});}
+    else if(cv.mode==="buy"&&cv.good){const have=ST.goods[cv.good]||0;
       alerts.push({sev:"info",ic:"\u25C8",t:"Caravan buying "+cv.good.toUpperCase(),s:"Pays "+cv.rate+"c/unit on departure. You have "+have+" in stock — produce more to cash in."});}
-    else alerts.push({sev:"info",ic:"\u25C8",t:"Caravan selling "+cv.good.toUpperCase(),s:"Cheap "+cv.good.toUpperCase()+" available while they're here."});}
+    else if(cv.mode==="sell"&&cv.good)alerts.push({sev:"info",ic:"\u25C8",t:"Caravan selling "+cv.good.toUpperCase(),s:"Cheap "+cv.good.toUpperCase()+" available while they're here."});}
+  // GOVERNMENT ENVOY — surface the visit as a high-priority alert while it's active
+  if(ST.envoy){const stg=ST.envoy.stage;
+    if(stg==="arriving")alerts.push({sev:"warn",ic:"\u25C8",t:"Government envoy incoming",s:"A regime emissary is moving to confer with the Mayor. Decide how to respond before the meeting concludes."});
+    else if(stg==="conferring")alerts.push({sev:"crit",ic:"\u25C8",t:"Envoy is meeting the Mayor",s:"The conference is underway — act now (surveil, disrupt the venue, or strike) or the regime cracks down."});}
   if(ST.debtDays)alerts.push({sev:"crit",ic:"\u26a0",t:"Debt: day "+ST.debtDays+"/6",s:"The district is condemned at day 6 of debt."});
   // active election — surface it so the player can watch + back a candidate
   if(ST.election&&!ST.election.resolved){const e=ST.election;
@@ -10141,7 +10528,7 @@ function renderInspectCore(){const el=$("inspect");
           const rs=routineStage(e);
           if(rs>0){const r=e.routine;
             h+="<div class='ordsec' style='margin-top:5px'>DOSSIER</div><div class='sub' style='font-size:9.5px;line-height:1.5'>";
-            if(r.home!==undefined)h+="<div>\u25b8 Home: "+(r.homeless?"<span style='color:#ff9a52'>homeless — sleeps rough</span>":(r.home?"mapped":"unknown"))+"</div>";
+            if(r.home!==undefined)h+="<div>\u25b8 Home: "+(r.homeless?"<span style='color:#ff9a52'>homeless — sleeps rough</span>":(r.home?"<span style='color:#22ddff'>mapped \u2014 marked on map \u25ce</span>":"unknown"))+"</div>";
             if(r.work!==undefined)h+="<div>\u25b8 Work: "+(r.work?DEF[r.work.type]?DEF[r.work.type].name:"mapped":"<span style='opacity:.6'>no fixed work</span>")+"</div>";
             if(r.schedule)h+="<div>\u25b8 Routine: "+(r.schedule.works?"works days":"idle days")+", "+(r.schedule.nocturnal?"up late":"sleeps nights")+"</div>";
             if(r.vulnerable)h+="<div style='color:#ff8da3'>\u26a0 Vulnerable: "+r.vulnerable.desc+"</div>";
