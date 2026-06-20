@@ -1470,6 +1470,68 @@ function resolveOpTarget(desc){
   return null;
 }
 // STAGE an op: validate, then attach an activeOp to the avatar (the perform phase runs in pawnTick).
+// ═══════════════ OP READOUT — cyberpunk hacker terminal over the avatar during an op ═══════════════
+// While the avatar performs a staged op, a small terminal panel streams console lines above them
+// (>RUNNING EXPLOIT... >BYPASSING ICE...), building suspense, then resolves into the verdict
+// (>ACCESS GRANTED / >TRACE FAILED) tinted by the outcome band. Purely visual — rides on the existing
+// staged-op lifecycle and the banded roll that already happened in resolveAvatarOp.
+let OPREADOUT=null;
+// per-op flavour: a boot line + a few "working" lines that stream as the act progresses. Generic fallback
+// covers any op without bespoke text.
+const OP_TERM_SCRIPT={
+  sabotage:{boot:"BREACHING GRID NODE",work:["MAPPING POWER BUS","INJECTING FAULT","OVERLOADING RELAY"]},
+  steal:   {boot:"ACCESSING ASSETS",  work:["SPOOFING CREDENTIALS","SKIMMING LEDGER","WIPING TRACE"]},
+  intel:   {boot:"TAPPING DATASTREAM", work:["DECRYPTING PACKETS","PARSING CHATTER","EXTRACTING"]},
+  surveil: {boot:"DEPLOYING TAP",      work:["TRACKING TARGET","LOGGING PATTERN","BUILDING DOSSIER"]},
+  dissent: {boot:"SEEDING NETWORK",    work:["SPREADING SIGNAL","TURNING SENTIMENT","AMPLIFYING"]},
+  bribe:   {boot:"OPENING CHANNEL",    work:["TRANSFERRING FUNDS","TESTING LOYALTY","SEALING DEAL"]},
+  frame:   {boot:"FORGING EVIDENCE",   work:["PLANTING DATA","ALTERING LOGS","CLOSING LOOP"]},
+  blackmail:{boot:"LOADING LEVERAGE",  work:["PRESENTING PROOF","APPLYING PRESSURE","AWAITING REPLY"]},
+  assassinate:{boot:"MARKING TARGET",  work:["CLOSING DISTANCE","LINING THE SHOT","COMMITTING"]}
+};
+const OP_TERM_DEFAULT={boot:"RUNNING OPERATION",work:["PROCESSING","EXECUTING","FINALIZING"]};
+function opReadoutStart(opKey,op){
+  const sc=OP_TERM_SCRIPT[opKey]||OP_TERM_DEFAULT;
+  OPREADOUT={
+    opKey, phase:"run",                       // run -> reveal -> (cleared)
+    boot:sc.boot, work:sc.work.slice(),
+    shown:0,                                   // how many work lines have streamed in
+    verdict:null, verdictAt:0,                 // set at resolution
+    t0:ST.tick
+  };
+}
+function opReadoutResolve(p,op,band){
+  if(!OPREADOUT)return;
+  // map the banded roll to a terminal verdict + colour
+  const V={
+    critwin: {txt:"ACCESS GRANTED",  sub:"FLAWLESS",  col:"#5cff9e"},
+    success: {txt:"ACCESS GRANTED",  sub:"CLEAN",     col:"#5cff9e"},
+    partial: {txt:"PARTIAL BREACH",  sub:"COMPLICATED",col:"#ffd24a"},
+    fail:    {txt:"ACCESS DENIED",   sub:"FAILED",     col:"#ff4757"},
+    critfail:{txt:"TRACE DETECTED",  sub:"BLOWN",      col:"#ff2d55"}
+  }[band]||{txt:"DONE",sub:"",col:"#22ddff"};
+  OPREADOUT.phase="reveal";
+  OPREADOUT.verdict=V;
+  OPREADOUT.verdictAt=ST.tick;
+  if(typeof SFX!=="undefined"){if((band==="fail"||band==="critfail")&&SFX.alert)SFX.alert();else if(SFX.ui)SFX.ui();}
+}
+// called each frame from render — advances which work lines are visible based on op progress, and
+// auto-clears the panel a beat after the verdict has been shown.
+function opReadoutTick(av){
+  if(!OPREADOUT)return;
+  if(OPREADOUT.phase==="run"){
+    if(av&&av.activeOp){
+      const frac=Math.max(0,Math.min(1,av.activeOp.prog/av.activeOp.duration));
+      // reveal work lines progressively across the duration (leave the last sliver for the verdict)
+      OPREADOUT.shown=Math.min(OPREADOUT.work.length,Math.floor(frac*(OPREADOUT.work.length+0.5)));
+    } else {
+      // op vanished without resolving (aborted) — clear
+      OPREADOUT=null;
+    }
+  } else if(OPREADOUT.phase==="reveal"){
+    if(ST.tick-OPREADOUT.verdictAt>140)OPREADOUT=null;   // hold the verdict ~ a couple seconds, then fade
+  }
+}
 function runAvatarOp(opKey,target){
   const op=AVATAR_OPS[opKey];if(!op)return false;
   const m=M(),a=theAvatar();
@@ -1484,6 +1546,7 @@ function runAvatarOp(opKey,target){
   else if(target&&target.id!=null)desc={kind:"pawn",id:target.id};
   a.activeOp={opKey,target:desc,prog:0,duration:op.duration,startTick:ST.tick,anim:op.anim};
   a.job=null;                                 // the op supersedes normal AI (intercepted in pawnTick)
+  opReadoutStart(opKey,op);                   // boot the on-screen hacker terminal for this op
   if(typeof SFX!=="undefined"&&SFX.ui)SFX.ui();
   log("\u25b8 Operation underway: "+op.name+"\u2026","info");
   return true;
@@ -1534,6 +1597,8 @@ function resolveAvatarOp(p){
       opFailure(ao.opKey,target,check,false);
       break;
   }
+  // hand the verdict to the terminal readout so it can resolve the suspense into SUCCESS/FAIL on screen
+  opReadoutResolve(p,op,check.band);
   runWitnessCheck(p,op,check,ao._witCount,ao._witPen);   // who saw it → fallout
   if(typeof syncHUD==="function")syncHUD();
   if(typeof renderInspect==="function")renderInspect();
@@ -6893,6 +6958,75 @@ function render(){
   if(ATMO.on){drawAtmosphere();}
   // ── LIGHTNING (⚡ toggle) — periodic flashes; the flash value also drives sprite-glow elsewhere.
   if(STORM.on){drawLightning();}
+  // ── OP READOUT — the cyberpunk hacker terminal above the avatar during an operation (on top of all)
+  drawOpReadout();
+}
+
+// draw the streaming op terminal in screen space, anchored above the avatar's head
+function drawOpReadout(){
+  const av=theAvatar();
+  opReadoutTick(av);
+  if(!OPREADOUT)return;
+  if(!av||(!av.activeOp&&OPREADOUT.phase==="run"))return;
+  const z=cam.z;
+  // avatar screen position (same world->screen math the sprite pass uses)
+  const sx=(av.px*T-cam.x)*z, sy=(av.py*T-cam.y)*z;
+  // build the visible lines
+  const lines=[];
+  lines.push({t:">"+OPREADOUT.boot+(OPREADOUT.phase==="run"?"...":""),c:"#22ddff"});
+  for(let i=0;i<OPREADOUT.shown&&i<OPREADOUT.work.length;i++){
+    lines.push({t:">"+OPREADOUT.work[i]+"...",c:"#7fe9ff"});
+  }
+  let cursor=OPREADOUT.phase==="run"&&(ST.tick%20<10);   // blinking cursor while running
+  if(OPREADOUT.phase==="reveal"&&OPREADOUT.verdict){
+    const v=OPREADOUT.verdict;
+    // a glitchy reveal: for the first few ticks the verdict text scrambles, then locks
+    const age=ST.tick-OPREADOUT.verdictAt;
+    let vt=v.txt;
+    if(age<10){const g="!<>-_\\/[]{}—=+*^?#";vt=v.txt.split("").map(ch=>ch===" "?" ":g[Math.floor(Math.random()*g.length)]).join("");}
+    lines.push({t:">"+vt,c:v.col,big:true});
+    if(age>=10&&v.sub)lines.push({t:"["+v.sub+"]",c:v.col,dim:true});
+  }
+  // panel geometry
+  ctx.save();
+  ctx.textAlign="left";
+  const padX=7,padY=6,lh=12,bigLh=15;
+  ctx.font="9px monospace";
+  let maxW=0;for(const ln of lines){ctx.font=(ln.big?"bold 11px":"9px")+" monospace";maxW=Math.max(maxW,ctx.measureText(ln.t).width);}
+  const panelW=Math.max(108,maxW+padX*2);
+  let panelH=padY*2;for(const ln of lines)panelH+=ln.big?bigLh:lh;
+  // position: above the avatar, clamped to stay on screen
+  let px=sx-panelW/2, py=sy-46-panelH;
+  px=Math.max(6,Math.min(VW-panelW-6,px));
+  py=Math.max(6,py);
+  // backdrop — dark translucent terminal with a bright top border
+  ctx.fillStyle="rgba(2,8,16,0.92)";
+  ctx.fillRect(px,py,panelW,panelH);
+  const borderC=OPREADOUT.phase==="reveal"&&OPREADOUT.verdict?OPREADOUT.verdict.col:"#22ddff";
+  ctx.fillStyle=borderC;ctx.globalAlpha=0.9;ctx.fillRect(px,py,panelW,2);ctx.globalAlpha=1;
+  // faint scanlines for the CRT feel
+  ctx.globalAlpha=0.05;ctx.fillStyle="#22ddff";
+  for(let yy=py+3;yy<py+panelH;yy+=3)ctx.fillRect(px,yy,panelW,1);
+  ctx.globalAlpha=1;
+  // a thin connector line down to the avatar
+  ctx.strokeStyle=borderC;ctx.globalAlpha=0.4;ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(sx,py+panelH);ctx.lineTo(sx,sy-30);ctx.stroke();ctx.globalAlpha=1;
+  // text
+  let ty=py+padY+9;
+  for(const ln of lines){
+    ctx.font=(ln.big?"bold 11px":"9px")+" monospace";
+    ctx.globalAlpha=ln.dim?0.7:1;
+    ctx.fillStyle=ln.c;
+    ctx.fillText(ln.t,px+padX,ty);
+    ty+=ln.big?bigLh:lh;
+  }
+  // blinking cursor on the last running line
+  if(cursor&&lines.length){
+    ctx.font="9px monospace";ctx.fillStyle="#7fe9ff";
+    const lastW=ctx.measureText(lines[lines.length-1].t).width;
+    ctx.fillRect(px+padX+lastW+2,ty-lh-7,5,8);
+  }
+  ctx.globalAlpha=1;ctx.restore();
 }
 
 // rain + smog atmosphere, drawn in screen space. State + particle pool created lazily.
@@ -7092,7 +7226,7 @@ function clickSelect(c){const p=pawnAt(c.wx,c.wy);
   // If an op is in flight, moving ABORTS it (a deliberate bail) — you can break off if the heat changes.
   const selA=ST.sel&&ST.sel[0];
   if(selA&&selA.isAvatar&&colCost(c.x,c.y)>=0){
-    if(selA.activeOp){selA.activeOp=null;flashMsg&&flashMsg("Operation abandoned.");}
+    if(selA.activeOp){selA.activeOp=null;flashMsg&&flashMsg("Operation abandoned.");} OPREADOUT=null;
     selA.job={t:"goto",x:c.x,y:c.y};selA.cmd=null;
     if(typeof SFX!=="undefined"&&SFX.ui)SFX.ui();
     return;
@@ -7114,7 +7248,7 @@ function tapAction(c){
   // AVATAR MOVE-ON-CLICK: operative selected + empty walkable tile -> walk there (aborts an op if in flight)
   const selA=ST.sel&&ST.sel[0];
   if(selA&&selA.isAvatar&&colCost(c.x,c.y)>=0){
-    if(selA.activeOp){selA.activeOp=null;flashMsg&&flashMsg("Operation abandoned.");}
+    if(selA.activeOp){selA.activeOp=null;flashMsg&&flashMsg("Operation abandoned.");} OPREADOUT=null;
     selA.job={t:"goto",x:c.x,y:c.y};selA.cmd=null;
     if(typeof SFX!=="undefined"&&SFX.ui)SFX.ui();
     return;
@@ -7974,6 +8108,62 @@ function opDockState(av){
   if(av.job&&av.job.t)return {glyph:"\u25c7",txt:"<b>"+jobLabel(av).replace(/^.*?: ?/,"")+"</b>",prog:null};
   return {glyph:"\u25c7",txt:"Idle",prog:null};
 }
+// ═══ SHARED OPS UI — the avatar's operations toolkit, rendered identically in the inspect panel AND the
+// operative dock so you can act from one always-reachable place (no need to hunt for + select your
+// operative in the world first). renderOpsGrid() returns the categorized button HTML; dispatchOpButton()
+// runs the click. Both surfaces use the same .i-op/data-op contract. ═══
+function renderOpsGrid(opts){
+  opts=opts||{};const compact=opts.compact;
+  const av=theAvatar();const m=M();let h="";
+  // in-flight: show progress instead of the grid
+  if(av&&av.activeOp){const ao=av.activeOp;const opD=AVATAR_OPS[ao.opKey];const pct=Math.round(ao.prog/ao.duration*100);
+    h+="<div class='sub' style='font-size:11px;color:#ffd24a;margin-top:4px;font-weight:600'>\u25b8 "+opD.name.toUpperCase()+" \u2014 performing\u2026 "+pct+"%</div>";
+    h+="<div class='bar' style='margin-top:2px'><i style='width:"+pct+"%;background:#ffd24a'></i></div>";
+    h+="<div class='sub' style='font-size:9px;opacity:.7'>Move your operative to abandon.</div>";
+    return h;
+  }
+  const OP_LBL={intel:"GATHER INTEL",surveil:"SURVEIL",dissent:"SPREAD DISSENT",sabotage:"SABOTAGE",steal:"STEAL FUNDS",bribe:"BRIBE",frame:"FRAME ASSET",blackmail:"BLACKMAIL",assassinate:"ASSASSINATE"};
+  const RISK_COL={low:"",raised:"#ffd24a",high:"#ff9a52",extreme:"#ff5470"};
+  const RISK_DOT={low:"",raised:"\u25c8",high:"\u25c8\u25c8",extreme:"\u26a0"};
+  for(const cat of OP_CAT_ORDER){
+    const opsInCat=Object.keys(AVATAR_OPS).filter(ok=>OP_CATEGORY[ok]===cat);
+    if(!opsInCat.length)continue;
+    h+="<div class='opcat'>"+cat+"</div>";
+    h+="<div class='opsgrid' style='display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:3px 0 5px'>";
+    for(const ok of opsInCat){const op=AVATAR_OPS[ok];const st=opState(ok);
+      const lbl=(OP_LBL[ok]||op.name.toUpperCase())+(op.cost?" ("+op.cost+")":"");
+      const armed=ST.opTargeting&&ST.opTargetingOp===ok;
+      let bc,tc,suffix="",tip=op.desc;
+      if(!st.ok){bc="rgba(120,140,160,.2)";tc="#5d6b7c";suffix=" \uD83D\uDD12";tip=op.desc+" \u2014 ["+st.label+"]";}
+      else{const rc=RISK_COL[st.risk];
+        bc=rc?("rgba("+(st.risk==="extreme"?"255,84,112":st.risk==="high"?"255,154,82":"255,210,74")+",.55)"):"rgba(34,221,255,.4)";
+        tc=rc||"#bfe8ff";
+        if(RISK_DOT[st.risk])suffix=" <span style='color:"+rc+"'>"+RISK_DOT[st.risk]+"</span>";
+        if(st.targeted)tip=op.desc+" \u2014 [needs a target in range]";
+        if(st.risk!=="low")tip+=" \u26a0 "+st.risk+" risk at current heat";}
+      if(armed){bc="#ffd24a";tc="#ffd24a";}
+      h+="<button class='tb i-op"+(armed?" armed":"")+(st.ok?"":" opdis")+"' data-op='"+ok+"' title='"+tip.replace(/'/g,"&#39;")+"' style='font-size:8.5px;padding:5px 3px;letter-spacing:.02em;border-color:"+bc+";color:"+tc+"'>"+lbl+suffix+"</button>";
+    }
+    h+="</div>";
+  }
+  h+="<button class='tb' id='i-lielow' style='font-size:9px;padding:4px;margin-top:2px;border-color:rgba(122,162,255,.4);color:#aebfff'>\u25ad LIE LOW \u2014 reduce exposure (12 intel)</button>";
+  if(ST.opTargeting)h+="<div class='sub optargethint' style='font-size:10px;color:#ffd24a;margin-top:4px'>\u25c9 Select a "+(ST.opTargeting==='utility'?"power/water building":ST.opTargeting==='regime'?"regime asset":"wisp")+" to "+ST.opTargetingOp+" \u2014 walk into range, then tap it. (Tap the op again to cancel.)</div>";
+  return h;
+}
+// shared dispatch for an op button (returns true if it handled the click). Used by inspect + dock.
+function dispatchOpButton(opBtn){
+  const opKey=opBtn.dataset.op;const op=AVATAR_OPS[opKey];if(!op)return false;
+  SFX.ui&&SFX.ui();
+  if(op.target){
+    if(ST.opTargeting===op.target&&ST.opTargetingOp===opKey){ST.opTargeting=null;ST.opTargetingOp=null;}
+    else{ST.opTargeting=op.target;ST.opTargetingOp=opKey;
+      flashMsg&&flashMsg("Select a "+(op.target==="utility"?"power/water building":"regime asset")+" to "+opKey);}
+  }else{
+    runAvatarOp(opKey,null);
+  }
+  renderInspect();renderOpDock();syncHUD();
+  return true;
+}
 function renderOpDock(){
   const dock=document.getElementById("op-dock");if(!dock)return;
   if(ST.phase!=="run"){dock.style.display="none";return;}
@@ -7991,6 +8181,12 @@ function renderOpDock(){
   h+="</div>";
   h+="<div class='od-row'>";
   h+="<button class='od-btn"+(ST.avatarManual?" on":"")+"' id='od-mode' title='"+(ST.avatarManual?"Manual: your operative waits for your commands (still eats/sleeps to survive)":"Auto: your operative lives autonomously between your commands")+"'>"+(ST.avatarManual?"\u270b MANUAL":"\u27f3 AUTO")+"</button>";
+  h+="</div>";
+  // ── THE ACTIONS MENU — the full ops toolkit, right here in the dock so you can operate without first
+  // hunting for + selecting your operative in the world. Same buttons/contract as the inspect panel.
+  h+="<div class='od-ops' style='margin-top:8px;border-top:1px solid var(--bd);padding-top:6px'>";
+  h+="<div class='opcat' style='margin-bottom:2px'>OPERATIONS</div>";
+  h+=renderOpsGrid({compact:true});
   h+="</div>";
   h+="<div class='sub' style='font-size:8.5px;opacity:.6;margin-top:6px'>"+(isSel?"Click an empty tile to move \u00b7 click a target to operate":"Select your operative to command it")+"</div>";
   h+="</div>";
@@ -8119,38 +8315,9 @@ function renderInspectCore(){const el=$("inspect");
           h+="<div class='bar' style='margin-top:2px'><i style='width:"+pct+"%;background:#ffd24a'></i></div>";
           h+="<div class='sub' style='font-size:9px;opacity:.7'>Move your operative to abandon the operation.</div>";
         } else {
-        // REACTIVE OPS MENU — grouped by category; each op shows its live state. Risk is signaled,
-        // prerequisites are disabled. (Rule: disable the impossible, signal the dangerous.)
-        const OP_LBL={intel:"GATHER INTEL",surveil:"SURVEIL",dissent:"SPREAD DISSENT",sabotage:"SABOTAGE",steal:"STEAL FUNDS",bribe:"BRIBE",frame:"FRAME ASSET",blackmail:"BLACKMAIL",assassinate:"ASSASSINATE"};
-        const RISK_COL={low:"",raised:"#ffd24a",high:"#ff9a52",extreme:"#ff5470"};
-        const RISK_DOT={low:"",raised:"\u25c8",high:"\u25c8\u25c8",extreme:"\u26a0"};
-        for(const cat of OP_CAT_ORDER){
-          const opsInCat=Object.keys(AVATAR_OPS).filter(ok=>OP_CATEGORY[ok]===cat);
-          if(!opsInCat.length)continue;
-          h+="<div class='opcat'>"+cat+"</div>";
-          h+="<div class='opsgrid' style='display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:3px 0 5px'>";
-          for(const ok of opsInCat){const op=AVATAR_OPS[ok];const st=opState(ok);
-            const lbl=(OP_LBL[ok]||op.name.toUpperCase())+(op.cost?" ("+op.cost+")":"");
-            const armed=ST.opTargeting&&ST.opTargetingOp===ok;
-            let bc,tc,suffix="",tip=op.desc;
-            if(!st.ok){ // disabled — a real prerequisite is missing
-              bc="rgba(120,140,160,.2)";tc="#5d6b7c";
-              suffix=" \uD83D\uDD12";tip=op.desc+" \u2014 ["+st.label+"]";
-            } else { // available; show risk tier
-              const rc=RISK_COL[st.risk];
-              bc=rc?("rgba("+(st.risk==="extreme"?"255,84,112":st.risk==="high"?"255,154,82":"255,210,74")+",.55)"):"rgba(34,221,255,.4)";
-              tc=rc||"#bfe8ff";
-              if(RISK_DOT[st.risk])suffix=" <span style='color:"+rc+"'>"+RISK_DOT[st.risk]+"</span>";
-              if(st.targeted)tip=op.desc+" \u2014 [needs a target in range]";
-              if(st.risk!=="low")tip+=" \u26a0 "+st.risk+" risk at current heat";
-            }
-            if(armed){bc="#ffd24a";tc="#ffd24a";}
-            h+="<button class='tb i-op"+(armed?" armed":"")+(st.ok?"":" opdis")+"' data-op='"+ok+"' title='"+tip.replace(/'/g,"&#39;")+"' style='font-size:8.5px;padding:5px 3px;letter-spacing:.02em;border-color:"+bc+";color:"+tc+"'>"+lbl+suffix+"</button>";
-          }
-          h+="</div>";
-        }
-        h+="<button class='tb' id='i-lielow' style='font-size:9px;padding:4px;margin-top:2px;border-color:rgba(122,162,255,.4);color:#aebfff'>\u25ad LIE LOW \u2014 reduce exposure (12 intel)</button>";
-        if(ST.opTargeting)h+="<div class='sub optargethint' style='font-size:10px;color:#ffd24a;margin-top:4px'>\u25c9 Select a "+(ST.opTargeting==='utility'?"power/water building":ST.opTargeting==='regime'?"regime asset":"wisp")+" to "+ST.opTargetingOp+" \u2014 walk into range, then tap it. (Tap the op again to cancel.)</div>";
+        // REACTIVE OPS MENU — shared with the operative dock (renderOpsGrid). One toolkit, two surfaces.
+        h+="<div class='sub' style='font-size:8px;opacity:.55;margin:4px 0 2px'>Also available in the OPERATIVE dock \u2199</div>";
+        h+=renderOpsGrid();
         }
       }
     }
@@ -8204,6 +8371,15 @@ function renderInspectCore(){const el=$("inspect");
     if(!isChild(e)&&!e.recruited&&!e.informant){
       const pot=radicalPotential(e);const ch=Math.round(clamp(0.3+pot/120,0.05,0.92)*100);
       h+="<button class='tb' id='i-recruit' style='border-color:rgba(92,255,158,.4);color:#5cff9e;margin-top:6px'>\u270a RECRUIT (8 intel \u00b7 "+ch+"%)</button>";
+    }
+    // PATRONIZE — slip a struggling wisp credits. The desperate (homeless / in debt / broke) remember who
+    // helped them when no one else did: it relieves their hardship AND wins real goodwill + a lean toward
+    // your cause. Costs YOUR district income. A direct lever from the economy into the insurrection.
+    if(!isChild(e)&&!e.isAvatar&&!e.informant){
+      const struggling=e.homeless||(e.rentDebt||0)>0||(e.credits||0)<15||(e.desperate&&e.desperate>ST.tick);
+      const cost=struggling?20:12;
+      const can=(ST.income||0)>=cost;
+      h+="<button class='tb' id='i-patron' style='border-color:rgba("+(struggling?"255,210,74,.5":"122,162,255,.4")+");color:"+(struggling?"#ffe08a":"#aebfff")+";margin-top:4px"+(can?"":";opacity:.55")+"'>\u25c8 PATRONIZE ("+cost+"c)"+(struggling?" \u2014 they're struggling":"")+"</button>";
     }
     if(e.refusedOrder){
       h+="<button class='tb' id='i-force' style='border-color:rgba(255,84,112,.5);color:#ff8da3;margin-top:4px'>\u26a1 FORCE COMPLIANCE (10 intel)</button>";
@@ -8321,19 +8497,7 @@ $("inspect").addEventListener("click",e=>{
   if(ob){const s=ST.sel[0];if(s&&s.kind==="pawn"){SFX.ui();clearJob(s);s.job=null;s.cmd=ob.dataset.o;s.refusedOrder=false;renderInspect()}return}
   // AVATAR OPERATIONS: op button clicked
   const opBtn=e.target.closest&&e.target.closest(".i-op");
-  if(opBtn){const opKey=opBtn.dataset.op;const op=AVATAR_OPS[opKey];SFX.ui&&SFX.ui();
-    if(!op)return;
-    if(op.target){
-      // targeted op (sabotage/frame): toggle targeting mode — player then clicks a building/pawn
-      if(ST.opTargeting===op.target&&ST.opTargetingOp===opKey){ST.opTargeting=null;ST.opTargetingOp=null;}
-      else{ST.opTargeting=op.target;ST.opTargetingOp=opKey;
-        flashMsg&&flashMsg("Select a "+(op.target==="utility"?"power/water building":"regime asset")+" to "+opKey);}
-      renderInspect();
-    }else{
-      // direct op (intel/dissent): run it now
-      runAvatarOp(opKey,null);renderInspect();syncHUD();
-    }
-    return;}
+  if(opBtn){dispatchOpButton(opBtn);return;}
   const id=e.target.id;if(!id)return;
   const sel=ST.sel[0];SFX.ui();
   if(id==="i-force"&&sel&&sel.kind==="pawn"){
@@ -8351,6 +8515,23 @@ $("inspect").addEventListener("click",e=>{
   else if(id==="i-lielow"){if(goToGround()){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
   else if(id==="i-back"&&sel&&sel.kind==="pawn"){if(proposeCandidate(sel.id)){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
   else if(id==="i-recruit"&&sel&&sel.kind==="pawn"){if(recruitWisp(sel)){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
+  else if(id==="i-patron"&&sel&&sel.kind==="pawn"){
+    const struggling=sel.homeless||(sel.rentDebt||0)>0||(sel.credits||0)<15||(sel.desperate&&sel.desperate>ST.tick);
+    const cost=struggling?20:12;
+    if((ST.income||0)<cost){flashMsg&&flashMsg("Need "+cost+"c district income to patronize");return;}
+    ST.income-=cost;
+    // relieve the immediate hardship
+    sel.credits=(sel.credits||0)+cost;
+    if(sel.rentDebt){sel.rentDebt=Math.max(0,sel.rentDebt-1);}
+    // the goodwill — bigger when they were genuinely struggling (you helped when it mattered)
+    const goodwill=struggling?RI(12,20):RI(5,9);
+    sel.allegiance=clamp((sel.allegiance||0)+goodwill,-100,100);
+    if(sel.desperate&&sel.credits>15)sel.desperate=0;   // pulled back from the brink
+    emotionalReact(sel,struggling?"relief":"joy",struggling?0.6:0.4,{memory:"someone slipped me credits when I was down — I won't forget it"});
+    adjAvatarRep&&adjAvatarRep(struggling?4:2);          // word spreads that you look after people
+    log("You patronized "+sel.name+" — "+(struggling?"a lifeline they'll remember.":"a gesture of goodwill."),"good");
+    SFX.ui&&SFX.ui();renderInspect();syncHUD();
+  }
   else if(id==="i-follow"&&sel&&sel.kind==="pawn"){
     if(cam.follow===sel.id)stopFollow();else setFollow(sel);
     renderInspect();}
@@ -8855,6 +9036,10 @@ $("t-command").onclick=()=>{SFX.ui();openSub("c")};
 $("op-dock").addEventListener("click",e=>{
   const strip=e.target.closest("#od-strip");
   if(strip&&!e.target.closest(".od-btn")){OP_DOCK_OPEN=!OP_DOCK_OPEN;SFX.ui&&SFX.ui();renderOpDock();return;}
+  // op buttons inside the dock — shared dispatch with the inspect panel
+  const opBtn=e.target.closest&&e.target.closest(".i-op");
+  if(opBtn){dispatchOpButton(opBtn);return;}
+  if(e.target.id==="i-lielow"){if(goToGround()){SFX.ui&&SFX.ui();}renderInspect();renderOpDock();syncHUD();return;}
   const av=theAvatar();if(!av)return;
   if(e.target.closest("#od-jump")){ // jump camera to + select the operative
     SFX.ui&&SFX.ui();ST.sel=[av];setFollow(av);

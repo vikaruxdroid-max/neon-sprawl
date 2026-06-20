@@ -39,9 +39,92 @@ done yet.
 
 ## ⚡ LATEST STATE (read this first — reconciled from the live VM, June 2026) ⚡
 
-**ECONOMY + DAY/NIGHT VISUAL + UNIVERSAL ATTENDANTS + AI REACTIONS (most recent session): four systems
-from Carlo's batch, plus a comprehensive validation pass.** Carlo's design answers: weekly-accumulating rent
-(daily pay), robots staff anything unstaffed (max coverage, wisps first), AI calls built fully now.
+**SEPARATE ACTIONS MENU + PATRONIZE economic intervention (most recent session).** Carlo asked to finally
+build the separate actions menu (a long-standing pending item) plus any improvements. Built both, validated.
+
+**SEPARATE ACTIONS MENU — the ops toolkit, now always-reachable:** the avatar ops were only in the inspect
+panel (you had to find + select your operative in the world first). Now they're ALSO in the OPERATIVE dock
+(bottom-left, collapsible), so you can operate from one always-open place. Refactored to SHARE one
+implementation:
+- `renderOpsGrid(opts)` — returns the categorized op-button HTML (INTELLIGENCE/INFLUENCE/DIRECT ACTION,
+  live state per op: ready/armed/disabled, risk tier signaled, cost shown). Used by BOTH the inspect panel
+  and the dock panel — one source of truth (removed the duplicated inline version in inspect).
+- `dispatchOpButton(opBtn)` — shared click handler: direct ops (intel/dissent) run now; targeted ops
+  (sabotage/frame/etc.) arm targeting mode. Called from both the inspect `.i-op` handler AND the dock's
+  click handler. The `i-lielow` button also works from both.
+- The dock panel now shows: Intel/Exposure stat, progress bar, SELECT/FOLLOW/MODE row, then an OPERATIONS
+  section with the full grid. VERIFIED: 9 op buttons render in both surfaces, dispatch runs direct ops +
+  arms targeted ops, dock + inspect both render clean.
+
+**PATRONIZE — economic intervention (the improvement, ties economy → insurrection):** a new action on any
+non-recruited wisp in the inspect panel. Slip a struggling wisp credits (`i-patron`): costs YOUR district
+income (20c if they're struggling — homeless/in rent debt/broke/desperate — else 12c), relieves their
+credits + knocks down a point of rent debt, pulls them back from `desperate`, and wins real allegiance
+(+12-20 if struggling, +5-9 otherwise — they remember who helped when it mattered) + a relief/joy emotional
+reaction + a memory + a small avatar-rep bump. A direct lever from the economy's hardship into recruitment:
+bail out a wisp facing eviction and they lean toward your cause. VERIFIED: detects struggling wisps, spends
+income, relieves hardship, wins goodwill, button renders.
+
+**COMPREHENSIVE PASS:** structure clean (JS valid, smoke 20/20, no dead/dupe — the refactor REMOVED
+duplication, CSS balanced). Full day stable (max stuck 57, 13 survive). Save/load clean. All interactive
+surfaces clean (dock w/ ops, inspect for avatar + wisp, render, HUD).
+
+**Carlo deployed the prior build (op-readout terminal) and is play-testing. Note: the op-readout VISUAL FEEL
++ AI reaction LINE QUALITY remain the untestable pieces (Carlo judges at runtime).**
+
+**STILL PENDING:** Wave 4 CHARACTER-CREATION overhaul (still outstanding — wants it rethought + the text-
+clipping on the right edge of background descriptions fixed; this is now the main remaining UI item). Deeper:
+Phase 3-5 embodied ops (per-op action animations — `anim` keys staged but not driving distinct animations
+yet; NPC behavioral reactions; stealth depth; polish — Claude can't validate visuals/audio). The pawn-AI
+perf pass (parked, ~1.9ms/pawn). A sound-design pass on the op readout (terminal beeps/tones — Claude can't
+hear). The mechanics-completeness audit could go deeper.
+
+---
+
+## ⚡ OP READOUT TERMINAL + comprehensive pass (prior session) ⚡
+
+**OP READOUT — the action-resolution visual:** a terminal panel streams above the avatar while a staged op
+performs, building suspense, then resolves into the verdict tinted by the banded roll that already happens
+in `resolveAvatarOp`. Purely visual — rides on the existing staged-op lifecycle + `opsCheck` bands.
+- `OPREADOUT` (transient global, NOT serialized — verdict shouldn't survive a reload). `OP_TERM_SCRIPT`
+  has per-op flavour (sabotage→"BREACHING GRID NODE"/"INJECTING FAULT"…; steal→"ACCESSING ASSETS"…; etc.,
+  9 ops + a generic default).
+- `opReadoutStart(opKey,op)` boots it (called in runAvatarOp). `opReadoutResolve(p,op,band)` maps the band
+  to a verdict: critwin/success→"ACCESS GRANTED" (green), partial→"PARTIAL BREACH" (amber), fail→"ACCESS
+  DENIED" (red), critfail→"TRACE DETECTED" (pink). Called from resolveAvatarOp after the consequence fires.
+- `opReadoutTick(av)` (called each frame from drawOpReadout) streams work lines progressively by
+  `activeOp.prog/duration`, holds the verdict ~140 ticks then auto-clears, and clears if the op aborts.
+- `drawOpReadout()` renders in SCREEN SPACE (last in render(), on top): dark CRT panel above the avatar,
+  bright top border (verdict-colored on reveal), faint scanlines, a connector line down to the avatar, a
+  glitch/scramble effect on the verdict text for the first ~10 ticks before it locks, blinking cursor while
+  running. Clamped to stay on screen. Op-abandon points (lines ~7229/7251) also clear OPREADOUT.
+- VERIFIED: full lifecycle (boot→stream all work lines→reveal→auto-clear), all 5 verdict bands map+render
+  correctly, render overhead negligible (only renders during an op), clean with night+blackout+rain+storm
+  stacked.
+
+**COMPREHENSIVE PRE-PLAYTEST PASS (Carlo is about to play):** STRUCTURE clean (JS valid, smoke 20/20, no
+dead/dupe, CSS + script tags balanced). STABILITY: clean full day, max stuck 3 (readout doesn't touch pawn
+AI), economy healthy (~820 credits). SAVE/LOAD: succeeds with an op active, runs after load, 13 survive
+(OPREADOUT correctly does NOT persist). PERFORMANCE: render ~1ms/frame, readout overhead negligible.
+INTEGRATION: all bands map correctly, full render clean with everything stacked. INTERACTIVE SURFACES: all
+7 play-readiness checks clean (inspect panels for avatar/wisp/building, click-to-move, op dock, HUD sync,
+weather menu sync, render+drawPawn, overlays).
+
+**Carlo deployed the prior build (economy/day-night/attendants/AI) — confirmed live (he ran git pull on the
+VM). The remote had one extra commit (the abort-on-move audit) that the local build already incorporated;
+resolved by merging with local files authoritative.**
+
+**STILL PENDING (Carlo's accumulated batches):** the SEPARATE ACTIONS MENU (avatar-ops out of the inspect
+panel into its own panel — partially done via Wave-1 click-to-target). Wave 4 CHARACTER-CREATION overhaul
+(still outstanding, wants it rethought + text-clipping fixed). Deeper: Phase 3-5 embodied ops (NPC
+reactions/animations/stealth-depth/polish — Claude can't validate visuals/audio), the pawn-AI perf pass
+(parked, ~1.9ms/pawn). AI reaction LINE QUALITY remains the untestable piece (endpoint unreachable from
+sandbox — Carlo watches at runtime). The op-readout VISUAL FEEL (suspense timing, glitch effect, placement)
+is also something only Carlo can judge on screen.
+
+---
+
+## ⚡ ECONOMY + DAY/NIGHT + ATTENDANTS + AI REACTIONS (prior session) ⚡
 
 **ECONOMIC LOOP:** daily pay → rent accrues DAILY but is DUE WEEKLY (a buffer — one bad day ≠ eviction) →
 personality-driven leisure spending. In the daily `ST.tick%TPD===0` block: subsist income (+9, +6 homeless);
