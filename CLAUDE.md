@@ -37,14 +37,364 @@ done yet.
 
 ---
 
-## ⚡ LATEST STATE (read this first — reconciled from the live VM, June 2026) ⚡
+## ⚡ LATEST STATE — TWO BRAINS DESIGN DOC FULLY IMPLEMENTED (most recent session) ⚡
 
-**AMBIENT MUSIC INTEGRATION (most recent session).** Carlo generated 3 chill/immersive ambient cyberpunk
-tracks (Stable Audio, C418-style — soft, low, loopable) and wanted them as a background bed. Built the music
-player + wired it in. NOTE: these are the FIRST external assets in the project — it's no longer a pure
-single HTML file; the mp3s are hosted alongside index.html on the VM (Carlo's primary deploy; bloat is fine
-there). GitHub Pages copy will be SILENT unless the mp3s are also uploaded there (fails gracefully → no
-crash, just no music).
+**Built `md5 521951f3` on top of last-shipped `dac43211`. FIVE stacked checkpoints in outputs, NOT yet
+deployed by Carlo and NOT yet watched running in a real rendered game. All unit-validated (smoke 20/20,
+no dead/dupe, save/load clean per checkpoint), but the FEEL/pacing/drama of the autonomous AI is unobserved
+— that is the #1 thing to do next: DEPLOY + WATCH a full AUTO game before trusting the tuning.**
+
+This session implemented the entire **"Two Brains" design document** (NEON_SPRAWL_Two_Brains_Design_v3.docx
+in outputs — the comprehensive spec), one validated checkpoint at a time. The goal: a fully autonomous,
+watchable playthrough where the avatar on AUTO runs the whole insurrection and the world plays back.
+
+**THE FIVE CHECKPOINTS (each shipped to outputs, build order = dependency order):**
+1. **`81228903` — WIN STATE (§7) + BRAIN A CORE (§2).**
+   - WIN STATE: game had loss states but no victory. `checkWinState()` + `gameWin()` near gameOver (~5670):
+     regime grip <= WIN_GRIP(10) sustained WIN_DAYS(3) days via `ST._lowGripSince` clock (resets if grip
+     recovers) → "DISTRICT LIBERATED". Wired `if(ST.tick%50===0)checkWinState()` into tick loop.
+   - BRAIN A: the autonomous-operative utility AI (inserted before inOpRange ~1793). REPLACED the old shallow
+     auto-logic (intel/dissent random) in pawnTick. Components: POSTURE_W weight profiles (laylow/normal/
+     revolucionario × strat/opp/risk/need), response curves (curveSurvival quadratic, curveRisk soft-knee,
+     enforcerProximityRisk), targeting (roleValue mayor>enforcer>informant>wisp, targetVulnerability,
+     pickTarget strike/surveil modes), scoreObjectives (network/weaken/eliminate/lielow, each {key,score,plan},
+     feasibility = HARD filter, inertia bonus 0.12*inertia cap 2 — TUNED DOWN from 0.25/cap4 which locked onto
+     one objective), chain-resolvers (planNetwork/planWeaken/planEliminate/planLieLow), and the CRITICAL
+     approach-then-act layer (avatarInRange/tryOp/resolvePendingOp): runAvatarOp does NOT path the avatar (hard
+     `if(!inOpRange)return false`), so Brain A sets `av.job={t:"goto",adj:1}` to walk to a building/pawn, stores
+     `av._pendingOp`, and fires the op on arrival. THIS is what makes the avatar physically walk to targets then
+     act. avatarBrainTick (the decision fn): survival filter → score → FLOOR 0.35 idle fallback → inertia
+     bookkeeping → best.plan() → cooldown. VERIFIED: avatar walks to + sabotages buildings (3×/day), surveils
+     the Mayor toward an assassination — a coherent campaign.
+2. **`3e53392d` — STANCE-AWARE REGIME (§9.1) + DOSSIER-PLANNING (§9.4).**
+   - §9.1 Part A (regime responds to stance): in insurrectionTick, hidden = INVESTIGATE (sweepThreshold 55,
+     slow), open = MILITARIZE (sweepThreshold 35, sweepCooldown shorter, grip hardens +0.4/day). regimeSweep
+     takes a `militarized` flag (1.5× harder when open).
+   - §9.1 Part B (Brain A owns stance on AUTO): avatarStanceDecision(av) (every 200 ticks) — hidden→open when
+     support>=60 && cells>=2 && grip<=45 (or veryStrong support>=72&grip<=35); revolucionario eager, laylow
+     never opens, retreat to hidden if collapsing (unless revolucionario). The watchable "act break".
+   - §9.4 (strike at vulnerable window): inVulnerableWindow(tgt) checks routine.vulnerable.when (night/evening/
+     commute) vs hourN(). planEliminate now PRE-POSITIONS near the target's known location and waits if not the
+     window, strikes when it opens. Converts surveillance into anticipation.
+3. **`f8866264` — BRAIN B (§3): the reactive city/director.** Inserted before goToGround. Three parts:
+   (1) tension-curve director (L4D): `ST.director={tension,phase,phaseSince,peakCount}`; directorTick advances
+   Build-Up→Peak→Relax (tension rises toward momentPressure from heat/aware/exposure/open, peaks at 0.8 or
+   dwell>TPD*1.5, holds `D.peakDur` rolled ONCE on entry — the bug fix; was re-rolling R(0.3,0.6) every tick
+   making it stick at peak — then drains to relaxFloor). VERIFIED 3 clean cycles over 4 days.
+   (2) regime as STRATEGIC ACTOR: regimeStrategicTick acts on a cadence keyed to phase — PEAK+provocation →
+   crackdown (heat, turn informant), BUILDUP+support>55 → counter-propaganda, RELAX → ease off.
+   (3) weighted event scheduler (RimWorld): directorPickEvent picks by phase (PEAK→pressure, RELAX→relief),
+   wired into fireEvent (`if(dirPick&&Math.random()<0.75)ev=dirPick`). Plus REGIME_TEMPERAMENT (ironfist/
+   calculating[default]/volatile storytellers). `ST.director` serializes/applies/resets.
+4. **`ae8e7496` — DETECTIVE INTEGRATION + ATTRIBUTE GROUNDING (from a Gemini engine review).** Gemini correctly
+   caught that Brain A ignored the fully-built detective subsystem (cases time out on AUTO). Integrated into
+   scoreObjectives: new "investigate" objective (spend intel to surface clues, scales w/ INSIGHT) + "accuse"
+   objective. CRITICAL FIX vs Gemini's naive `suspects[0]`: a wrong accusation COSTS support+exposure, so added
+   `caseLikelySuspect(c)` that tallies found-clue weights and accuses the EVIDENCE-indicated suspect, only when
+   confidence>=2. Also grounded weights in p.ops attributes: NERVE blunts perceived risk (nerveBlunt), GUILE
+   boosts network, INSIGHT boosts investigation — so a Nerve-build plays aggressively, a Guile-build builds
+   network. REJECTED from Gemini: the LLM reflection tick (depends on empty AI_PROXY + collides with §9.2
+   doctrine + uses fragile string-matching), the automate-vendors objective (spends district credits — Carlo's
+   call), "missing slices" (paste artifact). VERIFIED: AUTO operative surfaced 3 clues on a seeded murder case.
+5. **`521951f3` — EMERGENT IDENTITY: DOCTRINE (§9.2) + LEGEND (§9.3) + CHRONICLE (§9.5).** Inserted before
+   avatarStanceDecision. The autonomous campaign GROWS A CHARACTER:
+   - §9.2 DOCTRINE: `ST.mov.doctrine` (was unused null) now EARNED from op-history. doctrineProfile tallies
+     violence(sabotage+assassinate+steal) / support(dissent+bribe) / subtle(surveil+blackmail+frame+intel*.25).
+     evaluateDoctrine (every 200 ticks) declares Vanguard/Organizer/Shadow when total>=5 & one bucket >40%.
+     doctrineMod feeds back: Vanguard strike ×1.25 (grip dmg), Organizer support ×1.25, Shadow stealth ×0.75
+     (less exposure leak). Can shift if behavior changes.
+   - §9.3 LEGEND: avatarRep() (-100 feared..+100 beloved) now a strategic FORK. legendTier (feared<=-35,
+     beloved>=35). FEARED: coercion easy BUT legendRecruitMod 0.55 (recruitment dries up) + legendSupportMod 0.8.
+     BELOVED: legendRecruitMod 1.4 + legendSupportMod 1.25 (compounds) BUT legendHasLeverage()=false → blackmail
+     BLOCKED in runAvatarOp ("too beloved to make a credible threat"). Wired into recruitWisp + insurrectionTick
+     support-drift (only amplifies UPWARD). evaluateLegend announces tier crossings.
+   - §9.5 CHRONICLE: chronicleTick (every 120 ticks) narrates grip/support/cells milestones into the existing
+     CHRONICLE story feed, once each. BUG FIXED: the once() guard was `if(!M0[key])` but stored ST.tick which is
+     0 at game start (falsy) → re-fired every tick; fixed to `if(!(key in M0))`.
+
+**WHAT'S NOT BUILT (deliberately):** the LLM layer (§4) — CANNOT build until AI_PROXY is wired+hosted (it's
+an empty string, dormant). Everything in §9 was designed to work WITHOUT it. Generators for the design docs:
+gen_doc.js/gen_doc2.js/gen_doc3.js (Rev1 10pg / Rev2 18pg / Rev3 23pg — Rev3 is the implemented spec).
+
+**STANDING DECISION — NO DATABASE (Carlo asked twice).** Brain A runs ~10×/sec on in-memory JS; a network hop
+to a VM-hosted DB in the decision loop would destroy perf AND split source-of-truth from the save file,
+breaking the single-file/save-is-everything design. Only server-side component that belongs on the VM is the
+LLM proxy (stateless, hides API key). If cross-game persistence ever matters → browser IndexedDB, not a server.
+
+**GEMINI REVIEW #2 (final, descriptive overview) — NO code change warranted.** Its 4 "issues": incomplete
+codeblock (paste artifact — file is complete), O(N²) separatePawns (true but irrelevant at POP cap ~14 —
+premature to fix), orphaned combat (intentional — wisp gang violence is a feature; balance is Carlo's call),
+monolithic/move-to-ES-modules (REJECTED — single-file is the load-bearing design choice, same logic as the
+DB rejection). Good description, generic best-practice notes, none apply to the actual constraints.
+
+**VALIDATION CEILING THIS SESSION:** each added brain system makes ticks heavier — a full real-tick DAY is now
+right at the 60s sandbox timeout, so live probes capped at ~0.5 day. The director's multi-day phase machine
+was verified fast by advancing ST.tick manually (isolating directorTick from the heavy pawnTick). KEY GOTCHA
+(cost a debug cycle): to advance time you MUST call real `tick()` (does ST.tick++); calling subsystem ticks
+like directorTick() directly in a loop does NOT advance ST.tick, so dwell/time logic appears frozen — a TEST
+artifact, not a bug. Doctrine/legend/chronicle are LATE-game emergent (need op track-record / rep swing /
+campaign progress) so they correctly DON'T fire in a 0.5-day probe; logic proven in isolated tests.
+
+---
+
+## ⚡ OP-REWORK: ALL 8 PER-OP CONSEQUENCE REWORKS (prior session) ⚡
+
+**OP-REWORK PIECE 5: ALL 8 PER-OP CONSEQUENCE REWORKS (most recent session).** Completing the LARGE op-rework
+(stat-fog + jail + routine-mapping + hard-gates were the first 4 pieces). Carlo design-partnered the 8 ops,
+made 2 key calls: blackmail extortion = RECURRING; assassinate role-scaling = meaningful cascades. All built +
+validated. The 9 espionage ops now have distinct, interconnected consequences instead of flat stat bumps.
+
+**THE 8 REWORKS:**
+- **STEAL → ROB A WISP:** changed from `target:null` "Steal Regime Funds" to `target:"anyPawn"` "Rob a Wisp".
+  Robs the target's ACTUAL credits (brave/impulsive wisps resist → take less + fight back → avatar takes hp
+  hit). ALWAYS reports to the regime (heat +12, awareness +10), chance an enforcer grudges you. Caught →
+  jailed (jail crime label fixed to "robbery"). Emotional react on the victim.
+- **SABOTAGE → GUARD POSTED:** after sabotaging a building, `target.guardedUntil=ST.tick+TPD*R(2.5,4.0)` — the
+  regime watches it. Repeat sabotage of the SAME building is BLOCKED in runAvatarOp until the watch lifts
+  (stops blackout-spam; forces target variation).
+- **ASSASSINATE → ROLE-SCALED CASCADES:** mayor = power vacuum (grip −24/−32 + support spike + killPawn
+  auto-triggers openElection); enforcer = patrol gap (heat −25, but awareness +15 retaliation); informant =
+  network blinded (removed from REG().informants); regular wisp = mostly FEAR (nearby witnesses terrified,
+  "terror" mod, little strategic gain). Rep hit scaled by role (mayor −18, enforcer −10, wisp −14).
+- **BLACKMAIL → RECURRING EXTORTION:** `target.extorted={since,nextPay,sec,breakChance}`. New `extortionTick()`
+  (wired into the tick loop by jailTick): on nextPay, victim PAYS a cut of credits (→ intel proxy), OR breaks
+  free (rare, may expose you), OR snaps under stress (>92 stress). Ongoing −1 rep per payment. They resent you
+  (−22 rel). Replaces the old "turn them to your side" outcome.
+- **DISSENT → PROPAGANDA W/ RESISTANCE:** nearby wisps respond by LOYALTY — disillusioned warm to you,
+  hardened loyalists (intg>60 + low allegiance) RESIST, and one may REPORT you (awareness + exposure spike,
+  "AGITATOR REPORTED").
+- **BRIBE → COP BRIBE-OUT + INFO:** bribing an enforcer/regimeForce drops heat −20/−35 AND springs you from
+  jail (non-capital) — "ENFORCER PAID OFF". Bribing a regular wisp can yield RANDOM INTEL (+ reveals a stat)
+  on top of loyalty.
+- **FRAME → MULTI-STEP:** first frame op PLANTS evidence (`target.framingInProgress`, "EVIDENCE PLANTED"),
+  second frame op SPRINGS it (the public frame). Can't frame in one move. Still gated on a prior bribe.
+- **LIE-LOW:** already covered by the posture system (Lay Low posture) built earlier — physical go-to-ground.
+
+**VALIDATED:** JS valid, smoke 20/20, no dead/dupe, CSS balanced. 2 full days clean (extortion payments
+cycled, max stuck 60, 13 survive), save/load clean (extorted/framingInProgress/guardedUntil all persist),
+surfaces clean. Each rework unit-tested: steal robs+jails, sabotage guard blocks repeats, assassinate scales
+by role (mayor 60→36 grip + election, enforcer heat 60→35), extortion pays/breaks-free, dissent reports,
+bribe cop-out + info, frame two-step. NOTE: Claude can't PLAY the reworked ops — the FEEL/balance (too
+punishing? too lenient? do the cascades land?) is Carlo's to judge at runtime.
+
+**EDIT NOTE for future sessions:** several op handlers have em-dashes (—, UTF-8) that break str_replace
+matching. Use a Python script (reads/writes utf-8, does html.replace) for those — it's reliable. perl -0777
+also works but escaping JS regex chars is fiddly.
+
+**STILL TO BUILD (continuing "complete all pending"):**
+- CHARACTER-CREATION overhaul + text-clipping fix (next).
+- API-LIVING-WORLD (the big one — NPCs + world react via Cloudflare AI proxy, per-game random stats).
+- Embodied-ops Phase 3-5 (animations/audio — Claude can't validate). Pawn-AI perf. Maybe roads-to-doors.
+
+---
+
+## ⚡ OP-REWORK: SURVEIL ROUTINE-MAPPING + HARD-GATED TECH TREE (prior session) ⚡
+
+**SURVEIL → ROUTINE MAPPING (op-rework piece 3):** surveil now does more than find a secret — each surveil
+advances a per-target DOSSIER one stage: `ROUTINE_STAGES=["home","work","schedule","vulnerable"]`. `p.routine`
+= {stage, home, work, schedule, vulnerable}. Helpers: `routineStage(p)` (0..4), `routineComplete(p)`,
+`advanceRoutine(p)` (captures the stage's data — home loc, work loc, daily rhythm from personality, and a
+VULNERABLE WINDOW from `computeVulnerableWindow` — when/where they're alone+exposed), `routineKnownEnough(p)`
+(stage≥3, the assassination gate). Wired into surveil opSuccess (advances a stage + still finds the secret).
+Shown in the inspect person-tab as a DOSSIER section (Home/Work/Routine/Vulnerable lines). `routine`
+serializes via snapPawn. VERIFIED: stages reveal in order, data captured, persists save/load, dossier renders,
+avatar/children immune.
+
+**HARD-GATED OP TECH TREE (op-rework piece 4 — strict gates):** added target-specific prerequisite checks in
+`runAvatarOp` (return false + flashMsg if unmet):
+- ASSASSINATE requires `routineKnownEnough(target)` (you've surveilled their movements) AND the target is
+  weakened (hp<60 / framed / homeless / has a known vulnerable window). "You don't know X's movements —
+  surveil them first" / "No opening — weaken, frame, or fully surveil X first".
+- FRAME requires a prior successful BRIBE (`av.opsDone.bribe`) — "you need leverage in place".
+- SABOTAGE (on a building) requires intel≥14 — "gather intel on the grid first".
+- `opSuccess` now tracks `av.opsDone[opKey]` (count of each op type pulled off) — the gate tech tree reads
+  this; serializes via snapPawn. VERIFIED: each gate blocks when unmet + passes when satisfied.
+
+**VALIDATED:** JS valid, smoke 20/20, no dead/dupe, CSS balanced. Full day clean (max stuck 35, 13 survive),
+save/load clean (routine + opsDone persist), surfaces clean with dossier rendering. NOTE: Claude can't see the
+rendered dossier panel or play the gated flow — the FEEL of the gating (is it too strict? does the dossier
+read well?) is Carlo's to judge at runtime.
+
+**STILL TO BUILD (continuing the "complete all pending" run, next pieces):**
+- OP-REWORK PIECE 5 — PER-OP CONSEQUENCE REWORKS (needs Carlo's design input on each): dissent (propaganda,
+  npcs resist/report), bribe (police bribe-out / random info), frame (multi-step), blackmail (extract money,
+  bad debuff), sabotage (guard posted after 1st attack), steal (resist/fight/calls police→jail), assassinate
+  (success effects scaled by victim role), lie-low (physically go-to-ground). Carlo = design-partner mode.
+- CHARACTER-CREATION overhaul + text-clipping fix.
+- API-LIVING-WORLD (the big one — NPCs + world react via Cloudflare AI proxy, per-game random stats).
+- Embodied-ops Phase 3-5 (animations/audio — Claude can't validate). Pawn-AI perf. Maybe roads-to-doors.
+
+---
+
+## ⚡ BUILDING-LAYOUT REORG (prior session) ⚡
+
+**THE MOVES (old → new, doors preserved at same relative offset):**
+- school 104,71 → 8,84 · mayorhouse 114,71 → 18,84 · hospital 122,71 → 28,84
+- arcade 104,84 → 40,84 · market/fixer stall 122,84 → 58,84
+- precinct(copstation) 122,77 → 72,84 · jail 122,82 → 82,84 (still paired with precinct)
+
+**METHODOLOGY (important — this is how to safely move hand-placed buildings):** before moving anything,
+dumped all room footprints + an ASCII map of the bottom half to SEE the layout, then tested candidate new
+positions for collisions with a `clear(x,y,w,h)` check (caught a mineshaft + walls + streetlamps in the
+middle-south band that ruled out those spots — the genuinely-clear space was the y:84+ strip). Only committed
+positions that tested fully clear.
+
+**VALIDATED:** JS valid, smoke 20/20, no dead/dupe, CSS balanced, zero leftover refs to old coords. The 7
+buildings confirmed at their new spots; old corner now has 0 blocking structures (was 40+). All 6 moved
+civic buildings have road access within 4 tiles (connected to the grid). Full day clean (max stuck 58, 13
+survive). JAIL still holds pawns at its new location. Save/load clean. Surfaces clean. NOTE: Claude can't SEE
+the rendered map — the spatial FEEL of the new layout is Carlo's to judge at runtime (the ASCII confirms the
+spread, but whether it looks good is his call).
+
+**ROADS-TO-DOORS still pending:** now that the corner is de-cluttered, roads-to-doors might be more feasible
+in a future pass (the buildings are spread out with road access nearby) — but the homes elsewhere are still
+dense, so it's not guaranteed. Revisit if Carlo wants it.
+
+**STILL TO BUILD (next sessions):**
+- THE BIG DEFERRED ONE: API-LIVING-WORLD (NPCs + world react via the Cloudflare AI proxy, per-game random
+  stats). Its own focused session.
+- The LARGE op-rework (surveil→routine-mapping, hard-gated tech tree, per-op consequence reworks — intel→
+  stat-fog + jail done as first pieces). Char-creation overhaul (+ text-clipping fix). Embodied-ops Phase
+  3-5 (animations/audio — Claude can't validate). Pawn-AI perf. Possibly roads-to-doors + further layout
+  polish. Carlo = design-partner mode on all ops.
+
+---
+
+## ⚡ MENU/ESC DECLUTTER + SETTINGS PANEL (prior session) ⚡
+
+**HUD DECLUTTER:** removed 5 buttons from the cluttered top-right control cluster — save, load, weather,
+mute, help. They're GONE from the HTML (verified) and now live in the Esc menu + Settings. KEPT in the HUD:
+speed controls (pause/1×/2×/3×), the gameplay panels (diary/crew/tasks/stats), fullscreen, and a NEW ☰
+`b-menu` button (opens the system menu, same as Esc).
+
+**ESC SYSTEM MENU (`#sys-menu`):** a centered modal with RESUME / SETTINGS / SAVE / LOAD / HELP / NEW GAME
+(new-game confirms first). Opened by the ☰ button OR the Escape key. Clicking the dim backdrop closes it.
+Functions: `openSysMenu()`/`closeSysMenu()`/`sysMenuOpen()`.
+
+**SETTINGS PANEL (`#settings-menu`):** consolidates music + weather. MUSIC: a mute toggle, a VOLUME SLIDER
+(0-100 → MUSIC.setVolume), and a SKIP-SONG button (MUSIC.skip) — these are the controls Carlo asked for, now
+wired to the MUSIC module hooks. WEATHER: rain (ATMO) + lightning (STORM) toggles, moved here from the old
+separate weather-menu (which is now orphaned/hidden but its toggle fns are reused). `syncSettings()` keeps
+the controls in sync with state (mute status, current volume, weather on/off). Functions: `openSettings()`/
+`closeSettings()`/`settingsOpen()`.
+
+**ESCAPE KEY PRIORITY CHAIN (the requested behavior):** Esc now does, in order — close Settings → close
+system menu → close overlay → close modal → deselect/close inspect panel → close an open build/zone/command
+submenu → (nothing open) OPEN the system menu. So Esc always either backs out of something or, with nothing
+selected, brings up New Game/Save/Load/Settings.
+
+**VALIDATED:** JS valid, smoke 20/20, no dead/dupe, CSS balanced. The 5 buttons confirmed removed from HTML,
+new menu elements present. Full day clean (max stuck 58), save/load clean, all surfaces + menu open/close/
+sync clean. MUSIC methods called by the settings sync are bulletproof (guarded). NOTE: Claude can't see the
+rendered menus or hear the volume/skip take effect — the visual layout + audio behavior are Carlo's to judge
+at runtime.
+
+**STILL TO BUILD (next sessions):**
+- BUILDING-LAYOUT REORG (Carlo deferred): the bottom-right building clutter → a random-but-organized layout.
+  RISKY (map pathing is load-bearing). ROADS-TO-DOORS rides along with this (the current map is too dense
+  for road spurs — proven last session).
+- THE BIG DEFERRED ONE: API-LIVING-WORLD (NPCs + world react via the Cloudflare AI proxy, per-game random
+  stats). Its own focused session.
+- The LARGE op-rework (surveil→routine-mapping, hard-gated tech tree, per-op consequence reworks — intel→
+  stat-fog + jail done as first pieces). Char-creation overhaul (+ text-clipping fix). Embodied-ops Phase
+  3-5 (animations/audio — Claude can't validate). Pawn-AI perf. Carlo = design-partner mode on all ops.
+
+---
+
+## ⚡ EVENTS + CAMERA + CARAVAN REWORK + FLICKER FIX + MUSIC CONTROLS (prior session) ⚡
+
+**CAMERA PAN TO EVENTS (validated):** `panToEvent(tx,ty,color)` eases the camera to a world location +
+drops a pulsing ping ring (`eventPing`) at the spot, so the player sees mugging/brawl/caravan instead of
+missing them. Respects follow mode (won't yank the camera if you're following your operative or have
+`cam.follow` set). `updateCamPan()` runs in the main loop (eases toward `camPan` target); the ping is drawn
+in render() world-space before drawOpReadout. Wired into: mugging, brawl, and all caravan arrivals.
+
+**CARAVAN REWORK — now a recruitment/intel beat (validated):** `maybeCaravan` now spawns an "outsiders"
+caravan 60% of the time (the rest are the old buy/sell trade caravans, rarer now). Outsiders set
+`cv.kind` = defector / intel / news. When the avatar reaches them (`caravanTick`, DIST<3, one payoff per
+visit): DEFECTOR spawns a new pawn who arrives already sympathetic (allegiance 20-45, disillusion 20-40,
+partially pre-profiled via revealIntel) + recruitable; INTEL gives +15-30 network intel; NEWS nudges
+support up or regime awareness down. `drawCaravan` renders outsiders in cyan (#22ddff) vs buy=green,
+sell=yellow. Panned-to on arrival. VERIFIED: defector spawns sympathetic recruit, intel boosts, caravan
+modes render.
+
+**COMMAND DECLUTTER (validated):** removed the redundant DIRECT ORDERS grid (Work/Rest/Feed/Cleanse/Wander/
+Commune) from the character/inspect panel — the bottom-center toolbar COMMAND button still issues those
+orders to a selected citizen. Frees panel space.
+
+**MENU FLICKER FIX (validated):** the command submenu was rebuilding its full innerHTML every 25 ticks
+because the periodic refresh called `renderInspect()` (which calls `renderSub()` when subCat==="c"). Changed
+the periodic refresh (line ~5696) to call `renderInspectCore()` directly (just the inspect panel, not the
+submenu). Same root cause as the old dock flicker. The command menu still updates on interaction.
+
+**MUSIC CONTROLS (validated):** the MUSIC module gained `setVolume(v)`/`getVolume()` (VOL is now a mutable
+`let`), `skip()` (crossfades to next track), `isMuted()`. `probe()` now guards `typeof Audio==="undefined"`
+so the whole module is bulletproof in any environment. These are the hooks for the Settings panel coming
+with the menu/Esc work — the UI to expose volume + skip-song still needs building (part of piece 4 below).
+
+**ROADS-TO-DOORS — ATTEMPTED, REVERTED (important):** tried to run short road spurs from building doors to
+the nearest arterial. First impl overwrote 17 buildings (bad). Second impl was strict (never paves a
+structure tile) but then connected ZERO of the 8 city homes — they're packed too tightly for a clean L-path
+to reach a road without crossing other structures. CONCLUSION: roads-to-doors is COUPLED to the building-
+reorg (the current map is too dense for spurs to fit). It belongs in that future reorg session, not bolted
+onto the current layout. Fully reverted — `connectDoorsToRoads` is gone, genMap is clean.
+
+**STILL TO BUILD (next sessions):**
+- MENU/ESC DECLUTTER + SETTINGS (piece 4 from the prior batch, still pending): clean the cluttered top HUD
+  toolbar, move things into menus. Esc key: close open windows; Esc again w/ nothing selected → a menu (New
+  Game / Save / Load / Settings). SETTINGS panel = music (mute + VOLUME slider + SKIP-SONG — the MUSIC hooks
+  now exist), rain (ATMO), thunder (STORM). This is the natural next concrete UX piece.
+- BUILDING-LAYOUT REORG (Carlo deferred): the bottom-right building clutter → a random-but-organized layout
+  that makes sense. RISKY (map pathing is load-bearing). Roads-to-doors rides along with this.
+- THE BIG DEFERRED ONE: API-LIVING-WORLD (NPCs + world react via the Cloudflare AI proxy, per-game random
+  stats). Its own focused session.
+- The LARGE op-rework (surveil→routine-mapping, hard-gated tech tree, per-op consequence reworks — intel→
+  stat-fog + jail are done as the first pieces). Char-creation overhaul. Embodied-ops Phase 3-5 (animations/
+  audio — Claude can't validate). Pawn-AI perf. Carlo = design-partner mode on all ops.
+
+---
+
+## ⚡ STAT FOG + AVATAR POSTURE/AUTONOMY (prior session) ⚡
+
+**STAT FOG (piece 1 — the intel-revelation spine):** NPC hidden stats now start UNKNOWN (show as "???") and
+are revealed a few at a time by GATHER INTEL on that specific target.
+- `p.intelSeen` = revealed stat-keys set; `INTEL_KEYS=[dispo,emp,intg,amb,cau,soc,imp,skills,voc]`.
+  `intelKnown(p,key)` (avatar + children always known — no self/kid fog), `intelProgress(p)` (0..1),
+  `revealIntel(p,count)` (reveals N more in a randomized trickle, dispo first), `fogVal(p,key,realHtml)`
+  (returns real value or muted "???").
+- Applied in the inspect person-tab to VOCATION, SKILLS, and all 6 TEMPERAMENT stats. A profile-progress
+  hint shows under temperament ("◌ Profile 40% — Gather Intel to reveal more" / "◉ Fully profiled").
+- GATHER INTEL now also profiles a target: if a wisp is SELECTED (or one's nearby + unprofiled), a
+  successful intel op reveals 1-2 of their stats (crit reveals 3). `intelSeen` serializes (snapPawn
+  Object.assign). VERIFIED: fresh wisps fogged, avatar never fogged, intel reveals progressively, persists
+  save/load, panel renders clean.
+
+**AVATAR POSTURE + AUTONOMY (piece 2):** AUTO mode already made the avatar live (falls through to chooseJob)
+— confirmed he works/eats/socializes/sleeps like an NPC until you take direct control. ADDED a POSTURE
+control in the avatar's PERSON tab (3 buttons): LAY LOW (drops WORK jobs → keeps a low profile/minimizes
+exposure), NORMAL (lives like any wisp), REVOLUCIONARIO (when idle + healthy, autonomously launches free
+insurgent ops — intel/dissent — on a cooldown, pushes past comfort). `ST.avatarPosture` + `ST.avatarManual`
+now serialize. Posture logic in pawnTick (only in AUTO, not manual — manual = you're driving). VERIFIED:
+AUTO avatar active 299/300 ticks, Revolucionario launches ops autonomously, Lay Low keeps him off work (0
+work-ticks/200), posture persists save/load, buttons render in person tab. Full day clean (max stuck 3).
+
+**STILL TO BUILD — pieces 3+4 (next session, concrete UX, fully validatable):**
+- MUSIC mute + VOLUME control: the MUSIC module already has `setMuted` + a VOL const (0.34) — needs a
+  volume SLIDER wired to it (add a `MUSIC.setVolume(v)` method + UI). Currently only the global b-mute
+  toggles it.
+- TOP-MENU DECLUTTER + ESCAPE SYSTEM: the top HUD toolbar is cluttered (Carlo's screenshot). Remove what
+  doesn't belong, move the rest into menus. Esc key: close open windows; Esc again w/ nothing selected →
+  a menu (New Game / Save / Load / Settings); SETTINGS panel = music (mute+volume), rain (ATMO), thunder
+  (STORM) — consolidating the weather toggles that are currently in the separate weather menu.
+- THEN the big deferred one: API-LIVING-WORLD (NPCs + world react to the avatar + each other via the
+  Cloudflare AI proxy, driven by the per-game random stats). Its own focused session.
+- Plus the LARGE op-rework (surveil→routine mapping, hard-gated tech tree, per-op consequence reworks — see
+  jail-keystone session for the full plan; intel→stat-reveal is now DONE as the first piece of it), the
+  char-creation overhaul, embodied-ops Phase 3-5, pawn-AI perf. Carlo = design-partner mode on all ops.
+
+---
+
+## ⚡ AMBIENT MUSIC INTEGRATION (prior session) ⚡
 
 **MUSIC SYSTEM (`MUSIC` IIFE, near SFX):** HTML5 `<audio>`-based (better for streaming mp3s than Web Audio
 buffers + easy crossfade). Streams looping ambient tracks SHUFFLED + CROSSFADED (4s fade) so the bed evolves
