@@ -86,6 +86,17 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   color:var(--dim);text-transform:uppercase;margin:11px 0 7px;
   display:flex;align-items:center;gap:7px}
 .ordsec::after{content:"";flex:1;height:1px;background:var(--bd)}
+/* reactive ops menu */
+.opcat{font-family:var(--disp);font-weight:600;font-size:8px;letter-spacing:.18em;
+  color:var(--dim);opacity:.75;text-transform:uppercase;margin:7px 0 0;
+  display:flex;align-items:center;gap:6px}
+.opcat::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--bd),transparent)}
+.i-op{transition:border-color .15s,color .15s,box-shadow .15s,transform .08s}
+.i-op:active{transform:scale(.96)}
+.i-op.armed{animation:oparm 1s ease-in-out infinite}
+@keyframes oparm{0%,100%{box-shadow:0 0 0 rgba(255,210,74,0)}50%{box-shadow:0 0 9px rgba(255,210,74,.5)}}
+.i-op.opdis{cursor:not-allowed;opacity:.7}
+.optargethint{padding:5px 8px;background:rgba(255,210,74,.08);border-radius:5px;border:1px solid rgba(255,210,74,.25)}
 .ordgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
 .ob{font-family:var(--disp);font-weight:600;font-size:10px;
   background:rgba(0,212,255,.06);border:1px solid var(--bd);color:var(--tx);
@@ -159,6 +170,36 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   pointer-events:none;letter-spacing:.02em}
 
 /* ── TOOLBAR ── */
+/* ── OPERATIVE DOCK — a quiet persistent status strip that expands into controls on demand ── */
+#op-dock{position:fixed;left:10px;bottom:8px;z-index:17;font-family:var(--mono);
+  display:flex;flex-direction:column;gap:0;max-width:280px;user-select:none}
+#op-dock .od-strip{display:flex;align-items:center;gap:8px;cursor:pointer;
+  background:rgba(4,10,22,.95);border:1px solid var(--bd);border-radius:8px;
+  padding:6px 11px;box-shadow:0 -2px 14px rgba(0,0,0,.4);transition:border-color .15s,box-shadow .15s}
+#op-dock .od-strip:hover{border-color:var(--cy);box-shadow:0 0 12px rgba(34,221,255,.25)}
+#op-dock .od-glyph{font-size:13px;color:var(--cy);filter:drop-shadow(0 0 4px rgba(34,221,255,.6))}
+#op-dock .od-title{font-family:var(--disp);font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--cy)}
+#op-dock .od-state{font-size:9.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+#op-dock .od-state b{color:var(--tx);font-weight:600}
+#op-dock .od-chev{margin-left:auto;font-size:9px;color:var(--dim);transition:transform .2s}
+#op-dock.expanded .od-chev{transform:rotate(180deg)}
+#op-dock .od-panel{display:none;background:rgba(4,10,22,.97);border:1px solid var(--bd);
+  border-bottom:none;border-radius:8px 8px 0 0;padding:9px 11px;margin-bottom:-1px;
+  box-shadow:0 -4px 18px rgba(0,0,0,.5);animation:odrise .18s ease-out}
+#op-dock.expanded .od-panel{display:block}
+#op-dock.expanded .od-strip{border-radius:0 0 8px 8px}
+@keyframes odrise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+#op-dock .od-row{display:flex;gap:6px;margin-top:7px}
+#op-dock .od-btn{flex:1;background:rgba(8,18,36,.85);border:1px solid var(--bd);color:var(--tx);
+  font-family:var(--disp);font-size:9.5px;font-weight:600;letter-spacing:.06em;
+  padding:6px 4px;border-radius:6px;cursor:pointer;transition:border-color .15s,color .15s,box-shadow .15s}
+#op-dock .od-btn:hover{border-color:var(--cy);color:var(--cy);box-shadow:0 0 9px rgba(34,221,255,.3)}
+#op-dock .od-btn.on{border-color:var(--cy);color:var(--cy);background:rgba(34,221,255,.12)}
+#op-dock .od-stat{display:flex;gap:11px;font-size:9px;color:var(--dim);margin-top:2px}
+#op-dock .od-stat b{font-weight:700}
+#op-dock .od-prog{height:4px;background:rgba(255,210,74,.15);border-radius:3px;margin-top:6px;overflow:hidden}
+#op-dock .od-prog i{display:block;height:100%;background:var(--yl);border-radius:3px;transition:width .2s}
+@media(max-width:760px){#op-dock{max-width:220px}#op-dock .od-state{max-width:110px}}
 #toolbar{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);
   display:flex;gap:5px;padding:5px;max-width:96vw;overflow-x:auto;
   background:rgba(4,10,22,.95);border:1px solid var(--bd);border-radius:8px;
@@ -418,6 +459,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   </div>
 </div>
 <div id="submenu" class="panel"></div>
+<div id="op-dock"></div>
 <div id="toolbar">
   <button class="tb mode" id="t-build">⛏ BUILD</button>
   <button class="tb mode" id="t-zone">▦ ZONE</button>
@@ -1121,23 +1163,23 @@ function goToGround(){
    REPUTATION (feared/respected), which colors how wisps react to you. */
 // op definitions: stat = which ops attribute, diff = base difficulty, cost = intel, target = needs a target?
 const AVATAR_OPS={
-  intel:     {name:"Gather Intel", stat:"insight", diff:11, cost:0, target:null,
+  intel:     {name:"Gather Intel", stat:"insight", diff:11, cost:0, target:null, range:0, duration:60, anim:"tail",
     desc:"Work your contacts and surveil the block. Success feeds your network intel. Failure tips off the regime."},
-  surveil:   {name:"Surveil a Wisp", stat:"insight", diff:12, cost:4, target:"anyPawn",
+  surveil:   {name:"Surveil a Wisp", stat:"insight", diff:12, cost:4, target:"anyPawn", range:3.5, duration:90, anim:"tail",
     desc:"Tail a specific wisp to dig up their secret. Knowing their dirt unlocks blackmail. Discreet — but not risk-free."},
-  dissent:   {name:"Spread Dissent", stat:"presence", diff:12, cost:6, target:null,
+  dissent:   {name:"Spread Dissent", stat:"presence", diff:12, cost:6, target:null, range:0, duration:70, anim:"rally",
     desc:"Stir the block against the regime — raise support. A rousing op moves people; a clumsy one exposes you."},
-  sabotage:  {name:"Sabotage Infrastructure", stat:"tradecraft", diff:13, cost:10, target:"utility",
+  sabotage:  {name:"Sabotage Infrastructure", stat:"tradecraft", diff:13, cost:10, target:"utility", range:1.8, duration:100, anim:"plant",
     desc:"Knock out a power or water building — blackout, chaos, a blow to the regime's grip. Failure means you're spotted."},
-  steal:     {name:"Steal Regime Funds", stat:"tradecraft", diff:13, cost:8, target:null,
+  steal:     {name:"Steal Regime Funds", stat:"tradecraft", diff:13, cost:8, target:null, range:0, duration:80, anim:"lift",
     desc:"Skim the regime's coffers into your movement. A clean lift funds the cause; a bungle brings heat down hard."},
-  bribe:     {name:"Bribe a Wisp", stat:"guile", diff:11, cost:6, target:"anyPawn",
+  bribe:     {name:"Bribe a Wisp", stat:"guile", diff:11, cost:6, target:"anyPawn", range:1.8, duration:55, anim:"confer",
     desc:"Buy a wisp's loyalty or silence with credits. The corruptible bend; the principled may report the offer."},
-  frame:     {name:"Frame a Regime Asset", stat:"guile", diff:14, cost:14, target:"regime",
+  frame:     {name:"Frame a Regime Asset", stat:"guile", diff:14, cost:14, target:"regime", range:1.8, duration:90, anim:"plant",
     desc:"Plant evidence on a regime loyalist — turn the district against them, weaken their grip. Hard and risky."},
-  blackmail: {name:"Blackmail a Wisp", stat:"presence", diff:12, cost:6, target:"anyPawn", needsSecret:true,
+  blackmail: {name:"Blackmail a Wisp", stat:"presence", diff:12, cost:6, target:"anyPawn", needsSecret:true, range:1.8, duration:60, anim:"confer",
     desc:"Use a secret you've uncovered to coerce a wisp — turn an informant, force compliance. Requires known dirt."},
-  assassinate:{name:"Assassinate", stat:"nerve", diff:16, cost:20, target:"regime",
+  assassinate:{name:"Assassinate", stat:"nerve", diff:16, cost:20, target:"regime", range:1.6, duration:75, anim:"strike",
     desc:"Eliminate a regime figure outright. The ultimate strike — and the regime WILL hunt whoever did it. Last resort."},
 };
 // reputation: -100 (feared/ruthless) .. +100 (beloved/respected). Built by op outcomes + their nature.
@@ -1178,6 +1220,45 @@ function maybeSurfaceSecret(){
 // does the player KNOW a usable secret on this wisp? (gates the blackmail op)
 function knownSecret(p){return p&&p.secretKnown&&p.secret?p.secret:null;}
 
+/* ═══════════ REACTIVE OP STATE — the brain of the reactive operations menu. For any op, returns its
+   current playability: ready / blocked-impossible / risky-but-possible. The guiding rule is "disable only
+   the impossible, signal the dangerous." Prerequisites (no intel, no secret, no target in range) are real
+   impossibilities → disabled. Heat/exposure are RISK, never a block → the op stays available but flagged. */
+// categories group the toolkit so the menu reads as organized intent, not a flat wall of buttons.
+const OP_CATEGORY={
+  intel:"INTELLIGENCE", surveil:"INTELLIGENCE",
+  dissent:"INFLUENCE", bribe:"INFLUENCE", blackmail:"INFLUENCE", frame:"INFLUENCE",
+  sabotage:"DIRECT ACTION", steal:"DIRECT ACTION", assassinate:"DIRECT ACTION",
+};
+const OP_CAT_ORDER=["INTELLIGENCE","INFLUENCE","DIRECT ACTION"];
+function opState(opKey){
+  const op=AVATAR_OPS[opKey];const m=M();const a=theAvatar();
+  if(!op||!a)return {ok:false,reason:"unavailable",label:""};
+  // PREREQUISITES (real impossibilities → the button is disabled)
+  if((m.intel||0)<op.cost)return {ok:false,reason:"intel",label:"Need "+op.cost+" intel"};
+  // targeted ops: need a valid target selected/in range. We can only fully check at click; here we mark
+  // whether the op REQUIRES targeting so the UI can prompt the positioning step.
+  const needsDirt=op.needsSecret&&!ST.pawns.some(q=>!q.isAvatar&&!isChild(q)&&knownSecret(q));
+  if(needsDirt)return {ok:false,reason:"secret",label:"Surveil someone first"};
+  // RISK (never a block — exposure/awareness raise a visible danger tier)
+  const exp=m.exposure||0, aware=(REG()&&REG().awareness)||0;
+  let risk=0;
+  if(exp>60)risk+=2; else if(exp>35)risk+=1;
+  if(aware>60)risk+=2; else if(aware>35)risk+=1;
+  // loud ops (assassinate/sabotage/frame) are extra risky when the heat is up
+  if(risk>0&&(op.anim==="strike"||op.anim==="plant"))risk+=1;
+  const riskTier=risk>=4?"extreme":risk>=2?"high":risk>=1?"raised":"low";
+  return {ok:true, reason:"ready", risk:riskTier, targeted:!!op.target, range:op.range};
+}
+// bribe receptivity: a feared operative buys silence more easily; a beloved one meets resistance to
+// outright corruption (people don't expect it of them). Reputation now shapes a real outcome.
+function bribeReceptivity(target){
+  const rep=avatarRep();const base=(target&&(100-(target.pers.intg||50))/100)||0.5;
+  const repMod=rep<-20?0.18:rep>30?-0.12:0;   // feared → easier, beloved → slightly harder
+  return clamp(base+repMod,0.05,0.95);
+}
+
+
 // running an op trains the stat used (diminishing as it climbs toward 10)
 function trainOpStat(stat){const a=theAvatar();if(!a||!a.ops)return;
   a.opXp=a.opXp||{};a.opXp[stat]=(a.opXp[stat]||0)+1;
@@ -1187,37 +1268,88 @@ function trainOpStat(stat){const a=theAvatar();if(!a||!a.ops)return;
     float(a.px,a.py,stat.toUpperCase()+" \u2191","#22ddff");}
 }
 // the unified op runner. opKey ∈ AVATAR_OPS, target = optional pawn/struct depending on the op.
+// ── EMBODIED OPS (Phase 1): an op is no longer instant. It STAGES an activeOp the avatar physically
+// performs over time; the banded roll fires only on completion (resolveAvatarOp). runAvatarOp is kept as
+// the entry point but now stages rather than resolves. Targets are stored as ID/key (never object refs)
+// so saves stay clean.
+function inOpRange(av,op,target){
+  if(!op.target)return true;                 // self/broadcast ops have no positional gate
+  if(!target)return false;
+  if(op.target==="utility"){ // a structure
+    return DIST(av.px,av.py,target.x+0.5,target.y+0.5)<=op.range;
+  }
+  return DIST(av.px,av.py,target.px,target.py)<=op.range;   // a pawn
+}
+// resolve a target descriptor {kind, id|key} into the live object (or null if it's gone).
+function resolveOpTarget(desc){
+  if(!desc)return null;
+  if(desc.kind==="s")return ST.structs.get(desc.key)||null;
+  if(desc.kind==="pawn")return ST.pawns.find(p=>p.id===desc.id)||null;
+  return null;
+}
+// STAGE an op: validate, then attach an activeOp to the avatar (the perform phase runs in pawnTick).
 function runAvatarOp(opKey,target){
   const op=AVATAR_OPS[opKey];if(!op)return false;
   const m=M(),a=theAvatar();
   if(!a){flashMsg&&flashMsg("No operative");return false;}
+  if(a.activeOp){flashMsg&&flashMsg("Already running an operation");return false;}
   if((m.intel||0)<op.cost){flashMsg&&flashMsg("Need "+op.cost+" intel for this op");return false;}
-  // exposure makes ops harder — the more the regime suspects you, the riskier everything is
+  if(op.needsSecret&&target&&!knownSecret(target)){flashMsg&&flashMsg("No dirt on them — surveil first");return false;}
+  if(!inOpRange(a,op,target)){flashMsg&&flashMsg("Move closer to begin this operation");return false;}
+  // build a serialization-safe target descriptor
+  let desc=null;
+  if(op.target==="utility"&&target)desc={kind:"s",key:K(target.x,target.y)};
+  else if(target&&target.id!=null)desc={kind:"pawn",id:target.id};
+  a.activeOp={opKey,target:desc,prog:0,duration:op.duration,startTick:ST.tick,anim:op.anim};
+  a.job=null;                                 // the op supersedes normal AI (intercepted in pawnTick)
+  if(typeof SFX!=="undefined"&&SFX.ui)SFX.ui();
+  log("\u25b8 Operation underway: "+op.name+"\u2026","info");
+  return true;
+}
+// advance an in-flight op each tick; resolve on completion, abort if the target vanishes.
+function advanceActiveOp(p){
+  const ao=p.activeOp;if(!ao)return;
+  const op=AVATAR_OPS[ao.opKey];if(!op){p.activeOp=null;return;}
+  // target gone mid-op -> abort cleanly
+  if(op.target){const tgt=resolveOpTarget(ao.target);
+    if(!tgt){log("\u25b8 Operation aborted \u2014 the target slipped away.","warn");p.activeOp=null;return;}}
+  ao.prog++;
+  if(ao.prog>=ao.duration)resolveAvatarOp(p);
+}
+// fire the banded roll + consequences on completion (this is the former runAvatarOp body).
+function resolveAvatarOp(p){
+  const ao=p.activeOp;if(!ao){return;}
+  const op=AVATAR_OPS[ao.opKey];const m=M();
+  const target=op.target?resolveOpTarget(ao.target):null;
+  // tag the live object with the kind hint the consequence fns expect
+  if(target){if(ao.target.kind==="s")target.kind="s";else target.kind="pawn";}
+  p.activeOp=null;                            // op is done regardless of outcome
   const expPenalty=Math.floor((m.exposure||0)/25);     // +0..4 to difficulty
   const check=opsCheck(op.stat,op.diff+expPenalty);
   m.intel-=op.cost;
   trainOpStat(op.stat);                                // practice regardless of outcome
-  // BANDED OUTCOME — the roll selects which story you get. Each band has its own trace + consequence.
   switch(check.band){
     case "critwin":
-      opSuccess(opKey,target,check,true);              // clean + a bonus, minimal trace
+      opSuccess(ao.opKey,target,check,true);
       m.exposure=clamp((m.exposure||0)+1,0,100);
-      return true;
+      break;
     case "success":
-      opSuccess(opKey,target,check,false);
+      opSuccess(ao.opKey,target,check,false);
       m.exposure=clamp((m.exposure||0)+4,0,100);
-      return true;
+      break;
     case "partial":
-      opPartial(opKey,target,check);                   // it half-works, but with a complication
-      m.exposure=clamp((m.exposure||0)+8,0,100);       // messy — more trace
-      return true;
+      opPartial(ao.opKey,target,check);
+      m.exposure=clamp((m.exposure||0)+8,0,100);
+      break;
     case "critfail":
-      opFailure(opKey,target,check,true);              // botched — the worst outcome
-      return false;
-    default: // "fail"
-      opFailure(opKey,target,check,false);
-      return false;
+      opFailure(ao.opKey,target,check,true);
+      break;
+    default:
+      opFailure(ao.opKey,target,check,false);
+      break;
   }
+  if(typeof syncHUD==="function")syncHUD();
+  if(typeof renderInspect==="function")renderInspect();
 }
 function opSuccess(opKey,target,check,crit){
   const m=M();
@@ -1385,8 +1517,10 @@ function opPartial(opKey,target,check){
       break;}
     case "bribe":{
       if(target&&target.kind==="pawn"){
-        // they take it but don't fully commit — or worse, a principled wisp balks
-        if((target.pers.intg||50)>60){
+        // they take it but don't fully commit — or worse, a principled wisp balks. Reputation shifts the
+        // odds: a feared operative meets less resistance, a beloved one a touch more.
+        const receptive=bribeReceptivity(target);
+        if(receptive<0.4){
           if(theAvatar())relAdj(target.id,theAvatar().id,-10);
           REG().awareness=clamp((REG().awareness||0)+8,0,100);
           log("\u25c9 "+target.name+" refused your bribe and looked offended — that could get back to the wrong people.","warn");
@@ -1778,9 +1912,11 @@ function separatePawns(){
   for(let i=0;i<n;i++){
     const a=P[i];
     if(a.sleeping)continue;             // sleepers rest in place
+    if(a.activeOp)continue;             // an avatar performing an op stays anchored to its target
     for(let j=i+1;j<n;j++){
       const b=P[j];
       if(b.sleeping)continue;
+      if(b.activeOp)continue;           // don't push a performing avatar off its spot
       // socializing pairs are meant to stand together — don't shove them apart
       if(a.socWith===b.id||b.socWith===a.id)continue;
       const dx=b.px-a.px,dy=b.py-a.py;
@@ -3546,9 +3682,16 @@ function pawnTick(p){
     }
   } else { p._stuckT=0; }
 
+  // EMBODIED OPS: an in-flight operation supersedes normal AI. Must run BEFORE the chooseJob line below,
+  // because a null job would otherwise make the AI immediately grab a new one (interrupting the op).
+  if(p.isAvatar&&p.activeOp){advanceActiveOp(p);return;}
   if(!p.job)p.job=chooseJob(p);
   const j=p.job;if(!j)return;
   switch(j.t){
+    case "goto":{   // player-issued move order (avatar walks to a clicked tile, then resumes autonomy)
+      const r=gotoCell(p,j.x,j.y,0);
+      if(r==="arr"||r==="fail"){p.job=null;}
+      break;}
     case "idle":{if(ST.tick>j.until){p.job=null;break}
       // admiring art: an idling wisp near a working art piece pauses to appreciate it —
       // a brief mood lift, more for the affluent (status). Light, no trekking across town.
@@ -5915,6 +6058,14 @@ function drawPawn(p){
     ctx.strokeStyle="#22ddff";ctx.globalAlpha=pul;ctx.lineWidth=1.6;
     ctx.beginPath();ctx.arc(X,Y,11,0,7);ctx.stroke();ctx.globalAlpha=1;
     ctx.fillStyle="#22ddff";ctx.beginPath();ctx.moveTo(X,Y-13);ctx.lineTo(X-4,Y-18);ctx.lineTo(X+4,Y-18);ctx.closePath();ctx.fill();
+    // OP IN FLIGHT: a filling arc shows the deed performing, tinted by op type
+    if(p.activeOp){const ao=p.activeOp;const frac=Math.max(0,Math.min(1,ao.prog/ao.duration));
+      const oc=ao.anim==="strike"?"#ff4757":ao.anim==="confer"?"#ffd24a":ao.anim==="plant"?"#ff8c42":ao.anim==="lift"?"#5cff9e":ao.anim==="rally"?"#22ddff":"#b06fff";
+      ctx.strokeStyle=oc;ctx.lineWidth=2.4;ctx.globalAlpha=0.95;
+      ctx.beginPath();ctx.arc(X,Y,15,-Math.PI/2,-Math.PI/2+frac*Math.PI*2);ctx.stroke();ctx.globalAlpha=1;
+      // a faint full-circle track behind it
+      ctx.strokeStyle=oc;ctx.globalAlpha=0.18;ctx.lineWidth=2.4;ctx.beginPath();ctx.arc(X,Y,15,0,7);ctx.stroke();ctx.globalAlpha=1;
+    }
   }}
 function toolColor(){if(!TOOL)return "#00e5ff";
   return TOOL.k==="salv"?"#ff9f2d":(TOOL.k==="decon"||TOOL.k==="cancel")?"#ff4757":"#00e5ff"}
@@ -6439,32 +6590,42 @@ function paintTo(c){if(!PT.lastC){PT.lastC=c;paintCell(c.x,c.y);return}
 function clickSelect(c){const p=pawnAt(c.wx,c.wy);
   // AVATAR OP TARGETING: if we're picking a target for sabotage/frame, resolve it here
   if(ST.opTargeting){
-    const opKey=ST.opTargetingOp;const need=ST.opTargeting;
+    const opKey=ST.opTargetingOp;const need=ST.opTargeting;const opDef=AVATAR_OPS[opKey];
     if(need==="utility"){
       const s=structAt(c.x,c.y);
       if(s&&DEF[s.type]&&DEF[s.type].utility&&!s.bp){
-        s.kind="s";runAvatarOp(opKey,s);ST.opTargeting=null;ST.opTargetingOp=null;
+        if(!inOpRange(theAvatar(),opDef,s)){flashMsg&&flashMsg("Too far \u2014 walk your operative next to the building, then pick it again.");return;}
+        s.kind="s";if(runAvatarOp(opKey,s)){ST.opTargeting=null;ST.opTargetingOp=null;}
         ST.sel=ST.sel&&ST.sel[0]&&ST.sel[0].isAvatar?ST.sel:[theAvatar()].filter(Boolean);
         renderInspect();syncHUD();return;
       }else{flashMsg&&flashMsg("Not a power/water building — pick a utility, or tap the op again to cancel.");return;}
     }else if(need==="regime"){
       if(p&&!p.isAvatar&&!isChild(p)&&(p.regimeForce||p.informant||(p.allegiance||0)<-20)){
-        p.kind="pawn";runAvatarOp(opKey,p);ST.opTargeting=null;ST.opTargetingOp=null;
+        if(!inOpRange(theAvatar(),opDef,p)){flashMsg&&flashMsg("Too far \u2014 move your operative close to them, then pick them again.");return;}
+        p.kind="pawn";if(runAvatarOp(opKey,p)){ST.opTargeting=null;ST.opTargetingOp=null;}
         ST.sel=[theAvatar()].filter(Boolean);renderInspect();syncHUD();return;
       }else{flashMsg&&flashMsg("Not a regime asset — pick a loyalist/enforcer/informant, or tap the op again to cancel.");return;}
     }else if(need==="anyPawn"){
       if(p&&!p.isAvatar&&!isChild(p)&&p.hp>0){
         // blackmail requires a KNOWN secret on this target
-        if(AVATAR_OPS[opKey]&&AVATAR_OPS[opKey].needsSecret&&!knownSecret(p)){
+        if(opDef&&opDef.needsSecret&&!knownSecret(p)){
           flashMsg&&flashMsg("You have no dirt on "+p.name.split(" ")[0]+" — surveil them first to find their secret.");return;
         }
-        p.kind="pawn";runAvatarOp(opKey,p);ST.opTargeting=null;ST.opTargetingOp=null;
+        if(!inOpRange(theAvatar(),opDef,p)){flashMsg&&flashMsg("Too far \u2014 move your operative close to them, then pick them again.");return;}
+        p.kind="pawn";if(runAvatarOp(opKey,p)){ST.opTargeting=null;ST.opTargetingOp=null;}
         ST.sel=[theAvatar()].filter(Boolean);renderInspect();syncHUD();return;
       }else{flashMsg&&flashMsg("Pick a wisp (not a child), or tap the op again to cancel.");return;}
     }
   }
   if(p){ST.sel=[p];renderInspect();return}
   const s=structAt(c.x,c.y);if(s){ST.sel=[s];renderInspect();return}
+  // AVATAR MOVE-ON-CLICK: if your operative is selected and you click an empty walkable tile, walk it there
+  const selA=ST.sel&&ST.sel[0];
+  if(selA&&selA.isAvatar&&!selA.activeOp&&colCost(c.x,c.y)>=0){
+    selA.job={t:"goto",x:c.x,y:c.y};selA.cmd=null;
+    if(typeof SFX!=="undefined"&&SFX.ui)SFX.ui();
+    return;
+  }
   ST.sel=[];renderInspect()}
 function marqueeSelect(m){
   const ax=Math.min(m.x0,m.x1),bx=Math.max(m.x0,m.x1);
@@ -6479,6 +6640,13 @@ function tapAction(c){
   if(p){ST.sel=[p];renderInspect();syncHUD();return}
   const s=structAt(c.x,c.y);
   if(s){ST.sel=[s];renderInspect();return}
+  // AVATAR MOVE-ON-CLICK: operative selected + empty walkable tile -> walk there
+  const selA=ST.sel&&ST.sel[0];
+  if(selA&&selA.isAvatar&&!selA.activeOp&&colCost(c.x,c.y)>=0){
+    selA.job={t:"goto",x:c.x,y:c.y};selA.cmd=null;
+    if(typeof SFX!=="undefined"&&SFX.ui)SFX.ui();
+    return;
+  }
   ST.sel=[];renderInspect()}
 
 
@@ -7321,7 +7489,46 @@ $("modal").addEventListener("click",e=>{const id=e.target.id;
   else if(id==="m-continue"){SFX.wake();SFX.ambientStart();SFX.ui();hideModal();openLoadSlots()}
   else if(id==="m-close"){SFX.ui();hideModal()}});
 
+let OP_DOCK_OPEN=false;
+// the operative dock: a quiet status strip (always shows what your operative is doing) that expands into
+// quick controls. Reactive — its content reflects live operative state (idle / walking / performing an op).
+function opDockState(av){
+  if(!av)return {glyph:"\u25c7",txt:"No operative",prog:null};
+  if(av.activeOp){const opD=AVATAR_OPS[av.activeOp.opKey];const pct=Math.round(av.activeOp.prog/av.activeOp.duration*100);
+    return {glyph:"\u25c6",txt:"<b>"+opD.name+"</b> \u2014 "+pct+"%",prog:pct,busy:true};}
+  if(av.job&&av.job.t==="goto")return {glyph:"\u25c8",txt:"Moving to position\u2026",prog:null};
+  if(av.job&&av.job.t)return {glyph:"\u25c7",txt:"<b>"+jobLabel(av).replace(/^.*?: ?/,"")+"</b>",prog:null};
+  return {glyph:"\u25c7",txt:"Idle",prog:null};
+}
+function renderOpDock(){
+  const dock=document.getElementById("op-dock");if(!dock)return;
+  if(ST.phase!=="run"){dock.style.display="none";return;}
+  dock.style.display="flex";
+  const av=theAvatar();const m=M();const st=opDockState(av);
+  const isSel=ST.sel&&ST.sel[0]&&ST.sel[0].isAvatar;
+  let h="";
+  // expandable control panel (only when open)
+  h+="<div class='od-panel'>";
+  h+="<div class='od-stat'>Intel <b style='color:var(--cy)'>"+(m.intel|0)+"</b> \u00b7 Exposure <b style='color:"+((m.exposure|0)>40?"var(--rd)":"var(--dim)")+"'>"+(m.exposure|0)+"</b></div>";
+  if(st.prog!=null)h+="<div class='od-prog'><i style='width:"+st.prog+"%'></i></div>";
+  h+="<div class='od-row'>";
+  h+="<button class='od-btn' id='od-jump'>\u25c9 SELECT</button>";
+  h+="<button class='od-btn"+(cam.follow&&av&&cam.follow===av.id?" on":"")+"' id='od-follow'>\u25ce FOLLOW</button>";
+  h+="</div>";
+  h+="<div class='sub' style='font-size:8.5px;opacity:.6;margin-top:6px'>"+(isSel?"Click an empty tile to move \u00b7 click a target to operate":"Select your operative to command it")+"</div>";
+  h+="</div>";
+  // the always-visible strip
+  h+="<div class='od-strip' id='od-strip'>";
+  h+="<span class='od-glyph'>"+st.glyph+"</span>";
+  h+="<span class='od-title'>OPERATIVE</span>";
+  h+="<span class='od-state'>"+st.txt+"</span>";
+  h+="<span class='od-chev'>\u25b2</span>";
+  h+="</div>";
+  dock.innerHTML=h;
+  dock.classList.toggle("expanded",OP_DOCK_OPEN);
+}
 function syncHUD(){
+  renderOpDock();
   $("h-pop").textContent=ST.pawns.length;
   $("h-cred").textContent=Math.round(ST.pawns.reduce((s,p)=>s+(p.credits||0),0));
   const inc=$("h-income");
@@ -7427,21 +7634,45 @@ function renderInspectCore(){const el=$("inspect");
         h+="<div class='ordsec' style='color:#22ddff;margin-top:10px'>OPERATIONS</div>";
         h+="<div class='sub' style='font-size:10px'>Intel <span style='color:#22ddff;font-weight:600'>"+(m.intel|0)+"</span> \u00b7 Exposure <span style='color:#ff5470;font-weight:600'>"+(m.exposure|0)+"</span> \u00b7 Rep <span style='color:"+repCol+";font-weight:600'>"+repLbl+"</span></div>";
         if((m.exposure|0)>40)h+="<div class='sub' style='font-size:9px;color:#ff8c42'>\u26a0 High exposure \u2014 ops are riskier. Lie low to cool off.</div>";
-        h+="<div class='opsgrid' style='display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px'>";
-        // short, scannable labels for the button face
+        // IN-FLIGHT: if an operation is performing, show its progress instead of the op grid
+        if(e.activeOp){const ao=e.activeOp;const opD=AVATAR_OPS[ao.opKey];const pct=Math.round(ao.prog/ao.duration*100);
+          h+="<div class='sub' style='font-size:11px;color:#ffd24a;margin-top:6px;font-weight:600'>\u25b8 "+opD.name.toUpperCase()+" \u2014 performing\u2026 "+pct+"%</div>";
+          h+="<div class='bar' style='margin-top:2px'><i style='width:"+pct+"%;background:#ffd24a'></i></div>";
+          h+="<div class='sub' style='font-size:9px;opacity:.7'>Move your operative to abandon the operation.</div>";
+        } else {
+        // REACTIVE OPS MENU — grouped by category; each op shows its live state. Risk is signaled,
+        // prerequisites are disabled. (Rule: disable the impossible, signal the dangerous.)
         const OP_LBL={intel:"GATHER INTEL",surveil:"SURVEIL",dissent:"SPREAD DISSENT",sabotage:"SABOTAGE",steal:"STEAL FUNDS",bribe:"BRIBE",frame:"FRAME ASSET",blackmail:"BLACKMAIL",assassinate:"ASSASSINATE"};
-        // do we hold dirt on anyone? (gates blackmail's usability hint)
-        const haveDirt=ST.pawns.some(q=>!q.isAvatar&&!isChild(q)&&knownSecret(q));
-        for(const ok in AVATAR_OPS){const op=AVATAR_OPS[ok];
-          const needsDirt=op.needsSecret&&!haveDirt;
-          const afford=(m.intel||0)>=op.cost&&!needsDirt;
-          const lbl=(OP_LBL[ok]||op.name.toUpperCase())+(op.cost?" ("+op.cost+")":"");
-          const tip=op.desc+(needsDirt?" \u2014 [need a secret: surveil someone first]":"");
-          h+="<button class='tb i-op' data-op='"+ok+"' title='"+tip+"' style='font-size:8.5px;padding:5px 3px;letter-spacing:.02em;border-color:"+(afford?"rgba(34,221,255,.4)":"rgba(120,140,160,.25)")+";color:"+(afford?"#bfe8ff":"#6a7a8c")+"'>"+lbl+(needsDirt?" \uD83D\uDD12":"")+"</button>";
+        const RISK_COL={low:"",raised:"#ffd24a",high:"#ff9a52",extreme:"#ff5470"};
+        const RISK_DOT={low:"",raised:"\u25c8",high:"\u25c8\u25c8",extreme:"\u26a0"};
+        for(const cat of OP_CAT_ORDER){
+          const opsInCat=Object.keys(AVATAR_OPS).filter(ok=>OP_CATEGORY[ok]===cat);
+          if(!opsInCat.length)continue;
+          h+="<div class='opcat'>"+cat+"</div>";
+          h+="<div class='opsgrid' style='display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:3px 0 5px'>";
+          for(const ok of opsInCat){const op=AVATAR_OPS[ok];const st=opState(ok);
+            const lbl=(OP_LBL[ok]||op.name.toUpperCase())+(op.cost?" ("+op.cost+")":"");
+            const armed=ST.opTargeting&&ST.opTargetingOp===ok;
+            let bc,tc,suffix="",tip=op.desc;
+            if(!st.ok){ // disabled — a real prerequisite is missing
+              bc="rgba(120,140,160,.2)";tc="#5d6b7c";
+              suffix=" \uD83D\uDD12";tip=op.desc+" \u2014 ["+st.label+"]";
+            } else { // available; show risk tier
+              const rc=RISK_COL[st.risk];
+              bc=rc?("rgba("+(st.risk==="extreme"?"255,84,112":st.risk==="high"?"255,154,82":"255,210,74")+",.55)"):"rgba(34,221,255,.4)";
+              tc=rc||"#bfe8ff";
+              if(RISK_DOT[st.risk])suffix=" <span style='color:"+rc+"'>"+RISK_DOT[st.risk]+"</span>";
+              if(st.targeted)tip=op.desc+" \u2014 [needs a target in range]";
+              if(st.risk!=="low")tip+=" \u26a0 "+st.risk+" risk at current heat";
+            }
+            if(armed){bc="#ffd24a";tc="#ffd24a";}
+            h+="<button class='tb i-op"+(armed?" armed":"")+(st.ok?"":" opdis")+"' data-op='"+ok+"' title='"+tip.replace(/'/g,"&#39;")+"' style='font-size:8.5px;padding:5px 3px;letter-spacing:.02em;border-color:"+bc+";color:"+tc+"'>"+lbl+suffix+"</button>";
+          }
+          h+="</div>";
         }
-        h+="</div>";
-        h+="<button class='tb' id='i-lielow' style='font-size:9px;padding:4px;margin-top:4px;border-color:rgba(122,162,255,.4);color:#aebfff'>\u25ad LIE LOW \u2014 reduce exposure (12 intel)</button>";
-        if(ST.opTargeting)h+="<div class='sub' style='font-size:10px;color:#ffd24a;margin-top:4px'>\u25c9 Select a "+(ST.opTargeting==='utility'?"power/water building":ST.opTargeting==='regime'?"regime asset":"wisp")+" to "+ST.opTargetingOp+", or tap an op again to cancel.</div>";
+        h+="<button class='tb' id='i-lielow' style='font-size:9px;padding:4px;margin-top:2px;border-color:rgba(122,162,255,.4);color:#aebfff'>\u25ad LIE LOW \u2014 reduce exposure (12 intel)</button>";
+        if(ST.opTargeting)h+="<div class='sub optargethint' style='font-size:10px;color:#ffd24a;margin-top:4px'>\u25c9 Select a "+(ST.opTargeting==='utility'?"power/water building":ST.opTargeting==='regime'?"regime asset":"wisp")+" to "+ST.opTargetingOp+" \u2014 walk into range, then tap it. (Tap the op again to cancel.)</div>";
+        }
       }
     }
     else if(tab==="person"){
@@ -8083,6 +8314,22 @@ $("submenu").addEventListener("click",e=>{
 $("t-build").onclick=()=>{SFX.ui();openSub("b")};
 $("t-zone").onclick=()=>{SFX.ui();openSub("z")};
 $("t-command").onclick=()=>{SFX.ui();openSub("c")};
+// OPERATIVE DOCK interactions
+$("op-dock").addEventListener("click",e=>{
+  const strip=e.target.closest("#od-strip");
+  if(strip&&!e.target.closest(".od-btn")){OP_DOCK_OPEN=!OP_DOCK_OPEN;SFX.ui&&SFX.ui();renderOpDock();return;}
+  const av=theAvatar();if(!av)return;
+  if(e.target.closest("#od-jump")){ // jump camera to + select the operative
+    SFX.ui&&SFX.ui();ST.sel=[av];setFollow(av);
+    cam.x=av.px*T-VW/cam.z/2;cam.y=av.py*T-VH/cam.z/2;if(typeof clampCam==="function")clampCam();
+    renderInspect();syncHUD();return;
+  }
+  if(e.target.closest("#od-follow")){ // toggle camera follow
+    SFX.ui&&SFX.ui();
+    if(cam.follow===av.id){stopFollow();}else{setFollow(av);}
+    renderOpDock();return;
+  }
+});
 $("b-save").onclick=()=>{SFX.ui();openSaveSlots()};
 $("b-fs").onclick=()=>{SFX.ui();
   const el=document.documentElement;
@@ -8326,7 +8573,7 @@ function hasSave(){
     for(const n of SLOTS)if(localStorage.getItem(SLOT_KEY(n)))return true;
   }catch(e){}
   return false}
-function snapPawn(p){return Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,unre:undefined,pi:0,pTx:-1,pTy:-1,claim:0})}
+function snapPawn(p){return Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,activeOp:null,unre:undefined,pi:0,pTx:-1,pTy:-1,claim:0})}
 function snapStruct(s){return Object.assign({},s,{res:0})}
 function serializeState(){
   return{v:2,tick:ST.tick,grp:ST.grp,rel:ST.rel,relMeta:ST.relMeta||{},cliques:ST.cliques||[],nextEv:ST.nextEv,lastCrackdown:ST.lastCrackdown,
@@ -8554,6 +8801,8 @@ function loop(ts){requestAnimationFrame(loop);
     if(KEYS.d||KEYS.arrowright)dx+=sp;
     if(dx||dy){cam.x+=dx;cam.y+=dy;clampCam();if(cam.follow)stopFollow();}}
   tickFollow();
+  // keep the operative dock's live progress fresh while an op is performing
+  if(ST.phase==="run"&&!ST.paused){const av=theAvatar();if(av&&(av.activeOp||(av.job&&av.job.t==="goto"))&&ST.tick%3===0)renderOpDock();}
   render()}
 
 window.addEventListener("resize",resize);

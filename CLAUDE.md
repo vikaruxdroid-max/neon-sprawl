@@ -39,7 +39,140 @@ done yet.
 
 ## ⚡ LATEST STATE (read this first — reconciled from the live VM, June 2026) ⚡
 
-**INFILTRATOR SYSTEMS — SPACING + DICE-AS-STORY + SECRETS + 5 NEW OPS (most recent, big session):**
+**REACTIVE OPS UI + OPERATIVE DOCK + REPUTATION-GATED BRIBES (most recent session):**
+A focused UI pass for the avatar-driven embodied-ops play, built to Carlo's preference for "organized,
+reactive, hideable menus." Guiding rule: **disable the impossible, signal the dangerous, hide the
+irrelevant.** Also did 5 deep verification passes on Phase 1 first (all green) + a pending-mechanics audit.
+
+- **REACTIVE OPS PANEL:** the operations menu is now organized into 3 CATEGORIES (INTELLIGENCE:
+  intel/surveil · INFLUENCE: dissent/bribe/blackmail/frame · DIRECT ACTION: sabotage/steal/assassinate)
+  via `OP_CATEGORY`/`OP_CAT_ORDER`. New `opState(opKey)` is the brain: returns `{ok,reason,risk,targeted}`.
+  PREREQUISITES (no intel / no secret) → the button is DISABLED (real impossibility). RISK (exposure +
+  REG().awareness) → the op stays AVAILABLE but shows a danger tier (low/raised/high/extreme) with a
+  colored dot (◈/◈◈/⚠) — loud ops (strike/plant anims) get +1 risk at high heat. Design choice (deliberate,
+  defensible): heat NEVER blocks an op — a desperate high-risk strike in a hot district is a story beat, not
+  a bug. Only impossibility disables. CSS: `.opcat`, `.i-op.armed` (pulsing glow when targeting), `.opdis`.
+- **OPERATIVE DOCK (collapsible):** a quiet persistent status strip bottom-LEFT (`#op-dock`, doesn't
+  collide with the centered toolbar) that ALWAYS shows what your operative is doing (idle / "Moving to
+  position…" / "Gather Intel — 33%" with a live progress bar) and EXPANDS on tap into a control panel
+  (SELECT = jump camera+select, FOLLOW = camera toggle, intel/exposure readout). Collapses when tapped
+  again. `renderOpDock()` + `opDockState(av)` + `OP_DOCK_OPEN` flag; called from `syncHUD` and refreshed
+  every 3 ticks in the loop while an op/goto is live so progress animates. Uses existing `--cy`/`--disp`
+  tokens — native to the established cyberpunk look. Click handler on `#op-dock` (strip toggle + jump +
+  follow). Mobile-responsive (@media narrows it).
+- **REPUTATION-GATED BRIBES (pending mechanic, now built):** `bribeReceptivity(target)` — a FEARED
+  operative (rep < -20) buys silence more easily (+0.18), a BELOVED one meets more resistance to outright
+  corruption (-0.12), scaled by the target's integrity. Wired into the bribe partial-outcome refusal check
+  (was a flat intg>60; now reputation shifts the threshold). VERIFIED: feared 0.63 vs beloved 0.33
+  receptivity on the same target.
+
+**VERIFICATION — Phase 1 re-audited (5 passes, all green) BEFORE the UI work:** (1) all 9 ops individually
+through staging — each stages+resolves; (2) integration seams — non-avatar pawns never get activeOp, avatar
+autonomy intact, state transitions clean (work→goto→op→resumed), old p.cmd works; (3) edge cases — target
+dies mid-op (clean abort), double-stage rejected, low-intel rejected, avatar dies mid-op (no crash); (4)
+assassinate→election cascade intact through staging; (5) full save→load round-trip (activeOp cleared on
+load, dossier preserved, loaded game runs 400t stable, can stage ops after load). **UI: 3 cycles green** —
+reactive states + render, dock in all states, full-day stability (48 renders, 13 survive). Smoke 20/20, no
+dead/dupe, CSS balanced, full render clean.
+
+**PENDING MECHANICS AUDIT (Carlo asked):** Still pending — Phase 2 perception/witnesses (the big next one:
+canSee, witnessPenalty, pre-commit readout); AI-narrated op outcomes; richer investigation layer; agent
+requests (REQUESTS_ENABLED=false, deferred); weekly city-council session (the recurring "natural next");
+building footprint reorg/resize + furniture for new buildings; rain/thunder audio (can't verify); camera
+auto-pan (only button built). NOTE: exposure→op-availability gating is now PARTLY addressed (signaled in
+the reactive panel, not hard-blocked — by design). HONEST UNTESTED: the dock + reactive panel are
+structurally validated but Claude can't SEE them render — Carlo should eyeball the dock strip/expand feel,
+the category layout, the risk-dot colors, and that the dock doesn't overlap anything at his resolution.
+
+---
+
+## ⚡ EMBODIED OPS PHASE 1 (prior session) ⚡
+Implemented all four outstanding audit findings + the activeOp staging machinery. Ops are no longer
+instant menu-buttons — the avatar now physically performs them over time, in position.
+
+- **STAGING MACHINERY:** `runAvatarOp(opKey,target)` no longer resolves instantly — it STAGES an
+  `activeOp={opKey,target:desc,prog,duration,startTick,anim}` on the avatar (after validating intel cost,
+  range, and secret-gate), then nulls `p.job`. `advanceActiveOp(p)` ticks `prog` each tick and aborts if
+  the target vanishes. `resolveAvatarOp(p)` fires the banded `opsCheck` roll + consequence switch (the
+  former runAvatarOp body — opSuccess/opPartial/opFailure, all unchanged) ONLY on completion. Targets are
+  stored as serialization-safe descriptors (`{kind:"s",key}` or `{kind:"pawn",id}`), resolved live via
+  `resolveOpTarget()`. `inOpRange(av,op,target)` gates targeted ops (range-0 ops always pass).
+- **AVATAR_OPS extended:** each op gained `range`, `duration`, `anim` fields. intel(r0,d60), surveil(r3.5,
+  d90), dissent(r0,d70), sabotage(r1.8,d100), steal(r0,d80), bribe(r1.8,d55), frame(r1.8,d90), blackmail
+  (r1.8,d60), assassinate(r1.6,d75).
+- **FINDING 2 (the critical one) FIXED:** `if(p.isAvatar&&p.activeOp){advanceActiveOp(p);return;}` is now
+  placed in pawnTick BEFORE the `if(!p.job)p.job=chooseJob(p)` line, so an in-flight op holds and the AI
+  does NOT re-grab a job. VERIFIED: 30 ticks into an op, zero jobs grabbed, avatar held position.
+- **FINDING 4 FIXED:** `separatePawns` now exempts `activeOp` avatars (`if(a.activeOp)continue` +
+  `if(b.activeOp)continue`). VERIFIED: avatar held with ZERO drift even when 3 pawns crowded onto it
+  through 20 separation passes.
+- **FINDING 5 FIXED:** `snapPawn` now nulls `activeOp` (added to its Object.assign null-list). VERIFIED:
+  full serialize+stringify mid-op succeeds (182KB, no circular-ref crash); saved avatar has null activeOp.
+  An op cancels cleanly on reload (acceptable/safe).
+- **RANGE-AWARE TARGETING:** the `clickSelect` op-targeting branches (utility/regime/anyPawn) now check
+  `inOpRange` BEFORE staging; out of range → "Too far — walk your operative next to it, then pick it
+  again" and KEEPS targeting active so the player can move + re-click. VERIFIED: sabotage from dist 88
+  REJECTED, from dist 0.7 STAGED.
+- **IN-FLIGHT UI:** the OPERATIONS panel shows "▸ OPNAME — performing… N%" + a progress bar + "Move your
+  operative to abandon" instead of the op grid while an op runs. The avatar gets an on-map filling
+  progress RING in drawPawn, tinted by op type (strike=red, confer=gold, plant=orange, lift=green,
+  rally=cyan, tail=purple). VERIFIED: panel + ring render clean; grid returns after resolve.
+- **MOVE-GUARD:** the existing avatar move-on-click is gated by `!selA.activeOp`, so you can't walk the
+  avatar mid-op (the op holds). NOTE: this is "can't move during op," NOT "move aborts op" — a deliberate
+  simpler choice that reinforces the commit-to-the-deed tension. Flipping to abort-on-move is a small
+  change if Carlo prefers it.
+
+**VALIDATION: all 5 cycles + the full battery pass.** Cycle 1 (stage/hold/perform/resolve + Finding 2),
+Cycle 2 (range gate far-rejected/near-staged + sabotage success path), Cycle 3 (Finding 4 zero-drift +
+Finding 5 clean save), Cycle 4 (full-day stability, 14 ops, max stuck 4t, 0 overlaps, 13 survive), Cycle 5
+(move-guard holds + in-flight render clean). Smoke 20/20, no dead/dupe, CSS balanced.
+
+**NEXT: Phase 2 (perception/witness pressure)** — `canSee(observer,avatar,op)`, `witnessPenalty` into
+resolveAvatarOp's difficulty, generalize `witnessCrime` into `runWitnessCheck`, pre-commit difficulty +
+witness readout. The architecture doc (Section 7) has the full Phase 2-5 plan. The `anim` field is set on
+every activeOp and ready for the Phase 3 action animations (plant/strike/confer/tail/rally/lift in
+drawPawn). HONEST UNTESTED: the on-map ring + panel are structurally validated but Claude can't SEE them
+render — Carlo should eyeball that the ring fills smoothly and the tints read right.
+
+---
+
+## ⚡ AVATAR CLICK-TO-MOVE + ARCHITECTURE PLAN (prior session) ⚡
+
+- **AVATAR CLICK-TO-MOVE (shipped, validated):** the player can now directly position the avatar. With the
+  operative SELECTED, clicking an empty walkable tile issues a new `goto` job (`{t:"goto",x,y}`) that walks
+  it there via `gotoCell`, then CLEARS on arrival so the avatar RESUMES its autonomy (it goes back to
+  living its life — eats/sleeps/works). You take the wheel only when you choose to. Wired into BOTH click
+  handlers (`clickSelect` ~6470 and `tapAction`), gated by `selA.isAvatar && !selA.activeOp &&
+  colCost(c.x,c.y)>=0`. The `goto` case was added to the pawnTick job switch (right after `idle`). The
+  `!selA.activeOp` guard is a safe forward-reference (activeOp doesn't exist yet — it's Phase 1 of the ops
+  build — so the guard is always true now and correctly future-proofs). VERIFIED end-to-end: avatar walks
+  from (51,71) to a clicked tile, job clears at arrival, resumes normal AI (picked up a work job after);
+  no stuck-loops (max 3t), spacing intact (0 overlaps), 13 survive. This RESOLVES "Finding 1" of the
+  architecture audit (the missing move-to-tile prerequisite).
+
+- **EMBODIED OPERATIONS ARCHITECTURE PLAN (16-page Word doc):** a comprehensive technical design for
+  turning avatar ops from instant menu-buttons into PHYSICAL DEEDS the avatar travels to and performs in a
+  world that witnesses and reacts. Owner's 3 decisions drive it: (1) manual positioning gates the op (walk
+  into range, button arms), (2) witnesses RAISE dice difficulty live + stealth positioning is the core
+  skill, (3) mechanics + animation both, in phases. Core insight: difficulty becomes a function of
+  who-can-see-you, computed at RESOLVE time (so a witness wandering in mid-act still counts). Built on
+  existing systems: the job model (`gotoCell→arr→prog`), `witnessCrime`/`onlookersReact` (perception),
+  banded `opsCheck` (the live-difficulty lever), `drawPawn` procedural animation. 5 subsystems, 5 validated
+  phases. **The doc includes a SECOND-PASS CODE AUDIT (Section 10)** that stress-tested the plan against
+  index.html and found 5 real issues (now corrected in the doc):
+    1. Move-to-tile didn't exist — NOW RESOLVED (the click-to-move above).
+    2. CRITICAL: setting `avatar.job=null` during an op does NOT suspend AI — line ~3549
+       `if(!p.job)p.job=chooseJob(p)` runs every tick and immediately re-grabs a job. The `activeOp` check
+       must intercept + `return` BEFORE that line.
+    3. The 140t stuck-detector is already exempt (it gates on `p.job`; activeOp lives outside job).
+    4. `separatePawns` would push a performing avatar off its spot — needs an `activeOp` exemption + position pin.
+    5. `snapPawn` doesn't null `activeOp` — store target as ID/key (not object ref) + null on save, cancel on load.
+  The plan is build-ready. NEXT: Phase 1 of the embodied-ops build (the `activeOp` job machinery), with the
+  move-to-tile foundation already in place.
+
+---
+
+## ⚡ INFILTRATOR SYSTEMS (prior session) ⚡
 Carlo's vision: the avatar is the lone infiltrator who brings down the regime through subterfuge; make
 sessions organic via investigation + the dice as the engine of risk/consequence. Built in 4 validated
 stages:
