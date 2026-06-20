@@ -37,7 +37,159 @@ done yet.
 
 ---
 
-## ⚡ LATEST STATE — TWO BRAINS DESIGN DOC FULLY IMPLEMENTED (most recent session) ⚡
+## ⚡ LATEST STATE — WITNESS FEAR DEPTH (bribe-resistance + flee-on-sight) + WITNESS MEMORY + CLUSTERING (most recent session) ⚡
+
+**Build `56afe2ba` in outputs, NOT committed (Carlo chose option B: build, commit everything together at end).**
+Uncommitted stack since `8518b21`: profiling harness + A* opt + clustering fix + witness-memory layer + witness-FEAR depth.
+All validated (smoke 20/20, no dead/dupe, full-day stable, save/load clean).
+
+**NEWEST ADDITION — WITNESS FEAR (Carlo-chosen depth on the working witness system):** witness memory previously
+changed allegiance + informing (social); now it also changes how a frightened witness PHYSICALLY behaves around you.
+Added `witnessFear(q)` — recency-weighted fear from a wisp's `_opWit` (0 none/faded → ~1.4 fresh kill-witness;
+gang/recruited always 0). Two features: (1) **FEAR RESISTS BRIBE/BLACKMAIL** — in resolveAvatarOp difficulty,
+a bribe/blackmail target who witnessed your brutality adds `fearPen=min(8,round(fear*4))` (fresh kill-witness +6-8,
+no memory +0). (2) **FLEE ON SIGHT** — in pawnTick (throttled %20, gated `witnessFear>=0.9` + within 6 tiles +
+not avatar/jailed) a fresh brutal-act witness near the operative panics, sets `p.flee` (reuses existing flee→home
+primitive), sweat-emotes, clears job. VERIFIED: fear 0→1.4→0; bribe +6 on kill-witness / +0 no-memory; witness flees
+near avatar / no-memory wisp stays; full-day stable; NOT everyone fleeing (proximity+time gated); save/load clean.
+
+**FINDING — Phase 2 (perception/witnesses) was ALREADY fully built + tuned + wired**, so it was NOT rebuilt:
+canSee(obs,av,op) (~5046, composes distance/darkness/attention/proximity/allegiance into a damning-score),
+witnessPenalty (~5075), witnessCrime, runWitnessCheck (post-act fallout: awareness/heat + enforcer grudge +
+bystander alarm), every AVATAR_OP already has tuned sightRange + witnessK (bribe 4/0.4 → assassination 8/1.4).
+Carlo chose to DEEPEN it instead: make witnessing LEAVE A LASTING MARK that changes the witness's future.
+
+**WHAT WAS BUILT — lasting witness memory (deepens, doesn't replace):**
+- In `runWitnessCheck`, a witness to a SERIOUS op (witnessK≥0.7, seen by a non-cell/non-gang wisp) now gets a
+  durable `q._opWit` record `{op,sev,at,botched}` (cap 6). Immediate durable shift: a kill/heavy-sabotage
+  (sevK≥1.2) shakes a sympathizer (allegiance −6..14 + a memory) or cows a neutral/hostile (disillusion drop +
+  memory). Your own recruited cell never records against you.
+- `opKindLabel(op)` — maps an op to a short witness-memory label (kill/sabotage/frame/robbery/blackmail/op).
+- `witnessMemoryTick()` (every 150 ticks, wired in tick loop after blackoutTick): DECAYS marks older than 3
+  days (clears _opWit when empty); DELAYED INFORMING — a loyalist/principled witness who saw something serious
+  may turn informant LATER (chance scales severity×recency×disposition; feeds reg.informants + awareness); slow
+  allegiance drift from carrying the memory. This is the delayed teeth: acting brazenly in front of the wrong
+  person catches up with you days later.
+- VALIDATED 7/7: witness records the act (kill, sev 2.52); a loyalist witness eventually turned informant; stale
+  memory decays; a sympathizer was shaken (40→32 allegiance); a recruited cell member did NOT record. Full-day
+  stable, save/load clean (the _opWit array serializes fine).
+
+**ALSO THIS SESSION — clustering fix (build `5d6e88a3`):** Carlo saw wisps STILL stacking (Static+Orin at the
+PRECINCT) and confirmed "they all trying and doing activities" = OCCUPANCY bug, not spacing. Root cause: only
+work + training checked occupancy; eat/leisure/medical/hygiene all used plain `nearestStruct` → every wisp
+converged on the nearest fixture. Added generic helpers: `fixtureUsers(x,y,excl)` (counts wisps headed-to/using
+a tile for ANY job), `fixtureFree(s,p)`, `nearestFreeStruct(p,fn)` (skips occupied fixtures, returns null if all
+full → wisp does something else). Applied to mkEat (shared food), showStr (shower/toilet), funStr (leisure),
+medStr (medical — but medical FALLS BACK to any bed if all free ones taken, since treatment is life-or-death).
+Home fixtures left as-is (household-shared OK). VERIFIED: worst stacking on a shared fixture over a full day = 1
+(clustering gone). (The earlier test "crash" was a TEST ARTIFACT — hand-injected malformed jobs, not real play.)
+
+**BROWSER PERF CONFIRMED BY CARLO:** Firefox after the A* fix = **FPS 97** (was 17), tick 1.0ms, render 1.94ms,
+pawnAI 0.60ms (was 19.28ms — ~30x). Edge still FPS 17 BUT the A* fix worked there too (pawnAI 19.28→2.92ms);
+tick+render=9.5ms yet frame=59ms → ~50ms/frame hidden OUTSIDE both = Edge-specific COMPOSITOR/pipeline issue
+(likely hardware-accel off in edge://settings/system, or a GPU/driver quirk on Carlo's machine — NOT a game
+problem; Firefox same code = 97 FPS proves it). Carlo agreed to move on. Did NOT optimize against Edge.
+
+---
+
+## ⚡ PERF: A* OPTIMIZATION + PROFILING HARNESS (prior session) ⚡
+
+**Build `2d9792fc` in outputs, NOT yet committed. Sits on committed `8518b21`.** Carlo reported FPS 17 in Edge
+during testing. Built a profiling harness FIRST (measure before optimize), used it to find the real bottleneck,
+fixed it. Validated: smoke 20/20, no dead/dupe, paths correct (0 broken over 300 random pathfinds), save/load
+clean, half-day stable. The absolute FPS gain is Carlo's to confirm in-browser (headless ms != browser ms).
+
+**THE DIAGNOSIS (press-P perf HUD, now extended):** Carlo's real browser readout was the key:
+`FPS 17 · pawns 13 · spd 1 / tick 19.48ms (pk 22.7) · render 10.92ms (pk 13.7) / pawnAI 19.28ms · sep 0.02ms`.
+Read: pawnAI = 19.28 of 19.48ms tick = **99% of tick cost in the per-pawn AI loop**. render 10.9ms is SECONDARY.
+sep (the O(N²) Gemini flagged) = 0.02ms = CONFIRMED IRRELEVANT. Drilling in with isolated profilers: scoreJobs
+is expensive per-call (0.23ms, 12 nearestStruct + 4 pawn-scans) but runs only ~0.2x/tick (pawns usually have a
+job) = not the hog. The hog: **A* pathfinding** — 60% of pawnTick, only ~0.1 calls/tick but **~9ms PER CALL**
+(failed/long searches grinding to the old 14000-node whole-map cap dominate the average).
+
+**THE PERF HARNESS (extends the existing press-P PERF_HUD):** the HUD now shows, beyond FPS/pawns/spd, the
+per-frame split `tick __ms (pk) · render __ms (pk)` and the subsystem breakdown `pawnAI __ms · sep __ms`. Loop
+times tick() and render() with PERF.now(); tick() times the pawnTick loop + separatePawns when the HUD is on.
+CRITICAL: zero overhead when HUD off (all gated behind `if(PERF_HUD)`, verified). Vars: _tickMs/_renderMs/
+_tickN/_tickPeak/_renderPeak + _perfPawnAcc/_perfSepAcc/_perfTickCount/_perfBreakdown, reset each ~500ms window.
+
+**THE FIX — two A* optimizations (function astar ~line 3246):**
+1. **Persistent generation-tagged arrays.** Was allocating + `.fill()`-ing TWO 14,000-element typed arrays
+   (`gS` Float32 + `par` Int32) on EVERY call — 28k array writes per pathfind regardless of path length. Now
+   `_aGS`/`_aPar`/`_aGen` are module-level (allocated ONCE); a per-search generation counter `_astarGen` (bumped
+   each call, O(1)) implicitly invalidates the grid — a cell is unvisited if `_aGen[i]!==gen`. The g-score read
+   is `G(i)=_aGen[i]===gen?_aGS[i]:Infinity`. No per-call fill.
+2. **Exploration cap 14000 → 4000 (`ITER_CAP`).** The worst cost was failed/huge searches exploring the whole
+   140×100 map. 4000 nodes covers any sane route on this grid; unreachable targets bail ~3.5x faster. Capping is
+   safe — a pawn that legitimately needs a longer path repaths next tick from a closer position as it moves, so
+   no one strands. (Heap was already a proper binary heap — not the problem.)
+
+**MEASURED (headless; ratios hold in browser, absolute ms differ):** in-game astar 9.1ms → 4.6ms/call; pawnTick
+loop 1.68 → 0.88 ms/tick (~2x); a half-day sim run dropped from ~16-22s to ~14s. 0 broken paths, movement works.
+
+**NEXT PERF CANDIDATES if Carlo's browser re-measure still shows a problem:** (a) render is 10.9ms — if it's now
+the dominant cost after the A* fix, profile the canvas draw (overdraw, per-frame redraw of static layers, shadow
+effects); (b) further A* — path caching across ticks / hierarchical pathfinding / a coarser grid for long routes;
+(c) throttle/stagger heavy per-pawn work across ticks (not every pawn every tick). DON'T guess — re-measure with
+the HUD first. Carlo should press P in-browser and report the new tick/render/pawnAI split.
+
+---
+
+## ⚡ POST-COMMIT FIXES: FLICKER / JAIL / CONGESTION / PANEL / POWER CASCADE (prior session, COMMITTED 8518b21) ⚡
+
+**The Two Brains work + panel/log/char-creation fixes were COMMITTED & PUSHED (clean) at md5 `75895385`.**
+On top of that committed base, this session built FIVE more checkpoints (current working build `9122385e`,
+in outputs, NOT yet committed). All validated (smoke 20/20, no dead/dupe, save/load clean, half-day + forced
+blackout stable). The UI-visual ones (flicker, panel) need Carlo's eyes in-browser to confirm look/feel.
+
+1. **OPERATIVE-DOCK FLICKER — fixed.** `syncHUD()` (runs every ~10 ticks + on every pawn job-completion) was
+   calling the FULL `renderOpDock()` innerHTML rebuild each time → flicker + ate clicks. Now syncHUD calls the
+   lightweight `updateOpDockLive()` (updates only status text + progress bar). Full `renderOpDock()` rebuild
+   fires ONLY on structural change — `updateOpDockLive` detects jailed/busy/missing-strip transitions and
+   delegates; renderOpDock records `dock._lastJailed/_lastBusy` baseline. Explicit user actions (open/close,
+   mode toggle, bribe-out, lie-low, op clicks) still call renderOpDock directly.
+2. **JAIL/SLEEP BUG — fixed.** On AUTO, an arrested-then-exhausted avatar was "never jailed, left standing in
+   the world": the pawnTick jailed-branch (~line 5214) re-asserted the goto-cell job but did NOT `return`, so
+   the survival-sleep logic / Brain A further down OVERRODE the cell-walk (avatar fell asleep mid-arrest). Fix:
+   added `return` after asserting the transport job, so jail transit supersedes all other AI (mirrors the
+   _repairing/_investigating branches). Verified: exhausted jailed avatar never gets a sleep job, reaches cell.
+3. **NPC WORKSTATION/TRAINING CONGESTION — fixed.** Wisps piled up on ONE occupied station (the "+TRAIN"
+   screenshots). Cause: the learn-station selector (`schoolStr`, ~line 4501) checked `!isBroken && !bp` but NOT
+   occupancy — every wisp picked the NEAREST school/workstation/gym regardless of who was on it. WORK already
+   used `isOpenWork`/`hasFreeWorkSlot`; training didn't. Fix: added `trainersAt(s,exclude)` (counts t==="learn"
+   jobs at a station) + `hasFreeTrainSlot(s,p)` (mirrors workCapacity), and gated schoolStr on it. When all
+   training stations are full, schoolStr=null → the wisp routes to another activity instead of clogging.
+   Verified live: 7 wisps trained at 7 DIFFERENT stations, zero overcrowding over a half-day.
+4. **OPERATIVE PANEL REDISTRIBUTION — done (Carlo chose "move ops out entirely").** The STATUS tab's full
+   `renderOpsGrid()` button wall was the biggest space-eater AND fully duplicated in the operative dock. Removed
+   it from the inspect panel; kept the intel/exposure/rep(+doctrine) CHIPS (status, not buttons) + a compact
+   in-flight progress readout + a pointer to the dock for the full toolkit. Panel shrank ~8000→4555 chars (≈half
+   the scroll). The dock keeps `renderOpsGrid({compact:true})` — not orphaned. (Earlier this session the 4
+   stacked TASK/CREDITS/STRESS/HOME rows already became a compact 2-col grid + the run-on stat line became chips.)
+5. **POWER-OUTAGE CASCADE — built (moderate severity; regime repairs it).** Production-halt during blackout
+   already existed (`ST.blackoutUntil`, read at ~5420). Added the rest: `gridDown()` helper (centralizes the
+   check). MEDICAL: clinics/hospitals can't treat while gridDown — patient waits at the dark clinic, frays a
+   little (the heal `case` now gates on gridDown before progressing). NPC ANGER (`blackoutTick`, every 80 ticks):
+   on-edge wisps (stress>45 or mood<45) lose mood + gain stress + occasional angry/sweat emote; calm wisps just
+   get mildly tense — tension, not uniform fury. REGIME REPAIR: blackoutTick dispatches a government wisp —
+   Mayor first, else enforcer/regimeForce, else the station's assigned worker — with `_gridFix=station.id` +
+   goto job; `gridFixTick(p)` (wired into pawnTick, supersedes routine AI like the jail branch) drives them to
+   the station and on arrival clears `ST.blackoutUntil` + any sabotage timer = "POWER ON". `_gridFix` cleared in
+   snapPawn (no stale persist). Verified end-to-end: Mayor dispatched → walks → restores power; save/load clean.
+
+**Carlo's design calls this batch:** jail bug was AUTO + never-jailed; power = moderate (work/medical/lights
+stop, NPCs on edge get mad, NOT full looting); power restored by a government wisp (Mayor/enforcer).
+
+**STILL PENDING (the rest of "all pending in scope"):** PERF PASS + a cute/dystopian LOADING SCREEN with
+progress — deferred to LAST and explicitly NOT yet started: must PROFILE the real startup/runtime cost first
+(the "feels heavy on the browser" report) before building a progress bar, rather than animating a fake number.
+Candidates for the heaviness: per-tick Brain A/B work, canvas redraw, the audio engine, DOM re-render thrash.
+Also still open from before: char-creation broader overhaul; embodied-ops Phases 3-5 (animations/audio — Claude
+can't validate); the LLM layer §4 (blocked on AI_PROXY being wired+hosted — it's an empty string).
+
+---
+
+## ⚡ TWO BRAINS DESIGN DOC FULLY IMPLEMENTED (prior session) ⚡
 
 **Built `md5 521951f3` on top of last-shipped `dac43211`. FIVE stacked checkpoints in outputs, NOT yet
 deployed by Carlo and NOT yet watched running in a real rendered game. All unit-validated (smoke 20/20,

@@ -354,7 +354,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
   background:rgba(255,255,255,.08);overflow:hidden;margin:0 5px;vertical-align:middle}
 .prosp-fill{display:block;height:100%;width:0%;border-radius:4px;
   background:linear-gradient(90deg,#ff3d5a,#ffc947 50%,#39ff88);transition:width .4s}
-.mbox{width:min(580px,92vw);max-height:88vh;overflow-y:auto;padding:26px 30px;
+.mbox{width:min(580px,92vw);max-width:92vw;box-sizing:border-box;max-height:88vh;overflow-y:auto;overflow-x:hidden;padding:26px 30px;
   border:1px solid rgba(0,212,255,.25);background:rgba(4,10,22,.98);text-align:center;
   box-shadow:0 0 60px rgba(0,212,255,.12);border-radius:10px}
 .mbox h1{margin:0;font-size:28px;letter-spacing:.3em;color:var(--cy);
@@ -1128,6 +1128,9 @@ function sameClique(a,b){const ca=cliqueOf(a);return ca&&ca.members.includes(b.i
    back via exposure → awareness → sweeps. Reframes heat/cliques into resistance mechanics.
    ============================================================ */
 const M=()=>ST.mov, REG=()=>ST.regime;
+// POWER GRID — true while a blackout is in effect (set by sabotage/disaster). Centralizes the check used
+// by the cascade: production halts, clinics can't treat, lights drop, and NPCs on edge get angry.
+function gridDown(){return !!(ST.blackoutUntil&&ST.tick<ST.blackoutUntil);}
 // a wisp's openness to the cause: blends their allegiance with discontent (the regime's victims
 // radicalize). Broke, evicted, low-mood, ungoverned wisps are the most recruitable.
 function radicalPotential(p){
@@ -1318,6 +1321,72 @@ function extortionTick(){
     ex.nextPay=ST.tick+Math.floor(TPD*R(2,3));   // schedule the next squeeze
     if(Math.random()<0.5)log("\u2756 "+p.name+" made another payment to keep you quiet ("+pay+"c worth).","info");
   }
+}
+// POWER-OUTAGE CASCADE — runs while the grid is down. Two effects, per the moderate-severity design:
+//   (1) NPCs ON EDGE GET ANGRY — already-stressed wisps fray further (mood down, stress up, the odd
+//       outburst); calm wisps mostly just wait it out. The whole block is tense, not uniformly furious.
+//   (2) THE REGIME RESTORES IT — a government wisp (Mayor, or an enforcer/regime force) walks to the
+//       downed power station and repairs it. Production/medical/lights come back when they arrive.
+//   Work-stop is already handled (production halts during blackout); medical-stop is handled at the
+//   treatment site (no power, no care). This tick adds the human + restoration layer.
+function blackoutTick(){
+  if(!gridDown())return;
+  // ── (1) anger / fray, throttled so it's a slow burn not a per-tick hammer ──
+  if(ST.tick%80===0){
+    for(const p of ST.pawns){
+      if(p.hp<=0||isChild(p)||p.jailed||p.sleeping)continue;
+      const onEdge=(p.stress||0)>45||(p.mood||50)<45;   // those already strained take it worst
+      if(onEdge){
+        p.mood=clamp((p.mood||50)-RI(2,5),0,100);
+        p.stress=clamp((p.stress||0)+RI(2,5),0,100);
+        if(Math.random()<0.18&&typeof tryEmote==="function")tryEmote(p,Math.random()<0.5?"angry":"sweat",120);
+      } else if(Math.random()<0.25){
+        p.stress=clamp((p.stress||0)+RI(1,3),0,100);    // even the steady get a little tense
+      }
+    }
+  }
+  // ── (2) a regime wisp repairs the grid (if one exists and isn't already on it) ──
+  // find a downed/dark power station: either explicitly sabotaged, or just the power station while the
+  // blackout is running (a disaster blackout has no sabotaged flag but still needs the regime to act).
+  const powerStations=[...ST.structs.values()].filter(s=>DEF[s.type]&&DEF[s.type].utility==="power"&&!s.bp);
+  if(!powerStations.length)return;
+  // already someone walking to fix one? then let them work (don't dispatch a second)
+  const someoneFixing=ST.pawns.some(p=>p._gridFix&&p.hp>0&&!p.jailed);
+  if(someoneFixing)return;
+  // pick the station to restore (prefer a sabotaged one, else the first)
+  const station=powerStations.find(s=>s.sabotaged>ST.tick)||powerStations[0];
+  // dispatch a government wisp: Mayor first, else an enforcer/regime force, else (last resort) the power
+  // station's assigned worker — the regime keeps its own lights on first.
+  let fixer=ST.pawns.find(p=>p.role==="mayor"&&p.hp>0&&!p.jailed&&!isChild(p));
+  if(!fixer)fixer=ST.pawns.find(p=>(p.role==="enforcer"||p.regimeForce)&&p.hp>0&&!p.jailed&&!isChild(p));
+  if(!fixer)fixer=ST.pawns.find(p=>p.assigned===station.id&&p.hp>0&&!p.jailed);
+  if(!fixer)return;   // no one to send — the outage persists until conditions change
+  // send them to the station; on arrival, restore power
+  fixer._gridFix=station.id;
+  fixer.job={t:"goto",x:station.x,y:station.y,adj:1};
+  if(!ST._gridFixAnnounced||ST._gridFixAnnounced<ST.tick-TPD){
+    ST._gridFixAnnounced=ST.tick;
+    log("\u26a1 "+fixer.name+(fixer.role==="mayor"?" (the Mayor)":fixer.regimeForce?" (regime)":"")+" moves to restore power.","info");
+  }
+}
+// called from pawnTick — drive a dispatched grid-fixer to the station and restore power on arrival
+function gridFixTick(p){
+  if(!p._gridFix)return false;
+  const station=ST.structs.get(p._gridFix);
+  if(!station||station.bp||!gridDown()){p._gridFix=null;return false;}   // job gone / power already back
+  if(DIST(p.px,p.py,station.x,station.y)<2.4){
+    // arrived — restore the grid (clear the blackout + any sabotage timer on this station)
+    ST.blackoutUntil=ST.tick;
+    if(station.sabotaged>ST.tick)station.sabotaged=ST.tick;
+    p._gridFix=null;p.job=null;
+    float&&float(station.x+.5,station.y+.5,"POWER ON","#5cff9e");
+    log("\u26a1 "+p.name+" repaired the "+DEF[station.type].name+" \u2014 power flickers back on across the block.","good");
+    chronicle&&chronicle("Power was restored to the district.","\u26a1");
+    return true;
+  }
+  // still walking — keep the goto job asserted (don't let routine AI pull them off the emergency)
+  if(!p.job||p.job.t!=="goto"){p.job={t:"goto",x:station.x,y:station.y,adj:1};}
+  return true;   // supersedes normal AI while en route
 }
 // bribe your way out of jail (the avatar) — costs credits scaled by severity + priors
 function bribeOutOfJail(){
@@ -2512,7 +2581,15 @@ function resolveAvatarOp(p){
   // PERCEPTION: witnesses who can see you right now raise the difficulty. Computed at resolve, so a wisp
   // who wandered into view mid-op still counts — long ops in busy places are genuinely riskier.
   const wit=witnessPenalty(p,op);
-  const check=opsCheck(op.stat,op.diff+expPenalty+wit.pen);
+  // FEAR RESISTANCE — for social-leverage ops (bribe/blackmail) on a wisp who has WITNESSED your brutality,
+  // their fear of you makes them harder to deal with: they don't want to be near you, and they're terrified
+  // the regime will learn they took your money. Scales with how fresh/severe what they saw was.
+  let fearPen=0;
+  if((ao.opKey==="bribe"||ao.opKey==="blackmail")&&target&&target.kind==="pawn"){
+    const fear=witnessFear(target);
+    if(fear>0)fearPen=Math.min(8,Math.round(fear*4));   // up to +8 difficulty for a fresh kill-witness
+  }
+  const check=opsCheck(op.stat,op.diff+expPenalty+wit.pen+fearPen);
   ao._witCount=wit.count;ao._witPen=wit.pen;           // remembered for the post-act fallout
   m.intel-=op.cost;
   trainOpStat(op.stat);                                // practice regardless of outcome
@@ -2562,7 +2639,88 @@ function runWitnessCheck(p,op,check,witCount,witPen){
   }
   // witnesses emote alarm; sympathizers may just look away
   let alarmed=0;
-  for(const q of ST.pawns){if(canSee(q,p,op)>0&&(q.allegiance||0)<25&&!pawnGang(q)){if(alarmed<3){tryEmote&&tryEmote(q,alarmed===0?"excl":"shock",90);alarmed++;}}}
+  // LASTING WITNESS MEMORY (Phase 2 deepening) — beyond the immediate alarm, a witness to a SERIOUS op
+  // carries it forward: it durably colors how they regard the operative. Recorded here, acted on over time
+  // by witnessMemoryTick (fear-informing, allegiance drift, decay). Severity scales with the op's loudness.
+  const sevK=(op&&op.witnessK!=null?op.witnessK:1);
+  for(const q of ST.pawns){const w=canSee(q,p,op);if(w<=0||pawnGang(q)||q.recruited)continue;   // your own cell doesn't turn on you
+    if(alarmed<3&&(q.allegiance||0)<25){tryEmote&&tryEmote(q,alarmed===0?"excl":"shock",90);alarmed++;}
+    // only ops with real weight leave a lasting mark (a quiet bribe seen in passing doesn't haunt anyone)
+    if(sevK<0.7)continue;
+    q._opWit=q._opWit||[];
+    q._opWit.push({op:op===AVATAR_OPS.assassinate?"kill":opKindLabel(op),sev:sevK*w,at:ST.tick,botched:botch});
+    if(q._opWit.length>6)q._opWit.shift();
+    // immediate durable shift: brutality (kill/sabotage) FRIGHTENS — a fearful wisp recoils from the cause,
+    // a hardliner hardens against you; seeing it botched makes you look dangerous AND incompetent.
+    const fearful=(q.pers&&(q.pers.cau||50)>55)||(q.allegiance||0)<-10;
+    if(sevK>=1.2){   // a killing or heavy sabotage
+      if((q.allegiance||0)>20){q.allegiance=clamp((q.allegiance||0)-RI(6,14),-100,100);   // a sympathizer is shaken
+        remember(q,"saw the operative do something brutal — maybe this cause isn't what I thought");}
+      else{q.disillusion=clamp((q.disillusion||0)-RI(2,6),0,100);                          // a neutral/hostile just fears you
+        remember(q,"watched the operative kill — I'll keep my mouth shut and my head down");}
+    }
+  }
+}
+// a short label for what kind of act a witness saw (for their memory record)
+function opKindLabel(op){if(!op)return "something";
+  const n=op.name||"";
+  if(/assassin/i.test(n))return "kill";
+  if(/sabotage/i.test(n))return "sabotage";
+  if(/frame/i.test(n))return "frame";
+  if(/rob|steal/i.test(n))return "robbery";
+  if(/blackmail/i.test(n))return "blackmail";
+  return "op";
+}
+// HOW AFRAID is this wisp of the avatar, from what they personally witnessed? Returns 0 (no memory / faded)
+// up to ~1+ (fresh memory of something brutal). Drives bribe-resistance and flee-on-sight. Recency-weighted:
+// a fresh kill terrifies; an old or minor memory barely registers. Gang/recruited cell are never afraid of you.
+function witnessFear(q){
+  if(!q||!q._opWit||!q._opWit.length||pawnGang(q)||q.recruited)return 0;
+  let f=0;
+  for(let i=0;i<q._opWit.length;i++){const w=q._opWit[i];
+    const recency=1-Math.min(1,(ST.tick-w.at)/(TPD*3));   // 1 fresh → 0 at 3 days
+    if(recency<=0)continue;
+    f+=w.sev*recency;                                      // heavier acts seen more recently scare more
+  }
+  return f;
+}
+// WITNESS MEMORY OVER TIME — process the lasting marks left by witnessed ops. Fresh witnesses to brutal
+// acts are a standing liability: a loyal/high-integrity one may decide to INFORM (feeding the regime's
+// informant network) even well after the act; fear and memory FADE over time (people move on); and a
+// witness's allegiance keeps drifting from what they saw. Runs on a slow cadence (this is a slow burn).
+function witnessMemoryTick(){
+  if(ST.tick%150!==0)return;
+  const reg=REG();
+  for(const q of ST.pawns){
+    if(!q._opWit||!q._opWit.length||q.hp<=0||isChild(q)||q.recruited)continue;
+    // DECAY — drop marks older than ~3 days (memory/fear fades); clear the array when empty
+    q._opWit=q._opWit.filter(w=>ST.tick-w.at<TPD*3);
+    if(!q._opWit.length){q._opWit=null;continue;}
+    // freshest, heaviest mark drives current behavior
+    const worst=q._opWit.reduce((a,b)=>b.sev>a.sev?b:a,q._opWit[0]);
+    const recency=1-Math.min(1,(ST.tick-worst.at)/(TPD*3));   // 1 fresh → 0 stale
+    // LATER INFORMING — a witness who isn't already informing, leans loyalist/principled, and saw something
+    // serious may decide to talk. The chance scales with severity + recency + their disposition. This is the
+    // delayed teeth of perception: acting brazenly in front of the wrong person catches up with you.
+    if(!q.informant&&!q.recruited&&(q.allegiance||0)<15){
+      const principled=((q.pers&&q.pers.intg)||50)>58;
+      const loyalist=(q.allegiance||0)<-20;
+      const base=(loyalist?0.06:0)+(principled?0.04:0);
+      const chance=base*worst.sev*recency;
+      if(chance>0&&Math.random()<chance){
+        q.informant=true;if(reg&&reg.informants&&!reg.informants.includes(q.id))reg.informants.push(q.id);
+        if(reg)reg.awareness=clamp((reg.awareness||0)+RI(4,9),0,100);
+        remember(q,"told the regime what the operative did — someone had to");
+        log("\u2696 "+q.name+" came forward about something they witnessed \u2014 the regime is listening.","warn");
+        q._opWit=null;   // they've acted on it
+        continue;
+      }
+    }
+    // SLOW ALLEGIANCE DRIFT from carrying the memory — a fearful witness keeps edging away from the cause
+    if(recency>0.5&&worst.sev>=1.2&&Math.random()<0.25){
+      q.allegiance=clamp((q.allegiance||0)-RI(1,3),-100,100);
+    }
+  }
 }
 function opSuccess(opKey,target,check,crit){
   const m=M();
@@ -3174,6 +3332,14 @@ class Heap{constructor(){this.a=[]}
   get size(){return this.a.length}}
 
 const DIRS=[[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,1.45],[1,-1,1.45],[-1,1,1.45],[-1,-1,1.45]];
+// PERF — A* working arrays allocated ONCE (not per call). Re-filling two 14,000-element typed arrays on
+// every pathfind was the dominant A* cost (each call paid for 28k array writes regardless of path length).
+// Instead we tag each cell with the search "generation": a cell is unvisited if its gen tag != the current
+// search's gen. Bumping _astarGen invalidates the whole grid in O(1) — no fill needed.
+const _aGS=new Float32Array(MW*MH);     // g-score per cell (valid only if _aGen[i]===gen)
+const _aPar=new Int32Array(MW*MH);      // parent index per cell
+const _aGen=new Int32Array(MW*MH);      // generation tag per cell
+let _astarGen=0;
 function astar(sx,sy,gx,gy,opt){opt=opt||{};const adj=opt.adj?1:0;const cf=opt.foe?foeCost:colCost;
   if(!INB(gx,gy)||!INB(sx,sy))return null;
   if(adj?CHEB(sx,sy,gx,gy)<=1:(sx===gx&&sy===gy))return [];
@@ -3196,23 +3362,31 @@ function astar(sx,sy,gx,gy,opt){opt=opt||{};const adj=opt.adj?1:0;const cf=opt.f
       if(X>=h.x0&&X<h.x0+h.w&&Y>=h.y0&&Y<h.y0+h.h)return 40;}
     return 0;
   };
-  const open=new Heap();const gS=new Float32Array(MW*MH).fill(Infinity);
-  const par=new Int32Array(MW*MH).fill(-1);
-  const si=sx+sy*MW;gS[si]=0;open.push({i:si,g:0,f:CHEB(sx,sy,gx,gy)});
+  // bump the generation: every cell is now implicitly "unvisited" (its tag won't match) — O(1) reset.
+  const gen=++_astarGen;
+  const G=(i)=>_aGen[i]===gen?_aGS[i]:Infinity;     // g-score, or Infinity if not visited this search
+  const open=new Heap();
+  const si=sx+sy*MW;_aGS[si]=0;_aPar[si]=-1;_aGen[si]=gen;open.push({i:si,g:0,f:CHEB(sx,sy,gx,gy)});
   let found=-1,iter=0;
-  while(open.size&&iter++<14000){const n=open.pop();const ni=n.i;
-    if(n.g>gS[ni]+1e-4)continue;
+  // PERF — cap node exploration. The worst-case cost was failed/huge searches grinding to the old 14000-node
+  // (whole-map) limit. A path on this map almost never needs more than a few thousand nodes; an unreachable
+  // target should bail FAST rather than explore everything. 4000 covers any sane route on a 140×100 grid
+  // while cutting pathological searches ~3.5x. (If a real path legitimately needs more, the pawn repaths next
+  // tick from a closer position as it moves, so capping doesn't strand anyone.)
+  const ITER_CAP=4000;
+  while(open.size&&iter++<ITER_CAP){const n=open.pop();const ni=n.i;
+    if(n.g>G(ni)+1e-4)continue;
     const nx=ni%MW,ny=(ni/MW)|0;
     if(adj?CHEB(nx,ny,gx,gy)<=1:(nx===gx&&ny===gy)){found=ni;break}
     for(let k=0;k<8;k++){const dx=DIRS[k][0],dy=DIRS[k][1],m=DIRS[k][2];
       const X=nx+dx,Y=ny+dy;if(!INB(X,Y))continue;
       if(dx!==0&&dy!==0){if(cf(nx+dx,ny)<0||cf(nx,ny+dy)<0)continue}
       const c=cf(X,Y);if(c<0)continue;
-      const ng=gS[ni]+(c+trespassCost(X,Y))*m;const ii=X+Y*MW;
-      if(ng<gS[ii]-1e-3){gS[ii]=ng;par[ii]=ni;open.push({i:ii,g:ng,f:ng+CHEB(X,Y,gx,gy)})}}}
+      const ng=G(ni)+(c+trespassCost(X,Y))*m;const ii=X+Y*MW;
+      if(ng<G(ii)-1e-3){_aGS[ii]=ng;_aPar[ii]=ni;_aGen[ii]=gen;open.push({i:ii,g:ng,f:ng+CHEB(X,Y,gx,gy)})}}}
   if(found<0)return null;
   const path=[];let cur=found;
-  while(cur!==si&&cur>=0){path.push({x:cur%MW,y:(cur/MW)|0});cur=par[cur]}
+  while(cur!==si&&cur>=0){path.push({x:cur%MW,y:(cur/MW)|0});cur=_aPar[cur]}
   path.reverse();return path}
 
 /* ---------- economy ---------- */
@@ -4443,9 +4617,47 @@ function workCapacity(s){
 }
 // is this station workable AND has a free seat for this pawn?
 function hasFreeWorkSlot(s,p){return workersAt(s,p.id)<workCapacity(s);}
+// TRAINING occupancy — count wisps currently using a station to LEARN (study/train), so training respects
+// the same unique-use seating as work. A station with a learner is taken; another wisp must find a free one.
+function trainersAt(s,excludeId){
+  let n=0;
+  for(const q of ST.pawns){if(q.id===excludeId)continue;
+    if(q.job&&q.job.t==="learn"&&q.job.s===s)n++;}
+  return n;
+}
+// a training station seats the same number as it works (most single-seat; communal ones a few)
+function hasFreeTrainSlot(s,p){return trainersAt(s,p.id)<workCapacity(s);}
+// GENERIC FIXTURE OCCUPANCY — count wisps currently HEADED TO or USING a given tile for ANY activity
+// (eat/wash/treat/relax/etc.). Single-use fixtures (fridge, shower, toilet, medbed, couch, tv) should be
+// taken by one wisp at a time; this lets every activity selector avoid the pile-up that made wisps stack
+// on the nearest spot. Counts by target tile (job.x/job.y) since activity jobs store their destination there.
+function fixtureUsers(x,y,excludeId){
+  let n=0;
+  for(const q of ST.pawns){if(q.id===excludeId||q.hp<=0)continue;
+    const j=q.job;if(!j)continue;
+    if(j.x===x&&j.y===y)n++;                              // headed to / at this exact fixture tile
+    else if(j.s&&j.s.x===x&&j.s.y===y)n++;                // (work/learn store the struct on job.s; guarded)
+  }
+  return n;
+}
+// a single-use fixture has room if no OTHER wisp is already using/heading to it
+function fixtureFree(s,p){return s&&fixtureUsers(s.x,s.y,p?p.id:-1)===0;}
+// nearestStruct, but skips fixtures another wisp is already using (so wisps spread across available spots
+// instead of all converging on the closest one). Falls back to null if every match is occupied → the
+// activity simply isn't chosen this tick and the wisp does something else (no clustering, no stall).
+function nearestFreeStruct(p,fn){
+  let best=null,bd=1e9;
+  for(const s of ST.structs.values()){if(!fn(s))continue;
+    if(unre(p,s.x,s.y))continue;
+    if(!fixtureFree(s,p))continue;            // someone's already there/heading there
+    {const ho=homeOwnerAt(s.x,s.y);if(ho&&ho!==p&&!canEnterHome(p,ho))continue;}
+    const d=DIST(p.px,p.py,s.x+.5,s.y+.5);if(d<bd){bd=d;best=s}}
+  return best;
+}
 function mkEat(p){
   const home=(!p.homeless)&&homeFixture(p,"fridge");
-  const src=home||nearestStruct(p,s=>(s.type==="fridge"||s.type==="counter"||s.type==="bar"||s.type==="cafeteria")&&!s.bp&&!isBroken(s));
+  // shared food fixtures (counter/cafeteria/bar) are single-use → pick a FREE one so wisps don't stack
+  const src=home||nearestFreeStruct(p,s=>(s.type==="fridge"||s.type==="counter"||s.type==="bar"||s.type==="cafeteria")&&!s.bp&&!isBroken(s));
   if(!src)return null;
   return{t:"eat",x:src.x,y:src.y,adj:1,prog:0,home:!!home};}
 function mkSleep(p){let pod=null;
@@ -4462,15 +4674,15 @@ function scoreJobs(p){
   const night=lightLevel(hourN())>0.3; // after dark
   const bpStr=nearestStruct(p,s=>(s.bp||s.decon)&&!s.res);
   const hyg=p.needs.hyg??80,fun=p.needs.fun??70,socN=p.needs.socN??70,soc=p.pers.soc;
-  const showStr=(!p.homeless&&(homeFixture(p,"shower")||homeFixture(p,"toilet")))||nearestStruct(p,s=>(s.type==="shower"||s.type==="toilet")&&!s.bp&&!isBroken(s));
+  const showStr=(!p.homeless&&(homeFixture(p,"shower")||homeFixture(p,"toilet")))||nearestFreeStruct(p,s=>(s.type==="shower"||s.type==="toilet")&&!s.bp&&!isBroken(s));
   // leisure venue — biased by personality: sociable wisps gravitate to the bar, impulsive ones to the
   // arcade (where they may gamble), calmer/curious ones to the park or home. Falls back to nearest fun spot.
   let funStr=null;
   {const soc=(p.pers&&p.pers.soc)||50,imp=(p.pers&&p.pers.imp)||50,cred=p.credits||0;
    const wantBar=soc>55&&cred>=5, wantArcade=imp>55&&cred>=8;
-   if(wantBar)funStr=nearestStruct(p,s=>s.type==="bar"&&!s.bp&&!isBroken(s));
-   if(!funStr&&wantArcade)funStr=nearestStruct(p,s=>s.type==="arcade"&&!s.bp&&!isBroken(s));
-   if(!funStr)funStr=nearestStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar"||s.type==="park"||s.type==="arcade"||s.type==="couch")&&!s.bp&&!isBroken(s));}
+   if(wantBar)funStr=nearestFreeStruct(p,s=>s.type==="bar"&&!s.bp&&!isBroken(s));
+   if(!funStr&&wantArcade)funStr=nearestFreeStruct(p,s=>s.type==="arcade"&&!s.bp&&!isBroken(s));
+   if(!funStr)funStr=nearestFreeStruct(p,s=>(s.type==="tv"||s.type==="gym"||s.type==="bar"||s.type==="park"||s.type==="arcade"||s.type==="couch")&&!s.bp&&!isBroken(s));}
   let mate=null,_md=1e9;
   // after a conversation, a pawn won't immediately start another (prevents endless re-socialize loops)
   if(!(p.socCd&&ST.tick<p.socCd))
@@ -4495,10 +4707,16 @@ function scoreJobs(p){
   // are there workplaces that exist but are all FULL? (drives the frustration reaction)
   const wantsWork=ST.tick>(p.workCd||0)&&!workStr;
   const allWorkFull=wantsWork&&[...ST.structs.values()].some(s=>isWorkable(s)&&fitsVocation(p,s.type));
-  // hospital preferred over medbed (better care); fall back to either
-  const medStr=nearestStruct(p,s=>(s.type==="hospital"||s.type==="medbed")&&!s.bp);
-  // school: citizens with spare time and ambition train skills
-  const schoolStr=nearestStruct(p,s=>(s.type==="school"||s.type==="bookshelf"||s.type==="workstation"||s.type==="gym")&&!isBroken(s)&&!s.bp);
+  // hospital preferred over medbed (better care); prefer a FREE bed so the sick spread across beds, but
+  // fall back to ANY bed if all are occupied — treatment is life-or-death, so queuing is acceptable here
+  // (unlike leisure, where a wisp just does something else). This still cuts the worst of the pile-up.
+  const medStr=nearestFreeStruct(p,s=>(s.type==="hospital"||s.type==="medbed")&&!s.bp)
+              ||nearestStruct(p,s=>(s.type==="hospital"||s.type==="medbed")&&!s.bp);
+  // school: citizens with spare time and ambition train skills. CONGESTION FIX — like work stations,
+  // training stations are single-use: a wisp must pick one with a FREE seat, not just the nearest. Without
+  // this, every wisp wanting to train pathed to the same station and piled up on it (unable to act, souring
+  // their mood). trainersAt/hasFreeTrainSlot mirror the work-slot occupancy check.
+  const schoolStr=nearestStruct(p,s=>(s.type==="school"||s.type==="bookshelf"||s.type==="workstation"||s.type==="gym")&&!isBroken(s)&&!s.bp&&hasFreeTrainSlot(s,p));
   const dlrStr=nearestStruct(p,s=>s.type==="dealer"&&!s.bp);
   const robTgt=nearestStruct(p,s=>s.type==="counter"&&!s.bp);
   const gearStr=!p.hasGear&&(p.credits||0)>=15&&(ST.goods.gear||0)>0?
@@ -5150,6 +5368,19 @@ function pawnTick(p){
   if(p.quarantine&&p.sick){const h=p.home;
     if(h&&((p.px|0)<h.x0||(p.px|0)>=h.x0+h.w)){clearJob(p);p.cmd="sleep"}}
   // fleeing
+  // FLEE ON SIGHT (witness fear) — a wisp carrying a FRESH, SEVERE memory of the avatar's brutality who
+  // finds the operative close by panics and bolts. Throttled + gated on real fear so only genuine kill/heavy
+  // witnesses run (an old or minor memory doesn't trigger it). This is the visceral side of being seen: the
+  // people who watched you kill won't stand near you. (Recruited cell/gang are never afraid — skipped in fear.)
+  if(!p.isAvatar&&!p.jailed&&p.flee<=ST.tick&&ST.tick%20===0&&p._opWit&&p._opWit.length){
+    const av=theAvatar();
+    if(av&&av.hp>0&&!av.jailed){
+      const fear=witnessFear(p);
+      if(fear>=0.9){const d=DIST(p.px,p.py,av.px,av.py);
+        if(d<6){p.flee=ST.tick+RI(80,140);clearJob(p);tryEmote&&tryEmote(p,"sweat",120);
+          if(Math.random()<0.3)remember(p,"saw the operative nearby and froze — I know what they're capable of");}}
+    }
+  }
   if(p.flee>ST.tick){const c=homeCell(p);gotoCell(p,c.x,c.y,1);return}
   // sleeping wake conditions
   if(p.sleeping&&ST.tick%20===0&&foeNear(p,7)){
@@ -5213,8 +5444,15 @@ function pawnTick(p){
   // a JAILED pawn is held — walk to the cell, then stay put (jailTick drives release/execution)
   if(p.jailed){const j=p.jailed;
     if(DIST(p.px,p.py,j.jx,j.jy)<2.9){p.job=null;return;}        // at the cell: hold, jailTick handles it
+    // BUG FIX — being walked to the cell SUPERSEDES all other AI (sleep, work, brain). Previously this
+    // branch re-asserted the goto job but did NOT return, so the survival-sleep logic / Brain A further
+    // down could override the cell-walk — the avatar would fall asleep mid-arrest and never reach jail
+    // ("arrested but left standing in the world"). The jail transport must win, like _repairing below.
     if(!p.job||p.job.t!=="goto"){p.job={t:"goto",x:j.jx,y:j.jy,adj:1};}   // still being walked there
+    return;
   }
+  // POWER CASCADE — a wisp dispatched to restore the grid drives to the station and supersedes routine AI
+  if(p._gridFix){if(gridFixTick(p))return;}
   // a wisp actively repairing sabotage stays on the job — don't let routine AI pull them away
   if(p._repairing){const rs=ST.structs.get(p._repairing);
     if(rs&&rs.sabotaged>ST.tick){
@@ -5434,7 +5672,15 @@ function pawnTick(p){
       if(structAt(s.x,s.y)!==s||s.bp){p.job=null;break}
       const r=gotoCell(p,s.x,s.y,1);
       if(r==="fail"){markUnre(p,s.x,s.y);p.job=null;break}
-      if(r==="arr"){j.prog++;
+      if(r==="arr"){
+        // POWER CASCADE (§outage) — clinics/hospitals run on power. During a blackout they CAN'T treat;
+        // the patient waits it out (and the lack of care frays them). Care resumes when power returns.
+        if(gridDown()){
+          if(ST.tick%60===0){p.stress=clamp((p.stress||0)+2,0,100);
+            if(Math.random()<0.2)float(s.x+.5,s.y+.5,"NO POWER","#ff7a8c");}
+          break;   // stay at the dark clinic, can't be treated yet
+        }
+        j.prog++;
         const isHosp=s.type==="hospital";
         const need=isHosp?20:30;        // hospital is faster
         if(j.prog>=need){p.sick=false;
@@ -6285,11 +6531,24 @@ function tick(){ST.tick++;
   if(ST.tick%5===0){const P=ST.pawns;for(let i=0;i<P.length;i++)for(let j=i+1;j<P.length;j++)
     if(DIST(P[i].px,P[i].py,P[j].px,P[j].py)<5)relAdj(P[i].id,P[j].id,0.02)}
   // (roguelike vat-protein production + beacon-extraction win removed — the city has neither)
-  for(let i=ST.pawns.length-1;i>=0;i--)pawnTick(ST.pawns[i]);
-  separatePawns();   // soft personal-space: keep wisps from stacking on top of each other
+  // PERF — time the two heaviest/most-suspect tick blocks (per-pawn AI loop + O(N²) separation) when the
+  // perf HUD is on, so the breakdown shows WHERE simulation time goes. Zero overhead when the HUD is off.
+  if(PERF_HUD){
+    const _p0=PERF.now();
+    for(let i=ST.pawns.length-1;i>=0;i--)pawnTick(ST.pawns[i]);
+    const _p1=PERF.now();
+    separatePawns();
+    const _p2=PERF.now();
+    _perfPawnAcc+=(_p1-_p0);_perfSepAcc+=(_p2-_p1);_perfTickCount++;
+  } else {
+    for(let i=ST.pawns.length-1;i>=0;i--)pawnTick(ST.pawns[i]);
+    separatePawns();   // soft personal-space: keep wisps from stacking on top of each other
+  }
   sabotageTick();    // drive any active sabotage's lifecycle (reaction → repair → investigation)
   jailTick();        // hold/release/execute jailed pawns (escalating sentences for repeat offenders)
   extortionTick();   // process recurring extortion payments from blackmail victims
+  blackoutTick();    // power-outage cascade — anger the on-edge, and a regime wisp repairs the grid
+  witnessMemoryTick();   // lasting witness fallout — fear-informing, allegiance drift, decay over time
   if(ST.tick%50===0)checkWinState();   // (§7) liberation check — grip held low long enough = victory
   directorTick();                      // (§3) Brain B — advance the tension curve (buildup/peak/relax)
   regimeStrategicTick();               // (§3) Brain B — the regime makes deliberate moves keyed to phase
@@ -9503,13 +9762,27 @@ function renderOpDock(){
   h+="</div>";
   dock.innerHTML=h;
   dock.classList.toggle("expanded",OP_DOCK_OPEN);
+  // record the structural state this render reflects, so updateOpDockLive knows when a rebuild is needed
+  const _av=theAvatar();dock._lastJailed=!!(_av&&_av.jailed);dock._lastBusy=!!(_av&&_av.activeOp);
 }
 // LIGHTWEIGHT live refresh — updates ONLY the progress bar + status text (no full innerHTML rebuild).
 // Called every few ticks while an op runs / the avatar moves, so the dock stays live WITHOUT flickering
 // or interrupting button interaction (the full rebuild was thrashing the DOM and eating clicks).
 function updateOpDockLive(){
-  const dock=document.getElementById("op-dock");if(!dock||dock.style.display==="none"||!dock.querySelector)return;
+  const dock=document.getElementById("op-dock");if(!dock||!dock.querySelector)return;
+  if(ST.phase!=="run"){if(dock.style.display!=="none")dock.style.display="none";return;}
   const av=theAvatar();const st=opDockState(av);
+  // STRUCTURAL CHANGE DETECTION — the lightweight path only updates text/progress. If the dock's STRUCTURE
+  // needs to change (never built yet, or the avatar's jailed-state flipped, or an op started/ended which
+  // swaps the panel between the ops grid and the in-flight progress view), do a full rebuild instead.
+  const jailedNow=!!(av&&av.jailed);
+  const busyNow=!!(av&&av.activeOp);
+  const strip=dock.querySelector(".od-strip");
+  if(!strip || jailedNow!==dock._lastJailed || busyNow!==dock._lastBusy){
+    dock._lastJailed=jailedNow;dock._lastBusy=busyNow;
+    renderOpDock();
+    return;
+  }
   // progress bar (inside the open panel)
   const prog=dock.querySelector(".od-prog > i");
   if(prog&&st.prog!=null)prog.style.width=st.prog+"%";
@@ -9518,7 +9791,12 @@ function updateOpDockLive(){
   const glyphEl=dock.querySelector(".od-glyph");if(glyphEl)glyphEl.textContent=st.glyph;
 }
 function syncHUD(){
-  renderOpDock();
+  // FLICKER FIX — syncHUD runs frequently (every ~10 ticks + on every pawn job-completion). The full
+  // renderOpDock() rebuild was tearing down + recreating the dock's innerHTML each time, causing visible
+  // flicker and eating click interactions. The dock's STRUCTURE only changes on explicit user actions
+  // (open/close, mode toggle, jail state) — those call sites call renderOpDock() directly. Here we only
+  // need the lightweight in-place refresh of the live status text + progress bar.
+  updateOpDockLive();
   $("h-pop").textContent=ST.pawns.length;
   $("h-cred").textContent=Math.round(ST.pawns.reduce((s,p)=>s+(p.credits||0),0));
   const inc=$("h-income");
@@ -9623,25 +9901,24 @@ function renderInspectCore(){const el=$("inspect");
       h+="</div>";
       if(e.sick)h+="<div class='sub' style='color:var(--rd);font-size:10px'>\u2622 INFECTED \u2014 needs a clinic</div>";
       if(e.hasGear)h+="<div class='sub' style='color:#7aa2ff;font-size:10px'>\u25c8 GEARED</div>";
-      // ── AVATAR OPERATIONS PANEL — your insurgent toolkit ──
+      // ── AVATAR OPERATIVE STATUS — at-a-glance state. The full OPS TOOLKIT lives in the operative dock
+      //    (bottom-left), so it's removed from here to keep the panel short and unscrolled. ──
       if(e.isAvatar){
         const m=M();const rep=avatarRep();
         const repLbl=rep>40?"BELOVED":rep>10?"RESPECTED":rep<-40?"FEARED":rep<-10?"RUTHLESS":"UNKNOWN";
         const repCol=rep>10?"#5cff9e":rep<-10?"#ff7a8c":"#8aa8c8";
-        h+="<div class='ordsec' style='color:#22ddff;margin-top:10px'>OPERATIONS</div>";
-        // ── intel / exposure / rep as distinct CHIPS (was a run-on text line) ──
+        h+="<div class='ordsec' style='color:#22ddff;margin-top:10px'>OPERATIVE STATUS</div>";
+        // ── intel / exposure / rep (+ doctrine) as distinct CHIPS ──
         const chip=(lbl,val,col)=>"<span style='display:inline-flex;align-items:center;gap:4px;padding:2px 7px;background:rgba(8,18,36,.6);border:1px solid "+col+"44;border-radius:10px;font-size:10px'><span style='color:var(--dim)'>"+lbl+"</span><span style='color:"+col+";font-weight:600'>"+val+"</span></span>";
         h+="<div style='display:flex;gap:5px;flex-wrap:wrap;margin:4px 0 2px'>"+chip("INTEL",(m.intel|0),"#22ddff")+chip("EXPOSURE",(m.exposure|0),"#ff5470")+chip("REP",repLbl,repCol)+(m.doctrine?chip("DOCTRINE",(DOCTRINE_DEF[m.doctrine]?DOCTRINE_DEF[m.doctrine].label:m.doctrine),"#c98bff"):"")+"</div>";
         if((m.exposure|0)>40)h+="<div class='sub' style='font-size:9px;color:#ff8c42'>\u26a0 High exposure \u2014 ops are riskier. Lie low to cool off.</div>";
-        // IN-FLIGHT: if an operation is performing, show its progress instead of the op grid
+        // IN-FLIGHT op: a compact progress readout (the abandon/control still lives in the dock)
         if(e.activeOp){const ao=e.activeOp;const opD=AVATAR_OPS[ao.opKey];const pct=Math.round(ao.prog/ao.duration*100);
-          h+="<div class='sub' style='font-size:11px;color:#ffd24a;margin-top:6px;font-weight:600'>\u25b8 "+opD.name.toUpperCase()+" \u2014 performing\u2026 "+pct+"%</div>";
+          h+="<div class='sub' style='font-size:11px;color:#ffd24a;margin-top:6px;font-weight:600'>\u25b8 "+opD.name.toUpperCase()+" \u2014 "+pct+"%</div>";
           h+="<div class='bar' style='margin-top:2px'><i style='width:"+pct+"%;background:#ffd24a'></i></div>";
-          h+="<div class='sub' style='font-size:9px;opacity:.7'>Move your operative to abandon the operation.</div>";
         } else {
-        // REACTIVE OPS MENU — shared with the operative dock (renderOpsGrid). One toolkit, two surfaces.
-        h+="<div class='sub' style='font-size:8px;opacity:.55;margin:4px 0 2px'>Also available in the OPERATIVE dock \u2199</div>";
-        h+=renderOpsGrid();
+          // pointer to the always-reachable ops toolkit in the dock (no duplicated button wall here)
+          h+="<div class='sub' style='font-size:9px;opacity:.7;margin-top:5px'>\u25c9 Full operations toolkit is in the OPERATIVE dock (bottom-left \u2199)</div>";
         }
       }
     }
@@ -10627,9 +10904,9 @@ function showCharCreate(){
   h+="<div style='text-align:left;margin:10px 0 4px;font-size:10px;letter-spacing:.18em;color:var(--dim)'>BACKGROUND</div>";
   h+="<div style='display:flex;flex-direction:column;gap:4px'>";
   for(const b of OPS_BACKGROUNDS){const on=b.k===CC.bg;
-    h+="<button class='tb cc-bg' data-ccbg='"+b.k+"' style='text-align:left;padding:8px 10px;border-color:"+(on?"#22ddff":"rgba(120,160,200,.25)")+";background:"+(on?"rgba(34,221,255,.1)":"transparent")+"'>"
+    h+="<button class='tb cc-bg' data-ccbg='"+b.k+"' style='text-align:left;padding:8px 10px;white-space:normal;overflow-wrap:break-word;border-color:"+(on?"#22ddff":"rgba(120,160,200,.25)")+";background:"+(on?"rgba(34,221,255,.1)":"transparent")+"'>"
       +"<div style='font-weight:700;color:"+(on?"#22ddff":"var(--tx)")+"'>"+b.name+"</div>"
-      +"<div style='font-size:10px;opacity:.7;margin-top:1px'>"+b.desc+"</div></button>";}
+      +"<div style='font-size:10px;opacity:.7;margin-top:1px;white-space:normal;overflow-wrap:break-word;line-height:1.4'>"+b.desc+"</div></button>";}
   h+="</div>";
   // STAT allocation
   h+="<div style='display:flex;justify-content:space-between;align-items:baseline;margin:12px 0 4px'>";
@@ -10695,7 +10972,7 @@ function hasSave(){
     for(const n of SLOTS)if(localStorage.getItem(SLOT_KEY(n)))return true;
   }catch(e){}
   return false}
-function snapPawn(p){return Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,activeOp:null,unre:undefined,pi:0,pTx:-1,pTy:-1,claim:0})}
+function snapPawn(p){return Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,activeOp:null,unre:undefined,pi:0,pTx:-1,pTy:-1,claim:0,_gridFix:null})}
 function snapStruct(s){return Object.assign({},s,{res:0})}
 function serializeState(){
   return{v:2,tick:ST.tick,grp:ST.grp,rel:ST.rel,relMeta:ST.relMeta||{},cliques:ST.cliques||[],nextEv:ST.nextEv,lastCrackdown:ST.lastCrackdown,
@@ -10904,6 +11181,12 @@ function newGame(){
 
 // ── PERF HUD (press P) — self-contained DOM overlay; measures real frame rate in-browser, incl. fullscreen ──
 let PERF_HUD=false,_fpsT=0,_fpsN=0,_fps=0;
+// PERF PROFILING — accumulate per-frame time spent in tick() (simulation) vs render() (canvas draw),
+// averaged over the same window as FPS. This is what turns "feels heavy" into a measured bottleneck:
+// you can SEE whether the cost is simulation or rendering, which determines what to optimize.
+let _tickMs=0,_renderMs=0,_tickN=0,_tickPeak=0,_renderPeak=0;
+let _perfPawnAcc=0,_perfSepAcc=0,_perfTickCount=0,_perfBreakdown="";   // subsystem timing (pawnTick loop, separatePawns)
+const PERF=(typeof performance!=="undefined"&&performance.now)?performance:{now:()=>Date.now()};
 const perfEl=(typeof document!=="undefined")?document.createElement("div"):null;
 if(perfEl){perfEl.id="perfhud";
   perfEl.style.cssText="position:fixed;top:6px;right:8px;z-index:99999;font:11px ui-monospace,Menlo,monospace;color:#39ff88;background:rgba(0,0,0,.55);padding:3px 7px;border:1px solid #1c3a2a;border-radius:3px;pointer-events:none;display:none;white-space:nowrap";
@@ -10912,11 +11195,11 @@ function togglePerfHUD(){PERF_HUD=!PERF_HUD;if(perfEl)perfEl.style.display=PERF_
 let lastT=0,acc=0;
 function loop(ts){requestAnimationFrame(loop);
   const dt=Math.min(60,lastT?ts-lastT:16);lastT=ts;
-  if(PERF_HUD){_fpsN++;_fpsT+=dt;if(_fpsT>=500){_fps=Math.round(_fpsN*1000/_fpsT);_fpsN=0;_fpsT=0;
-    if(perfEl)perfEl.textContent="FPS "+_fps+" · pawns "+(ST.pawns?ST.pawns.length:0)+" · spd "+ST.speed+(ST.paused?" · PAUSED":"");}}
   if(ST.phase==="run"&&!ST.paused){
     acc+=dt;const step=100/ST.speed;let n=0;
+    const _t0=PERF_HUD?PERF.now():0;
     while(acc>=step&&n<10){tick();acc-=step;n++;if(ST.phase!=="run")break}
+    if(PERF_HUD&&n>0){const _td=PERF.now()-_t0;_tickMs+=_td;_tickN+=n;if(_td/n>_tickPeak)_tickPeak=_td/n;}
     if(n>=10)acc=0}
   if(ST.phase==="run"){let dx=0,dy=0;const sp=.95*dt/cam.z;
     if(KEYS.w||KEYS.arrowup)dy-=sp;
@@ -10929,7 +11212,22 @@ function loop(ts){requestAnimationFrame(loop);
   // keep the operative dock's live progress fresh while an op is performing — lightweight update only
   // (touches the progress bar + status text, NOT the whole DOM, so the buttons don't flicker)
   if(ST.phase==="run"&&!ST.paused){const av=theAvatar();if(av&&(av.activeOp||(av.job&&av.job.t==="goto"))&&ST.tick%3===0)updateOpDockLive();}
-  render()}
+  const _r0=PERF_HUD?PERF.now():0;
+  render();
+  if(PERF_HUD){const _rd=PERF.now()-_r0;_renderMs+=_rd;if(_rd>_renderPeak)_renderPeak=_rd;}
+  // ── PERF HUD readout — refresh once per ~500ms window with averaged tick/render cost ──
+  if(PERF_HUD){_fpsN++;_fpsT+=dt;if(_fpsT>=500){_fps=Math.round(_fpsN*1000/_fpsT);
+    const avgTick=_tickN?(_tickMs/_tickN):0;          // ms per single tick() call
+    const avgRender=_fpsN?(_renderMs/_fpsN):0;         // ms per rendered frame
+    if(perfEl)perfEl.innerHTML="FPS <b>"+_fps+"</b> · pawns "+(ST.pawns?ST.pawns.length:0)+" · spd "+ST.speed
+      +"<br>tick <b>"+avgTick.toFixed(2)+"</b>ms (pk "+_tickPeak.toFixed(1)+") · render <b>"+avgRender.toFixed(2)+"</b>ms (pk "+_renderPeak.toFixed(1)+")"
+      +(ST.paused?"<br>PAUSED":(_perfBreakdown?"<br>"+_perfBreakdown:""));
+    _fpsN=0;_fpsT=0;_tickMs=0;_renderMs=0;_tickN=0;_tickPeak=0;_renderPeak=0;
+    // subsystem breakdown — avg ms per tick spent in the pawn-AI loop vs the O(N²) separation pass
+    if(_perfTickCount>0){const ap=_perfPawnAcc/_perfTickCount,as=_perfSepAcc/_perfTickCount;
+      _perfBreakdown="pawnAI <b>"+ap.toFixed(2)+"</b>ms · sep <b>"+as.toFixed(2)+"</b>ms";}
+    _perfPawnAcc=0;_perfSepAcc=0;_perfTickCount=0;}}
+}
 
 window.addEventListener("resize",resize);
 resize();showStart();
