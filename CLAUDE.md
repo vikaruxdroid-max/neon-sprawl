@@ -35,6 +35,26 @@ done yet.
 **IMMEDIATE city-first work queue:** ~~character-CREATION SCREEN~~ (DONE) → stat-gated DIALOGUE
 (opsCheck/ops built to feed it) → job/farming VISUALS + litter → deep testing/tuning.
 
+## ⚡ LATEST STATE — GROUND LITTER + CHARACTER-CREATION WIZARD + RESOLVE WIRED ⚡
+
+**Build `ba4aaa46` in outputs, to be committed (dialogue committed at `bcf397f`; this builds on top). Three city-first roadmap items.** Carlo's "1-3" pick from the city-first queue: litter (the missing job/farming-visual piece) + character-creation overhaul. NOTE: an audit this session found MOST of the city-first queue was ALREADY built (settings/menu declutter, volume/skip-song UI, separate actions menu via `#op-dock`, farming visuals) — the roadmap list was stale. Only litter + char-creation were genuinely actionable.
+
+### GROUND LITTER (the one missing job/farming visual)
+A litter/debris pass at the END of `drawTerrain()` (~line 7840, INSIDE the function — `g=tctx` is the terrain context). Scattered debris (scraps/wrappers, bottles/cans, debris clusters) in muted browns/grays on walkable ground + roads (t===0||t===3), deterministic per-tile via `hash2` (never flickers), baked into the STATIC terrain canvas (zero per-frame cost). **Density scales INVERSELY with `prosperity()`** — a thriving block is clean, a failing one is strewn with trash, so litter doubles as a visual health signal. **BUG CAUGHT + FIXED during build:** the litter block first landed OUTSIDE drawTerrain's closing brace → `g is not defined` crash that broke the smoke test; relocated inside the function. Lesson reinforced: the str_replace/insert anchor matched the function's own closing `}`. VERIFIED: bakes clean, scales with prosperity, save/load clean, smoke 20/20. CAVEAT: the LOOK is unverified (density/colors/shapes are first-draft, Carlo to QA).
+
+### RESOLVE WIRED (was a DEAD stat — now real)
+**Finding: Resolve had ZERO mechanical uses** (every other attribute drives systems: presence 13, guile 9, insight 7, nerve/tradecraft 3; resolve 0). You could spend points on a fake stat. Now wired: **`resolveMod()`** (after opsCheck, ~line 3985) returns a penalty multiplier `clamp(1.0-(r-5)*0.08, 0.5, 1.15)` (R10→0.6, R5→1.0, R1→1.15) applied to the surveil-blown exposure penalty + the bribe trail. AND — the thematic one — in `envoyCrackdown`, high Resolve gives your compromised sympathizer a chance to RESIST being turned (`resistChance=clamp((resolve-3)*0.09,0,0.6)`; VERIFIED 75% resist at R10 vs ~0% at R1). "Your conviction steels your people."
+
+### CHARACTER-CREATION → STEPPED WIZARD (Carlo's redesign)
+Carlo's locked decisions: it was "too abstract" (stats didn't connect to gameplay) + "too much info" when all consequence lines showed at once. Redesigned `showCharCreate()` (line ~11917) from one cramped scrolling modal into a **3-STEP WIZARD** (Background → Attributes → Codename) with a progress indicator, big tap targets, and DETAIL-ON-INTERACTION:
+- **`CC.step`** (0/1/2) + **`CC.detail`** (which stat's effect is revealed) added to the CC state. Nav: `cc-next`/`cc-prev`/`cc-back` buttons change step (gated: can't leave step 1 until all points spent); `m-start` resets `{...,step:0,detail:null}`.
+- **Step 0 Background:** 5 cards; only the SELECTED one expands to show its description + a compact stat-spread preview (`TRA 9` chips) — not all 5 at once.
+- **Step 1 Attributes:** 6 stats w/ +/- + bars. **`ATTR_EFFECT`** map (the per-stat consequence lines, grounded in real systems — guile=deception/bribes, presence=recruitment lever, resolve=resists pressure, etc.). The effect line is `.cc-effect` — **CSS-hidden by default, revealed on HOVER (desktop) or `.revealed` class on TAP (mobile)**. One at a time, never all-at-once.
+- **Step 2 Codename:** name field + an OPERATIVE DOSSIER summary card (name, background, all 6 final stat bars) before BEGIN.
+- Underlying logic UNTOUCHED (same `CC`, `ccStats`, `OPS_BACKGROUNDS`, `PENDING_AVATAR`→newGame path). VERIFIED end-to-end: all 3 steps render, nav + point-gate work, hover/tap reveal wired, operative still created with correct name+stats, save/load clean, smoke 20/20. **CAVEAT: the whole wizard is BLIND-BUILT — Carlo MUST verify the look, whether hover/tap-reveal is discoverable, and whether it's actually easier/more fun. Also the earlier clipping fix (full-width bg buttons, the `.tb` nowrap issue) is unverified by eye.**
+
+---
+
 ## ⚡ LATEST STATE — STAT-GATED DIALOGUE SYSTEM (complete, all 6 stages) ⚡
 
 **Build `cdf86428` in outputs, to be committed (the envoy session committed up through `957c8322`→`d10fa64d`; this is the next roadmap item built on top).** A complete authored conversation system — NO AI (the AI free-form TALK stays gated on `AI_PROXY`, still empty). Spec: NEON_SPRAWL_Dialogue_Spec.md.
