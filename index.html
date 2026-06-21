@@ -2180,6 +2180,10 @@ function avatarInRange(av,opKey,tgt){
   const op=AVATAR_OPS[opKey];if(!op)return false;
   if(!op.target)return true;                       // self/broadcast op
   if(!tgt)return false;
+  // Use the SAME range test runAvatarOp uses (inOpRange / Euclidean), so the walk-to-target stops exactly
+  // where the op will actually fire — otherwise the avatar arrives "Chebyshev-close" but runAvatarOp's
+  // stricter Euclidean check rejects it ("Move closer"), silently dropping the pending op.
+  if(typeof inOpRange==="function")return inOpRange(av,op,tgt);
   const tx=(tgt.kind==="s"||tgt.px==null)?tgt.x:tgt.px, ty=(tgt.kind==="s"||tgt.py==null)?tgt.y:tgt.py;
   return CHEB(Math.round(av.px),Math.round(av.py),Math.round(tx),Math.round(ty))<=Math.max(1,Math.ceil(op.range||1.5));
 }
@@ -2432,6 +2436,7 @@ function avatarBrainTick(av){
   if(!av||av.activeOp||av.jailed)return;          // busy/held -> nothing to decide (§2.6 edge cases)
   // first: if we're mid-approach to a staged op, complete it on arrival (don't re-decide)
   if(av._pendingOp){if(resolvePendingOp(av))return;}
+  if(av._pendingTalk){if(resolvePendingTalk(av))return;}   // mid-approach to a conversation -> open on arrival
   if(ST.tick<(av._autoOpCd||0))return;            // decision cooldown (§2.7 anti-oscillation #2)
   // STANCE DECISION (§9.1) — on AUTO the operative decides hidden vs open insurrection. It plays a patient
   // infiltration game while HIDDEN (build support, intel, cells), then declares OPEN insurrection once the
@@ -3035,6 +3040,12 @@ function opSuccess(opKey,target,check,crit){
   //     counts as the player's RESPONSE to the visit. Set the envoy flags (spied/disrupted/struck) that gate
   //     the crackdown, and apply envoy-specific payoffs on top of the normal op outcome. Reuses every op as-is. ═══
   envoyOpHook(opKey,target,crit);
+  // GAP 4 — the city responds collectively to a successful op. Strike (you hit the regime) vs rally (hope).
+  {const ax=(av&&av.px!=null)?av.px:MW/2, ay=(av&&av.py!=null)?av.py:MH/2;const big=crit?0.85:0.6;
+   const tx=(target&&target.px!=null)?target.px:ax, ty=(target&&target.py!=null)?target.py:ay;
+   if(opKey==="assassinate"||opKey==="sabotage")cityReact("strike",tx,ty,big);
+   else if(opKey==="dissent")cityReact("rally",ax,ay,big);
+   else if(opKey==="frame"||opKey==="blackmail")cityReact("strike",tx,ty,0.45);}
 }
 // PARTIAL — the op half-works but leaves a complication. The interesting middle ground the bands create.
 function opPartial(opKey,target,check){
@@ -5282,6 +5293,113 @@ function seekRevenge(p){
 }
 
 /* per-tick pawn logic */
+// ═══ GAP 4 — cityReact: THE CENTRAL EVENT HOOK. One place the big beats route through so the city responds
+//    COLLECTIVELY to the player's insurrection (and the regime's reprisals): a visible RIPPLE wave (Gap 2),
+//    physical CROWD formation/scatter (Gap 3), AND a city-wide MOOD/temperature shift (the disaffected
+//    emboldened by a strike, cowed by a crackdown). Ops have local witness effects already; this is the
+//    collective layer on top. event drives the flavor; (x,y) epicenter; mag 0..1 scales everything.
+// event: "strike" (you hit the regime) | "rally" (dissent/hope) | "crackdown" (regime reprisal) |
+//        "death" (a notable death) | "turn" (a recruitment/flip).
+function cityReact(event,x,y,mag){
+  mag=clamp(mag==null?0.6:mag,0,1);
+  const m=M(),reg=REG();
+  if(event==="strike"){
+    // a blow against the regime: shock ripples out; the fearful scatter, the emboldened gather to gawk/cheer;
+    // city-wide the disaffected are emboldened (mood + a lean toward you), the regime's grip rattled.
+    onlookersReact(x,y,{near:"shock",far:"sweat"},10+8*mag);
+    formCrowd("scatter",x,y,7+3*mag,mag);                 // the frightened flee the violence
+    formCrowd("gawk",x,y,13+5*mag,mag);                    // others rubberneck
+    cityMoodShift({sympMood:+5*mag, sympLean:+3*mag, fearAll:+2*mag});
+    reg.grip=clamp((reg.grip||0)-3*mag,0,100);
+  }else if(event==="rally"){
+    // you spread hope: a warm ripple; sympathizers gather in a protest; city-wide sympathy ticks up.
+    onlookersReact(x,y,{near:"excl",far:"ques"},9+7*mag);
+    formCrowd("protest",x,y,12+6*mag,mag);
+    cityMoodShift({sympMood:+4*mag, sympLean:+5*mag});
+  }else if(event==="crackdown"){
+    // the regime reprisal: fear ripples; everyone scatters; city-wide the cowed lose heart (sympathizers
+    // chilled, fear up), the regime's grip tightens.
+    onlookersReact(x,y,{near:"shock",far:"sweat"},12+8*mag);
+    formCrowd("scatter",x,y,11+6*mag,mag);
+    cityMoodShift({sympMood:-5*mag, sympLean:-3*mag, fearAll:+5*mag});
+    reg.awareness=clamp((reg.awareness||0)+4*mag,0,100);
+  }else if(event==="death"){
+    // a notable death: grief ripples; the bonded gather to mourn.
+    onlookersReact(x,y,{near:"cry",far:"sweat"},9+5*mag);
+    formCrowd("mourn",x,y,9+4*mag,mag);
+    cityMoodShift({fearAll:+2*mag});
+  }else if(event==="turn"){
+    // a recruitment / flip: a quiet ripple of allegiance; small city-wide warmth.
+    onlookersReact(x,y,"ques",6+3*mag);
+    cityMoodShift({sympLean:+2*mag});
+  }
+}
+// apply a city-wide mood/temperature nudge. Touches the actual sim state so the collective NUMBERS move with
+// the visible texture: sympMood shifts sympathizers' mood, sympLean nudges their allegiance (Gap 1 aura tracks
+// it), fearAll bumps stress across the disaffected. Small per-event; the cumulative drift is the "temperature".
+function cityMoodShift(o){
+  o=o||{};
+  for(const p of ST.pawns){
+    if(p.isAvatar||isChild(p)||p.hp<=0)continue;
+    const sympathetic=(p.allegiance||0)>0||p.recruited;
+    if(o.sympMood&&sympathetic)p.mood=clamp((p.mood||50)+o.sympMood,0,100);
+    if(o.sympLean&&sympathetic&&!p.informant)p.allegiance=clamp((p.allegiance||0)+o.sympLean,-100,100);
+    if(o.fearAll)p.stress=clamp((p.stress||0)+o.fearAll,0,100);
+  }
+}
+// ═══ GAP 3 — PHYSICAL CROWD FORMATION. Beyond emoting, wisps physically GATHER (protest / mourn / gawk) or
+//    SCATTER (flee a crackdown) in response to a significant event. formCrowd() tags eligible nearby wisps
+//    with a transient p.gather goal; the gather-driver in pawnTick pulls them toward (or away from) the point
+//    for a duration, then releases them back to routine. Disposition-gated: who joins depends on the mood
+//    (a loyalist won't join your protest; a sympathizer will; everyone flees a massacre). ═══
+// mode: "protest" | "mourn" | "gawk" | "scatter". (x,y) epicenter, radius reach, magnitude 0..1 scales size+duration.
+function formCrowd(mode,x,y,radius,magnitude){
+  const R=radius||10, mag=clamp(magnitude==null?0.6:magnitude,0,1);
+  const dur=Math.round(TPD*(0.06+0.10*mag));     // gather lasts a fraction of a day, bigger events linger
+  let joined=0;
+  const CAP=Math.round(4+10*mag);                 // cap crowd size (perf + readability)
+  for(const p of ST.pawns){
+    if(p.isAvatar||isChild(p)||p.hp<=0||p.sleeping||p.jailed)continue;
+    if(p.gather&&p.gather.until>ST.tick)continue;  // already in a crowd
+    if(p.flee>ST.tick&&mode!=="scatter")continue;  // the fleeing don't join gatherings
+    const d=DIST(p.px,p.py,x,y);
+    if(d>R)continue;
+    // DISPOSITION GATE — who participates, by mode
+    const al=p.allegiance||0;
+    let eligible=false;
+    if(mode==="protest")      eligible=(al>10||p.recruited)&&!p.informant;   // sympathizers + your cell rally
+    else if(mode==="mourn")   eligible=true;                                  // anyone can grieve a death
+    else if(mode==="gawk")    eligible=Math.random()<0.6;                     // a rubbernecking subset
+    else if(mode==="scatter") eligible=true;                                  // everyone flees danger
+    if(!eligible)continue;
+    if(mode==="scatter"){
+      // SCATTER reuses the flee primitive — disperse AWAY from the epicenter
+      p.flee=ST.tick+RI(60,110);clearJob(p);tryEmote&&tryEmote(p,"sweat",90);
+    }else{
+      p.gather={mode,x,y,until:ST.tick+dur+RI(0,40)};clearJob(p);
+    }
+    if(++joined>=CAP)break;
+  }
+  return joined;
+}
+// drive a gathered wisp: move toward the gather point, mill about it, emote the crowd's mood. Released by
+// pawnTick when p.gather.until elapses. Returns true if it handled this pawn's movement (preempts normal AI).
+function gatherDriver(p){
+  const g=p.gather;if(!g)return false;
+  if(ST.tick>=g.until){p.gather=null;clearJob(p);return false;}   // crowd disperses → back to routine
+  const d=DIST(p.px,p.py,g.x,g.y);
+  // converge to a ring around the point (not all stacking on the exact tile), then mill + emote
+  if(d>2.6){gotoCell(p,g.x,g.y,2);}
+  else{
+    // arrived — mill slightly + emote the crowd mood
+    if(ST.tick%30===0&&Math.random()<0.6){
+      const EM=g.mode==="protest"?(Math.random()<0.5?"anger":"excl"):g.mode==="mourn"?"cry":"ques";
+      tryEmote(p,EM,80);
+    }
+    if(!p.job||p.job.t!=="goto"){p.job=null;}   // let it idle-mill near the spot
+  }
+  return true;
+}
 function pawnTick(p){
   if(!p.sleeping&&colCost(p.px|0,p.py|0)<0)nudgeOff(p.px|0,p.py|0);
   // GOVERNMENT ENVOY — fully driven by envoyTick's state machine (it calls gotoCell to move the envoy to the
@@ -5481,6 +5599,7 @@ function pawnTick(p){
           if(Math.random()<0.3)remember(p,"saw the operative nearby and froze — I know what they're capable of");}}
     }
   }
+  if(p.gather&&gatherDriver(p))return;   // GAP 3 — gathered wisps converge/mill at a crowd, preempting normal AI
   if(p.flee>ST.tick){const c=homeCell(p);gotoCell(p,c.x,c.y,1);return}
   // sleeping wake conditions
   if(p.sleeping&&ST.tick%20===0&&foeNear(p,7)){
@@ -5532,6 +5651,9 @@ function pawnTick(p){
     if(avStarv&&!eatingNow){const j=mkEat(p);if(j){p.dazed=ST.tick;p.job=j;p.cmd=null;return;}}
     if(avExh&&!sleepingNow&&!avStarv){const j=mkSleep(p);if(j){p.dazed=ST.tick;p.job=j;p.cmd=null;return;}}
   }
+  // WALK-TO-TALK — resolve a pending approach-to-converse BEFORE the mode gates, so it works in both manual
+  // and auto (the goto job we set would otherwise stop avatarBrainTick from ever checking arrival).
+  if(p.isAvatar&&p._pendingTalk){if(resolvePendingTalk(p))return;}
   // MANUAL MODE: when the player has taken direct control, the avatar doesn't pick its own busywork —
   // it waits for orders. It STILL handles critical survival (eating when starving, sleeping when
   // exhausted) so neglect can't accidentally kill your operative; everything else is the player's call.
@@ -6504,6 +6626,10 @@ function envoyCrackdown(ev){
   const gripBump=spied?RI(3,6):RI(8,14);
   reg.awareness=clamp((reg.awareness||0)+awBump,0,100);
   reg.grip=clamp((reg.grip||0)+gripBump,0,100);
+  // GAP 4 — the city visibly recoils from the crackdown (fear ripples + scatter + city-wide chill)
+  {const mayor=ST.pawns.find(q=>q.role==="mayor"&&q.hp>0);
+   const cx=mayor?mayor.px:MW/2, cy=mayor?mayor.py:MH/2;
+   if(typeof cityReact==="function")cityReact("crackdown",cx,cy,spied?0.6:0.9);}
   reg.lastSweep=ST.tick;                                  // patrols intensify from here
   if(spied)log("\u2696 You saw the crackdown coming \u2014 the network braces, and the worst is blunted.","good");
   log("\u2696 The regime tightens the noose \u2014 awareness +"+awBump+", patrols surge across the block.","warn");
@@ -6650,7 +6776,7 @@ const DLG_STATE={active:null};   // {wispId, node, history:[]}
 function dlgAttrLabel(k){const a=OPS_ATTRS.find(x=>x.k===k);return a?a.name.toUpperCase():k.toUpperCase();}
 
 // open a conversation with a wisp
-function startDialogue(w){
+function startDialogue(w,_arrived){
   if(!w||w.isAvatar||isChild(w)){flashMsg&&flashMsg("There's no one to talk to there");return false;}
   if(w.isEnvoy){flashMsg&&flashMsg("The envoy won't parley with you");return false;}
   if(w.jailed){flashMsg&&flashMsg(w.name.split(" ")[0]+" is in the holding cells");return false;}
@@ -6658,11 +6784,47 @@ function startDialogue(w){
   // a terrified witness won't open up (ties into the witness-fear system)
   if(typeof witnessFear==="function"&&witnessFear(w)>=0.9){
     flashMsg&&flashMsg(w.name.split(" ")[0]+" flinches away \u2014 they're too afraid of you to talk");return false;}
+  // WALK-TO-TALK — the operative physically crosses to the wisp before the conversation opens, so the two
+  // are standing together (sells the "two people talking" feel). If already adjacent (or we just arrived via
+  // the pending-talk resolver), open immediately.
+  const av=theAvatar();
+  if(av&&!_arrived){
+    const d=CHEB(Math.round(av.px),Math.round(av.py),Math.round(w.px),Math.round(w.py));
+    if(d>1.6){
+      av._pendingTalk={id:w.id,since:ST.tick};
+      av.job={t:"goto",x:w.px,y:w.py,adj:1};
+      flashMsg&&flashMsg("Approaching "+w.name.split(" ")[0]+"\u2026");
+      if(typeof collapseOpDock==="function")collapseOpDock();
+      const _i=document.getElementById("inspect");if(_i)_i.style.display="none";
+      return true;   // dialogue opens on arrival
+    }
+  }
   DLG_STATE.active={wispId:w.id,node:dlgEntryNode(w),history:[]};
+  if(av)av._pendingTalk=null;
+  // hide the inspect panel + collapse the op dock so they don't bleed through behind the dialogue panel
+  const _insp=document.getElementById("inspect");if(_insp)_insp.style.display="none";
+  if(typeof collapseOpDock==="function")collapseOpDock();
   renderDialogue();
   return true;
 }
-function endDialogue(){DLG_STATE.active=null;const el=document.getElementById("dlg-panel");if(el)el.remove();renderInspect&&renderInspect();}
+// resolve a pending walk-to-talk: once the operative reaches the wisp, open the conversation. Called from the
+// avatar brain each tick (like resolvePendingOp). Returns true if it handled the avatar this tick.
+function resolvePendingTalk(av){
+  const pend=av._pendingTalk;if(!pend)return false;
+  if(ST.tick-pend.since>TPD*0.5){av._pendingTalk=null;return false;}   // gave up (stuck)
+  const w=ST.pawns.find(p=>p.id===pend.id);
+  if(!w||w.hp<=0){av._pendingTalk=null;return false;}                  // target gone
+  const d=CHEB(Math.round(av.px),Math.round(av.py),Math.round(w.px),Math.round(w.py));
+  if(d<=2){av._pendingTalk=null;av.path=null;startDialogue(w,true);return true;}   // arrived (adjacent) -> open
+  // still walking — actively step toward the wisp (gotoCell moves the pawn this tick, not just sets a job)
+  const r=gotoCell(av,Math.round(w.px),Math.round(w.py),1);
+  if(r==="arr"){av._pendingTalk=null;av.path=null;startDialogue(w,true);return true;}   // gotoCell says arrived
+  return true;
+}
+function endDialogue(){DLG_STATE.active=null;const el=document.getElementById("dlg-panel");if(el)el.remove();
+  // restore the inspect panel only if a wisp is still selected (otherwise leave the view clean)
+  if(ST.sel&&ST.sel.length){const _insp=document.getElementById("inspect");if(_insp)_insp.style.display="";renderInspect&&renderInspect();}
+}
 
 // pick the entry node based on the wisp's ROLE first (special figures get bespoke trees), then their state.
 function dlgEntryNode(w){
@@ -6907,11 +7069,22 @@ function renderDialogue(){
   if(!node){endDialogue();return;}
   const av=theAvatar();
   if(!el){el=document.createElement("div");el.id="dlg-panel";
-    el.style.cssText="position:fixed;left:50%;transform:translateX(-50%);bottom:72px;width:min(440px,94vw);background:rgba(8,10,20,.98);border:1px solid rgba(162,89,255,.5);border-radius:11px;padding:14px 16px;z-index:60;box-shadow:0 8px 32px rgba(0,0,0,.75)";
+    el.style.cssText="position:fixed;left:50%;transform:translateX(-50%);bottom:72px;width:min(460px,94vw);border-radius:12px;z-index:60;box-shadow:0 10px 40px rgba(0,0,0,.8);overflow:hidden";
     document.body.appendChild(el);}
   // header: who you're talking to + their disposition
   const al=w.allegiance||0;
   const disp=al<=-20?["hostile","#ff5470"]:al>=35?["warm","#5cff9e"]:al>=15?["sympathetic","#7aa2ff"]:["wary","#8aa8c8"];
+  // ── ATMOSPHERIC BACKDROP — a styled "comms terminal" scene behind the dialogue, tinted by disposition.
+  //    Same flow as before; this is purely a moodier stage. The disposition accent bleeds into the backdrop
+  //    so a hostile talk feels cold/red, a warm one green, etc.
+  const dc=disp[1];
+  el.style.border="1px solid "+hexA(dc,0.45);
+  // layered atmospheric background on the panel itself: a deep base + a disposition-tinted glow from the top,
+  // plus a faint scanline texture for the "comms terminal" feel. Content renders above via a relative wrapper.
+  el.style.background=
+    "radial-gradient(120% 80% at 50% 0%, "+hexA(dc,0.16)+" 0%, rgba(6,8,18,.0) 60%),"+
+    "linear-gradient(180deg, rgba(10,12,24,.985) 0%, rgba(6,8,18,.99) 100%),"+
+    "repeating-linear-gradient(0deg, rgba(255,255,255,.022) 0px, rgba(255,255,255,.022) 1px, rgba(0,0,0,0) 1px, rgba(0,0,0,0) 3px)";
   const nm=w.name+(w.recruited?" \u00b7 <span style='color:#5cff9e'>cell</span>":"");
   let h="<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px'>";
   h+="<div style='font-family:var(--disp);font-weight:700;font-size:13px;color:#c9b3ff'>"+nm+"</div>";
@@ -6940,7 +7113,10 @@ function renderDialogue(){
     }
   });
   h+="</div>";
-  el.innerHTML=h;
+  // wrap content in a padded layer that sits ABOVE the atmospheric backdrop, with a thin disposition accent
+  // bar along the top edge (the "comms channel" line)
+  el.innerHTML="<div style='height:2px;background:linear-gradient(90deg, rgba(0,0,0,0) 0%, "+dc+" 50%, rgba(0,0,0,0) 100%);opacity:.8'></div>"+
+    "<div style='position:relative;padding:14px 16px 15px'>"+h+"</div>";
 }
 
 // the player picks a choice
@@ -7362,6 +7538,7 @@ function tick(){ST.tick++;
     separatePawns();   // soft personal-space: keep wisps from stacking on top of each other
   }
   sabotageTick();    // drive any active sabotage's lifecycle (reaction → repair → investigation)
+  reactWaveTick();   // fire queued onlooker-wave reactions whose delay has elapsed (Gap 2 — staggered ripple)
   jailTick();        // hold/release/execute jailed pawns (escalating sentences for repeat offenders)
   extortionTick();   // process recurring extortion payments from blackmail victims
   blackoutTick();    // power-outage cascade — anger the on-edge, and a regime wisp repairs the grid
@@ -7636,6 +7813,7 @@ const tctx=tc.getContext("2d");
 // allocating a new gradient every fixture every frame (expensive).
 const GLOW_CACHE={};
 function hexToRgb(h){const n=parseInt(h.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255];}
+function hexA(h,a){const[r,g,b]=hexToRgb(h);return"rgba("+r+","+g+","+b+","+a+")";}
 function glowSprite(hex){
   if(GLOW_CACHE[hex])return GLOW_CACHE[hex];
   const size=32,c=document.createElement("canvas");c.width=c.height=size*2;
@@ -8610,12 +8788,35 @@ function tryEmote(p,kind,gap){
   if(p.lastEmote&&ST.tick-p.lastEmote<(gap||60))return;
   emote(p,kind);
 }
-// nearby onlookers react to a dramatic event at (x,y)
+// nearby onlookers react to a dramatic event at (x,y). The reaction propagates as a WAVE — wisps nearest the
+// epicenter react first, those farther a beat later — so a dramatic moment visibly ripples across the crowd
+// instead of flashing all at once. Reactions are queued in ST.pendingReacts and fired by reactWaveTick().
+// kind can be a single emote string, OR a {near, far} pair to shade the reaction by distance (e.g. shock up
+// close, unease at the edge). radius caps how far the wave reaches.
 function onlookersReact(x,y,kind,radius){
+  const R=radius||7;
+  if(!ST.pendingReacts)ST.pendingReacts=[];
+  const WAVE_SPEED=3.2;          // tiles per tick the wave front travels (tune: lower = slower, more visible wave)
   for(const q of ST.pawns){
-    if(q.hp<=0||q.sleeping)continue;
-    if(DIST(q.px,q.py,x,y)>(radius||7))continue;
-    tryEmote(q,kind,90);
+    if(q.hp<=0||q.sleeping||isChild(q))continue;
+    const d=DIST(q.px,q.py,x,y);
+    if(d>R)continue;
+    // pick the emote: a {near,far} pair shades by distance; a string is uniform
+    let em=kind;
+    if(kind&&typeof kind==="object"){em=(d<R*0.45)?(kind.near||"shock"):(kind.far||kind.near||"sweat");}
+    const delay=Math.round(d/WAVE_SPEED);    // farther = later → the wave front
+    ST.pendingReacts.push({id:q.id,kind:em,at:ST.tick+delay});
+  }
+}
+// fire queued wave reactions whose moment has arrived (called each tick). Self-cleaning.
+function reactWaveTick(){
+  const q=ST.pendingReacts;if(!q||!q.length)return;
+  for(let i=q.length-1;i>=0;i--){
+    const r=q[i];
+    if(ST.tick<r.at)continue;
+    const p=ST.pawns.find(pp=>pp.id===r.id);
+    if(p&&p.hp>0&&!p.sleeping)tryEmote(p,r.kind,70);
+    q.splice(i,1);
   }
 }
 // ═══ WAVE C — EMOTIONAL REACTIVITY. A single place that makes a wisp's feelings VISIBLE and proportional
@@ -8775,6 +8976,29 @@ function tickTombstones(){
   for(let i=ST.tombs.length-1;i>=0;i--)if(--ST.tombs[i].ttl<=0)ST.tombs.splice(i,1);
 }
 
+// ── POLITICAL-LEAN CUE (Living City, Gap 1) — surface a wisp's relationship to the insurrection as a SUBTLE
+//    aura, layered onto the existing mood/stress body color (animaColor). Lets you read the city's POLITICAL
+//    temperature at a glance: pockets of sympathy (warm), your cell (allied green), loyalists (none/faint
+//    cold), informants (cold warning). Derived live from existing state — nothing stored, nothing serialized.
+//    Returns {col, strength} or null for "no meaningful lean" (ordinary loyalist → no aura, keeps the map calm).
+function politicalTint(p){
+  if(!p||p.isAvatar||isChild(p))return null;       // the operative + kids get no political aura
+  if(p.informant){                                  // TURNED AGAINST YOU — a cold, wrong cyan-white warning
+    return {col:[120,190,220], strength:0.5};
+  }
+  if(p.recruited){                                  // YOUR CELL — a clear allied green
+    return {col:[80,255,150], strength:0.62};
+  }
+  const al=p.allegiance||0;
+  if(al<=5)return null;                             // loyalist / neutral → no aura (the regime's quiet majority)
+  // SYMPATHIZER — a warm ember that intensifies as they ripen toward you. radicalPotential blends allegiance
+  // + mood + disillusion into a single "ripeness" score; we lean on it so the warmth tracks recruitability.
+  const ripe=(typeof radicalPotential==="function")?clamp(radicalPotential(p),0,100):al;
+  const t=clamp(ripe/100,0,1);
+  // amber (just warming) → hot orange-red (nearly ready to recruit)
+  const col=[Math.round(255), Math.round(150-70*t), Math.round(70-40*t)];
+  return {col, strength:0.28+0.34*t};              // faint when barely warm, stronger as they radicalize
+}
 function drawPawn(p){
   const now=performance.now();
   // motion personality: walking bob, idle breathing, happy bounce, stressed jitter
@@ -8813,6 +9037,23 @@ function drawPawn(p){
   ctx.globalAlpha=ga*0.7;
   ctx.drawImage(glowSprite(acHex),X-rad*0.6,Y-rad*0.6,rad*1.2,rad*1.2);
   ctx.restore();
+  // ── POLITICAL-LEAN AURA (Gap 1) — a subtle outer ring keyed to the wisp's stance toward the insurrection.
+  //    Drawn OUTSIDE the mood bloom so the body color (mood/stress) stays primary; this reads as atmosphere.
+  //    Sympathizers glow warm (intensifying as they ripen), your cell allied-green, informants cold. Loyalists
+  //    get nothing (politicalTint returns null) so the regime's quiet majority keeps the map calm.
+  if(!slp){const _pt=politicalTint(p);
+    if(_pt){
+      const pulse=0.7+0.3*Math.sin(performance.now()*0.0022+(p.px-p.py)*0.7);
+      const aR=rad*0.92, aStr=_pt.strength*pulse;
+      ctx.save();ctx.globalCompositeOperation="lighter";
+      // two soft concentric strokes — a faint halo, not a hard ring
+      ctx.strokeStyle="rgba("+_pt.col[0]+","+_pt.col[1]+","+_pt.col[2]+","+(aStr*0.5).toFixed(3)+")";
+      ctx.lineWidth=2.2;ctx.beginPath();ctx.arc(X,Y,aR,0,7);ctx.stroke();
+      ctx.strokeStyle="rgba("+_pt.col[0]+","+_pt.col[1]+","+_pt.col[2]+","+(aStr*0.28).toFixed(3)+")";
+      ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(X,Y,aR+2.5,0,7);ctx.stroke();
+      ctx.restore();
+    }
+  }
   // selection ring — animated rotating dashes
   if(sel){
     const rot=performance.now()*0.002;
@@ -9601,15 +9842,27 @@ function clickSelect(c){const p=pawnAt(c.wx,c.wy);
     if(need==="utility"){
       const s=structAt(c.x,c.y);
       if(s&&DEF[s.type]&&DEF[s.type].utility&&!s.bp){
-        if(!inOpRange(theAvatar(),opDef,s)){flashMsg&&flashMsg("Too far \u2014 walk your operative next to the building, then pick it again.");return;}
-        s.kind="s";if(runAvatarOp(opKey,s)){ST.opTargeting=null;ST.opTargetingOp=null;}
-        ST.sel=ST.sel&&ST.sel[0]&&ST.sel[0].isAvatar?ST.sel:[theAvatar()].filter(Boolean);
-        renderInspect();syncHUD();return;
+        // WALK-TO-TARGET: if in range, fire now; otherwise the operative walks there and executes on arrival.
+        s.kind="s";const av=theAvatar();
+        if(av){av.manualHold=false;
+          if(tryOp(av,opKey,s)){
+            ST.opTargeting=null;ST.opTargetingOp=null;
+            if(!avatarInRange(av,opKey,s))flashMsg&&flashMsg("Moving to the target\u2026");
+            collapseOpDock();
+          }
+        }
+        ST.sel=[theAvatar()].filter(Boolean);renderInspect();syncHUD();return;
       }else{flashMsg&&flashMsg("Not a power/water building \u2014 targeting cancelled.");ST.opTargeting=null;ST.opTargetingOp=null;syncHUD();return;}
     }else if(need==="regime"){
       if(p&&!p.isAvatar&&!isChild(p)&&(p.regimeForce||p.informant||(p.allegiance||0)<-20)){
-        if(!inOpRange(theAvatar(),opDef,p)){flashMsg&&flashMsg("Too far \u2014 move your operative close to them, then pick them again.");return;}
-        p.kind="pawn";if(runAvatarOp(opKey,p)){ST.opTargeting=null;ST.opTargetingOp=null;}
+        p.kind="pawn";const av=theAvatar();
+        if(av){av.manualHold=false;
+          if(tryOp(av,opKey,p)){
+            ST.opTargeting=null;ST.opTargetingOp=null;
+            if(!avatarInRange(av,opKey,p))flashMsg&&flashMsg("Moving to the target\u2026");
+            collapseOpDock();
+          }
+        }
         ST.sel=[theAvatar()].filter(Boolean);renderInspect();syncHUD();return;
       }else{flashMsg&&flashMsg("Not a regime asset (need a loyalist/enforcer/informant) \u2014 targeting cancelled.");ST.opTargeting=null;ST.opTargetingOp=null;syncHUD();return;}
     }else if(need==="anyPawn"){
@@ -9620,9 +9873,15 @@ function clickSelect(c){const p=pawnAt(c.wx,c.wy);
           if(ST._lastDirtWarn!==p.id){ST._lastDirtWarn=p.id;flashMsg&&flashMsg("You have no dirt on "+p.name.split(" ")[0]+" \u2014 surveil them first, or pick someone you've already surveilled.");}
           return;
         }
-        if(!inOpRange(theAvatar(),opDef,p)){flashMsg&&flashMsg("Too far \u2014 move your operative close to them, then pick them again.");return;}
         ST._lastDirtWarn=null;
-        p.kind="pawn";if(runAvatarOp(opKey,p)){ST.opTargeting=null;ST.opTargetingOp=null;}
+        p.kind="pawn";const av=theAvatar();
+        if(av){av.manualHold=false;
+          if(tryOp(av,opKey,p)){
+            ST.opTargeting=null;ST.opTargetingOp=null;
+            if(!avatarInRange(av,opKey,p))flashMsg&&flashMsg("Moving to the target\u2026");
+            collapseOpDock();
+          }
+        }
         ST.sel=[theAvatar()].filter(Boolean);renderInspect();syncHUD();return;
       }else{flashMsg&&flashMsg("Not a valid target \u2014 targeting cancelled.");ST.opTargeting=null;ST.opTargetingOp=null;ST._lastDirtWarn=null;syncHUD();return;}
     }
@@ -10653,6 +10912,9 @@ $("modal").addEventListener("click",e=>{const id=e.target.id;
   else if(id==="m-close"){SFX.ui();hideModal()}});
 
 let OP_DOCK_OPEN=false;
+// collapse the operative command dock (used when targeting starts, so the menu gets out of the way and the
+// player can see + click the target on the map).
+function collapseOpDock(){OP_DOCK_OPEN=false;if(typeof renderOpDock==="function")renderOpDock();}
 // the operative dock: a quiet status strip (always shows what your operative is doing) that expands into
 // quick controls. Reactive — its content reflects live operative state (idle / walking / performing an op).
 function opDockState(av){
@@ -10712,7 +10974,9 @@ function dispatchOpButton(opBtn){
   if(op.target){
     if(ST.opTargeting===op.target&&ST.opTargetingOp===opKey){ST.opTargeting=null;ST.opTargetingOp=null;}
     else{ST.opTargeting=op.target;ST.opTargetingOp=opKey;
-      flashMsg&&flashMsg("Select a "+(op.target==="utility"?"power/water building":"regime asset")+" to "+opKey);}
+      flashMsg&&flashMsg("Tap a "+(op.target==="utility"?"power/water building":op.target==="regime"?"regime asset":"wisp")+" \u2014 your operative will move in and act.");
+      collapseOpDock();   // hide the menu so the player can see + tap the target on the map
+    }
   }else{
     runAvatarOp(opKey,null);
   }
@@ -12068,7 +12332,7 @@ function hasSave(){
     for(const n of SLOTS)if(localStorage.getItem(SLOT_KEY(n)))return true;
   }catch(e){}
   return false}
-function snapPawn(p){return Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,activeOp:null,unre:undefined,pi:0,pTx:-1,pTy:-1,claim:0,_gridFix:null})}
+function snapPawn(p){return Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,activeOp:null,gather:null,_pendingTalk:null,_pendingOp:null,unre:undefined,pi:0,pTx:-1,pTy:-1,claim:0,_gridFix:null})}
 function snapStruct(s){return Object.assign({},s,{res:0})}
 function serializeState(){
   return{v:2,tick:ST.tick,grp:ST.grp,rel:ST.rel,relMeta:ST.relMeta||{},cliques:ST.cliques||[],nextEv:ST.nextEv,lastCrackdown:ST.lastCrackdown,
@@ -12098,7 +12362,8 @@ function applyState(d){
   ST.ter=new Uint8Array(d.ter||[]);
   ST.structs=new Map((d.structs||[]).map(s=>[K(s.x,s.y),s]));
   for(const s of ST.structs.values())if(DEF[s.type]&&DEF[s.type].furn&&s.qual===undefined)s.qual=1; // backfill furniture quality
-  ST.pawns=(d.pawns||[]).map(p=>Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,unre:new Map()}));
+  ST.pawns=(d.pawns||[]).map(p=>Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,gather:null,unre:new Map()}));
+  ST.pendingReacts=[];   // transient wave-reaction queue — never persisted
   // backfill insurrection fields for pawns from pre-insurrection saves
   for(const p of ST.pawns){
     if(typeof p.allegiance!=="number")p.allegiance=0;
