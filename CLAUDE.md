@@ -35,6 +35,28 @@ done yet.
 **IMMEDIATE city-first work queue:** ~~character-CREATION SCREEN~~ (DONE) → stat-gated DIALOGUE
 (opsCheck/ops built to feed it) → job/farming VISUALS + litter → deep testing/tuning.
 
+## ⚡ LATEST STATE — STAT-GATED DIALOGUE SYSTEM (complete, all 6 stages) ⚡
+
+**Build `cdf86428` in outputs, to be committed (the envoy session committed up through `957c8322`→`d10fa64d`; this is the next roadmap item built on top).** A complete authored conversation system — NO AI (the AI free-form TALK stays gated on `AI_PROXY`, still empty). Spec: NEON_SPRAWL_Dialogue_Spec.md.
+
+### THE FEATURE — player↔wisp conversations where the operative's 6 attributes gate the options
+Select a wisp → **TALK** (the authored button, `i-converse`, distinct from the AI `i-talk`). A conversation panel opens (bottom-center, purple). The 6 attributes (**guile/insight/nerve/presence/tradecraft/resolve** — the canonical OPS_ATTRS) gate which response options appear; `opsCheck(attr,diff)` resolves the risky ones. Conversations reveal character AND move allegiance/intel/recruitment. **Talk is the path to recruitment.** Carlo confirmed in playtest the panel + conversations read well ("all good").
+
+### ENGINE (all functions before maybeStoryEvent, ~line 6388+)
+- **`DLG_STATE={active:null}`** — transient UI state `{wispId,node,history}`, NOT serialized (effects live on the pawn, which IS serialized — allegiance persistence verified).
+- **`DLG_NODES`** — content library (DATA — extend freely, no engine changes). Node: `{line, choices}`. Choice: `{text, gate:{attr,min}, risk:{attr,diff}, need:fn, effect:fn(w,band), reply (str|{win,lose}), goto (key|fn|"end"), kind}`.
+- **`startDialogue(w)`** (refuses child/envoy/jailed/dead + terrified witness via `witnessFear>=0.9`), **`endDialogue()`**, **`dlgEntryNode(w)`** (routes by ROLE first: mayor/enforcer/informant → bespoke roots; else disposition hostile≤-20/warm≥35/wary/recruited).
+- **`renderDialogue()`** — locked options render GRAYED with `[ATTR min+]` (no button); met options clickable. **`dlgChoose(idx)`** — defensive gate re-check, opsCheck for risky (banded win/lose → reply variant + float), applies effect, advances. **`dlgVal`** (str-or-fn).
+- **TALK-TO-RECRUIT:** `dlgCanRecruit(w)` (`_recruitReady` flag OR allegiance≥40), `dlgRecruit(w)` (routes through `recruitWisp` with a +20 groundwork bonus — rapport makes the ask likely; 8 intel). Recruit button surfaces dynamically when softened. VERIFIED end-to-end.
+
+### CONTENT (stage 6 — DATA)
+Regular wisps: hostile/wary(→wary_topics)/warm/recruited roots. **THE MAYOR — deep tree:** mayor_root→mayor_probe/mayor_crack; accumulate `_mayorDoubt`, then Presence 8 + doubt≥2 can TURN them (`_mayorTurning`, +30 alleg, grip −8) or fail→reported. Enforcers (intimidation/probe/risky peel). Informants (win back → clear flag, or `_doubleAgent` double-cross).
+
+### VERIFIED
+Entry routing, gating (grayed vs clickable), opsCheck banded win/lose, free-choice effects, recruit loop, Mayor turn-arc, informant win-back, 500-tick stability mid-conversation, save/load clean + effects persist, NO dead/dupe, smoke 20/20. CAVEATS: writing FEEL is Carlo's call; numbers first-draft; content is a solid core (adding more = pure data-entry); AI TALK slots into the same framework when AI_PROXY hosted.
+
+---
+
 ## ⚡ LATEST STATE — GOVERNMENT ENVOY FEATURE (complete) + SURVEIL REWORK + STARVATION FIX (most recent session) ⚡
 
 **Build `d10fa64d` in outputs. Committed up through `957c8322`; the final departure-variant polish (`d10fa64d`) is the latest, to be committed.** Two commits landed this session: the starvation fix (`e6d6cd21`), then the full envoy feature (`957c8322`).

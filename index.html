@@ -6607,6 +6607,364 @@ function envoyStrikeViaCell(){
     return false;
   }
 }
+// ═══════════════════════ STAT-GATED DIALOGUE (authored) ═══════════════════════
+// Player↔wisp conversations. The operative's 6 attributes (guile/insight/nerve/presence/tradecraft/resolve)
+// gate which response options appear; opsCheck resolves the risky ones. Conversations reveal character AND
+// move allegiance/intel/recruitment. Talk is the path to recruitment. No AI — pure authored content + the
+// existing opsCheck. Spec: NEON_SPRAWL_Dialogue_Spec.md
+//
+// A conversation is a set of NODES. Each node has: a `line` (what the wisp says — can be a fn of the wisp),
+// and `choices` (the player's options). Each choice has:
+//   text        — the player line (string or fn(wisp))
+//   gate        — optional {attr, min} : only pickable if ops(avatar,attr)>=min (else shown grayed)
+//   risk        — optional {attr, diff} : fires opsCheck; outcome bands route via win/lose
+//   need        — optional fn(wisp)->bool : a non-stat prerequisite (allegiance/intel/etc); hides if false
+//   effect      — fn(wisp, band) : applies the outcome (allegiance/intel/etc). band is the opsCheck band or "ok"
+//   reply       — wisp's response line (string or fn). win/lose variants for risky choices via {win,lose}
+//   goto        — next node key, or "end" (or a fn(wisp)->key). Omitted = end.
+//   kind        — "free" | "probe" | "push" (for styling; push = high-value/risky)
+const DLG_STATE={active:null};   // {wispId, node, history:[]}
+
+// the canonical attribute labels for gate display
+function dlgAttrLabel(k){const a=OPS_ATTRS.find(x=>x.k===k);return a?a.name.toUpperCase():k.toUpperCase();}
+
+// open a conversation with a wisp
+function startDialogue(w){
+  if(!w||w.isAvatar||isChild(w)){flashMsg&&flashMsg("There's no one to talk to there");return false;}
+  if(w.isEnvoy){flashMsg&&flashMsg("The envoy won't parley with you");return false;}
+  if(w.jailed){flashMsg&&flashMsg(w.name.split(" ")[0]+" is in the holding cells");return false;}
+  if(w.hp<=0)return false;
+  // a terrified witness won't open up (ties into the witness-fear system)
+  if(typeof witnessFear==="function"&&witnessFear(w)>=0.9){
+    flashMsg&&flashMsg(w.name.split(" ")[0]+" flinches away \u2014 they're too afraid of you to talk");return false;}
+  DLG_STATE.active={wispId:w.id,node:dlgEntryNode(w),history:[]};
+  renderDialogue();
+  return true;
+}
+function endDialogue(){DLG_STATE.active=null;const el=document.getElementById("dlg-panel");if(el)el.remove();renderInspect&&renderInspect();}
+
+// pick the entry node based on the wisp's ROLE first (special figures get bespoke trees), then their state.
+function dlgEntryNode(w){
+  // special figures — bespoke conversations
+  if(w.role==="mayor")return "mayor_root";
+  if(w.role==="enforcer"||w.regimeForce)return "enforcer_root";
+  if(w.informant)return "informant_root";
+  // regular wisps — disposition-based
+  if(w.recruited)return "recruited_root";
+  const al=w.allegiance||0;
+  if(al<=-20)return "hostile_root";
+  if(al>=35)return "warm_root";
+  return "wary_root";
+}
+
+// ── THE CONTENT LIBRARY — authored nodes. Short conversations for the common case; the engine supports
+//    trees (goto) for deeper ones. Lines vary by wisp state. This is DATA — extend freely without touching
+//    the engine. ──
+const DLG_NODES={
+  // ENTRY: a wisp who distrusts you
+  hostile_root:{
+    line:w=>"\""+(w.allegiance<-45?"I've got nothing to say to you. Move along.":"What do you want? I know your type.")+"\"",
+    choices:[
+      {kind:"free",text:"Easy. I'm not here to cause trouble.",
+       effect:(w)=>{w.allegiance=clamp((w.allegiance||0)+2,-100,100);},
+       reply:"\"...Fine. Talk, then. Quickly.\"",goto:"wary_root"},
+      {kind:"probe",text:"The regime's been bleeding this block dry. You feel it too.",gate:{attr:"insight",min:6},
+       effect:(w)=>{w.allegiance=clamp((w.allegiance||0)+4,-100,100);M().intel=(M().intel||0)+1;},
+       reply:"\"...Maybe I do. Doesn't mean I trust you.\"",goto:"wary_root"},
+      {kind:"push",text:"You can drop the act. I know what you really think of them.",gate:{attr:"guile",min:7},
+       risk:{attr:"guile",diff:11},
+       effect:(w,band)=>{if(band==="critwin"||band==="success"){w.allegiance=clamp((w.allegiance||0)+8,-100,100);}
+         else if(band==="partial"){w.allegiance=clamp((w.allegiance||0)+2,-100,100);}
+         else{w.allegiance=clamp((w.allegiance||0)-6,-100,100);if(typeof tryEmote==="function")tryEmote(w,"angry",90);M().exposure=clamp((M().exposure||0)+3,0,100);}},
+       reply:{win:"\"...How did you \u2014 who ARE you?\"",lose:"\"Get away from me before I call an enforcer!\""},
+       goto:(w)=>(w.allegiance>=-10?"wary_root":"end")},
+      {kind:"free",text:"[Leave]",goto:"end"},
+    ]
+  },
+  // ENTRY: a wisp who's neutral/uncertain
+  wary_root:{
+    line:w=>"\""+(w.mood<35?"It's been a rough stretch. What is it?":"I'm listening. What's on your mind?")+"\"",
+    choices:[
+      {kind:"probe",text:"Tell me how things really are on the block.",
+       effect:(w)=>{w.allegiance=clamp((w.allegiance||0)+2,-100,100);M().intel=(M().intel||0)+2;
+         flashMsg&&flashMsg("You learn a little about "+w.name.split(" ")[0]+"'s situation (+2 intel)");},
+       reply:w=>"\""+(w.homeless?"Lost my place to a regime 'audit.' Sleeping rough now.":"Work's thin, rent's up, patrols everywhere. Same as everyone.")+"\"",goto:"wary_topics"},
+      {kind:"probe",text:"I can see something's eating at you.",gate:{attr:"insight",min:6},
+       effect:(w)=>{w.allegiance=clamp((w.allegiance||0)+3,-100,100);if(typeof wispSecret==="function"&&wispSecret(w)){w.secretKnown=true;if(!w.secret)w.secret=wispSecret(w);}M().intel=(M().intel||0)+3;},
+       reply:"\"...You're sharp. Most people don't notice.\"",goto:"wary_topics"},
+      {kind:"push",text:"The regime did this to you. You don't have to just take it.",gate:{attr:"presence",min:6},
+       risk:{attr:"presence",diff:10},
+       effect:(w,band)=>{if(band==="critwin"){w.allegiance=clamp((w.allegiance||0)+12,-100,100);w._planted=true;}
+         else if(band==="success"){w.allegiance=clamp((w.allegiance||0)+7,-100,100);w._planted=true;}
+         else if(band==="partial"){w.allegiance=clamp((w.allegiance||0)+2,-100,100);}
+         else{w.allegiance=clamp((w.allegiance||0)-4,-100,100);M().exposure=clamp((M().exposure||0)+2,0,100);}},
+       reply:{win:"\"...You're right. I'm tired of being afraid.\"",lose:"\"Careful. Talk like that gets people disappeared.\""},
+       goto:"wary_topics"},
+      {kind:"free",text:"[Leave]",goto:"end"},
+    ]
+  },
+  wary_topics:{
+    line:"\"Anything else?\"",
+    choices:[
+      {kind:"push",text:"Join us. Help take the block back.",gate:{attr:"presence",min:7},
+       need:w=>(w.allegiance||0)>=15,
+       risk:{attr:"presence",diff:13},
+       effect:(w,band)=>{if(band==="critwin"||band==="success"){w.allegiance=clamp((w.allegiance||0)+10,-100,100);w._recruitReady=true;
+           flashMsg&&flashMsg(w.name.split(" ")[0]+" is ready \u2014 you can recruit them now");}
+         else if(band==="partial"){w.allegiance=clamp((w.allegiance||0)+3,-100,100);}
+         else{w.allegiance=clamp((w.allegiance||0)-8,-100,100);M().exposure=clamp((M().exposure||0)+5,0,100);if(typeof tryEmote==="function")tryEmote(w,"sweat",90);}},
+       reply:{win:"\"...Yeah. Yeah, I'm in. Tell me what you need.\"",lose:"\"You're asking me to risk everything. I can't \u2014 not yet.\""},
+       goto:"end"},
+      {kind:"free",text:"Stay safe out there.",effect:(w)=>{w.allegiance=clamp((w.allegiance||0)+1,-100,100);},reply:"\"You too. Watch the patrols.\"",goto:"end"},
+      {kind:"free",text:"[Leave]",goto:"end"},
+    ]
+  },
+  // ENTRY: a wisp who's warm to the cause
+  warm_root:{
+    line:"\"Good to see a friendly face. What do you need?\"",
+    choices:[
+      {kind:"probe",text:"What are people on the block saying?",
+       effect:(w)=>{M().intel=(M().intel||0)+3;flashMsg&&flashMsg("Word from the block (+3 intel)");},
+       reply:"\"Folks are angrier than they let on. The regime's pushing too hard.\"",goto:"warm_root"},
+      {kind:"push",text:"I need you with us. Officially.",
+       need:w=>(w.allegiance||0)>=15&&!w.recruited,
+       risk:{attr:"presence",diff:11},
+       effect:(w,band)=>{if(band!=="fail"&&band!=="critfail"){w._recruitReady=true;w.allegiance=clamp((w.allegiance||0)+6,-100,100);
+           flashMsg&&flashMsg(w.name.split(" ")[0]+" is ready to be recruited");}
+         else{w.allegiance=clamp((w.allegiance||0)-3,-100,100);}},
+       reply:{win:"\"I thought you'd never ask. I'm with you.\"",lose:"\"I want to \u2014 but I'm scared. Give me time.\""},
+       goto:"end"},
+      {kind:"free",text:"Just checking in. Stay strong.",effect:(w)=>{w.allegiance=clamp((w.allegiance||0)+2,-100,100);},reply:"\"Always. We're going to win this.\"",goto:"end"},
+      {kind:"free",text:"[Leave]",goto:"end"},
+    ]
+  },
+  // ENTRY: an already-recruited cell member
+  recruited_root:{
+    line:"\"Orders? Or just checking in?\"",
+    choices:[
+      {kind:"probe",text:"Anything to report?",
+       effect:(w)=>{M().intel=(M().intel||0)+2;},
+       reply:w=>"\""+(REG().awareness>60?"Patrols are heavy. Be careful out there.":"Quiet for now. The block's holding.")+"\"",goto:"end"},
+      {kind:"free",text:"Keep your head down. We need you.",effect:(w)=>{w.allegiance=clamp((w.allegiance||0)+1,-100,100);},reply:"\"Understood. I'm not going anywhere.\"",goto:"end"},
+      {kind:"free",text:"[Leave]",goto:"end"},
+    ]
+  },
+  // ═══ THE MAYOR — a deep branching tree. The regime's local authority: a high-value target you can probe,
+  //     pressure, find cracks in, or attempt to TURN. Multi-node, real stakes. ═══
+  mayor_root:{
+    line:w=>"\""+(REG().grip>70?"You're one of the malcontents, aren't you? The block's been restless. State your business.":"Ah. A concerned citizen. The regime values feedback. What is it?")+"\"",
+    choices:[
+      {kind:"free",text:"Just paying my respects to the man in charge.",
+       reply:"\"Flattery. How refreshingly old-fashioned. Get to the point.\"",goto:"mayor_probe"},
+      {kind:"probe",text:"I want to understand how someone like you sleeps at night.",gate:{attr:"insight",min:7},
+       effect:(w)=>{M().intel=(M().intel||0)+3;},
+       reply:"\"...You think I don't see it? I keep this block from being LEVELED. That's the job no one thanks me for.\"",goto:"mayor_crack"},
+      {kind:"push",text:"The regime is using you. When it's done, it'll discard you too.",gate:{attr:"presence",min:7},
+       risk:{attr:"presence",diff:13},
+       effect:(w,band)=>{if(band==="critwin"){w._mayorDoubt=(w._mayorDoubt||0)+2;M().intel=(M().intel||0)+4;}
+         else if(band==="success"){w._mayorDoubt=(w._mayorDoubt||0)+1;M().intel=(M().intel||0)+2;}
+         else if(band==="fail"||band==="critfail"){REG().awareness=clamp((REG().awareness||0)+8,0,100);M().exposure=clamp((M().exposure||0)+6,0,100);}},
+       reply:{win:"\"...You think I haven't considered that? Careful. You're more perceptive than is safe.\"",lose:"\"I'll remember this conversation. And your face. Leave. Now.\""},
+       goto:(w)=>(w._mayorDoubt>=1?"mayor_crack":"end")},
+      {kind:"free",text:"[Leave]",goto:"end"},
+    ]
+  },
+  mayor_probe:{
+    line:"\"Well? My time isn't free.\"",
+    choices:[
+      {kind:"probe",text:"How bad is it really? Behind the regime's numbers.",gate:{attr:"insight",min:6},
+       effect:(w)=>{M().intel=(M().intel||0)+3;flashMsg&&flashMsg("The Mayor lets something slip (+3 intel)");},
+       reply:"\"...Worse than they admit. Rations are short. People are angry. I hold it together with spit and fear.\"",goto:"mayor_crack"},
+      {kind:"push",text:"You could be more than their puppet. Help us, quietly.",gate:{attr:"guile",min:7},
+       need:w=>(w._mayorDoubt||0)>=1,
+       risk:{attr:"guile",diff:14},
+       effect:(w,band)=>{if(band==="critwin"||band==="success"){w._mayorTurning=true;M().support=clamp((M().support||0)+6,0,100);}
+         else{REG().awareness=clamp((REG().awareness||0)+10,0,100);M().exposure=clamp((M().exposure||0)+8,0,100);}},
+       reply:{win:"\"...If anyone learns we spoke of this, we're both dead. But go on. I'm listening.\"",lose:"\"TREASON. Get out before I have you taken.\""},
+       goto:"end"},
+      {kind:"free",text:"Nothing. Just wanted to look you in the eye.",reply:"\"...Unsettling. We're done here.\"",goto:"end"},
+    ]
+  },
+  mayor_crack:{
+    line:w=>"\""+((w._mayorDoubt||0)>=2?"You've gotten under my skin. I don't like it.":"Say what you came to say.")+"\"",
+    choices:[
+      {kind:"push",text:"Then stop holding it together for THEM. Hold it for the block.",gate:{attr:"presence",min:8},
+       need:w=>(w._mayorDoubt||0)>=2,
+       risk:{attr:"presence",diff:15},
+       effect:(w,band)=>{if(band==="critwin"){w._mayorTurning=true;w.allegiance=clamp((w.allegiance||0)+30,-100,100);M().support=clamp((M().support||0)+10,0,100);REG().grip=Math.max(0,(REG().grip||60)-8);}
+         else if(band==="success"){w._mayorTurning=true;w.allegiance=clamp((w.allegiance||0)+15,-100,100);M().support=clamp((M().support||0)+5,0,100);}
+         else{REG().awareness=clamp((REG().awareness||0)+15,0,100);M().exposure=clamp((M().exposure||0)+10,0,100);if(typeof tryEmote==="function")tryEmote(w,"angry",90);}},
+       reply:{win:"\"...God help me. Alright. I'll feed you what I can. But softly. Always softly.\"",lose:"\"You've said too much. I have to report this \u2014 or I'm finished. ENFORCER!\""},
+       goto:"end"},
+      {kind:"probe",text:"What would it take for you to look the other way, just once?",gate:{attr:"guile",min:6},
+       effect:(w)=>{M().intel=(M().intel||0)+2;w._mayorDoubt=(w._mayorDoubt||0)+1;},
+       reply:"\"...Leverage. Protection. A reason to believe you'd win. Do you have any of those?\"",goto:"end"},
+      {kind:"free",text:"Think about what I said.",effect:(w)=>{w._mayorDoubt=(w._mayorDoubt||0)+1;},reply:"\"...Get out. Before I change my mind about letting you.\"",goto:"end"},
+    ]
+  },
+  // ═══ ENFORCER — regime muscle. Dangerous to talk to; mostly intimidation/probing, low recruit odds. ═══
+  enforcer_root:{
+    line:"\"Move along, citizen. Unless you've got a reason to be in my face.\"",
+    choices:[
+      {kind:"probe",text:"Just keeping an eye on who keeps the peace around here.",
+       effect:(w)=>{M().intel=(M().intel||0)+1;},
+       reply:"\"Smart mouth. Keep walking before I find a reason to book you.\"",goto:"end"},
+      {kind:"probe",text:"You don't strike me as someone who loves this work.",gate:{attr:"insight",min:7},
+       effect:(w,band)=>{w.allegiance=clamp((w.allegiance||0)+3,-100,100);M().intel=(M().intel||0)+2;},
+       reply:"\"...It's a job. Pays. Keeps my family fed. Don't read into it.\"",goto:"end"},
+      {kind:"push",text:"The regime treats you like a tool. We'd treat you like a person.",gate:{attr:"presence",min:8},
+       need:w=>(w.allegiance||0)>=0,
+       risk:{attr:"presence",diff:15},
+       effect:(w,band)=>{if(band==="critwin"||band==="success"){w.allegiance=clamp((w.allegiance||0)+10,-100,100);}
+         else{REG().awareness=clamp((REG().awareness||0)+12,0,100);M().exposure=clamp((M().exposure||0)+8,0,100);if(typeof tryEmote==="function")tryEmote(w,"angry",90);}},
+       reply:{win:"\"...You're either brave or stupid saying that to me. Maybe both. ...Maybe I'm listening.\"",lose:"\"That's sedition. You just made a serious mistake.\""},
+       goto:"end"},
+      {kind:"free",text:"[Leave]",goto:"end"},
+    ]
+  },
+  // ═══ INFORMANT — a wisp the regime turned. Can be probed (feed disinfo) or won back. ═══
+  informant_root:{
+    line:"\"...Oh. It's you. What do you want?\"",
+    choices:[
+      {kind:"probe",text:"I know what you've been doing. Reporting to them.",gate:{attr:"insight",min:6},
+       effect:(w)=>{M().intel=(M().intel||0)+2;},
+       reply:"\"...They made me. You don't understand the pressure. I didn't have a choice.\"",goto:"informant_turn"},
+      {kind:"push",text:"Feed them what I tell you. Become my eyes inside.",gate:{attr:"guile",min:7},
+       risk:{attr:"guile",diff:13},
+       effect:(w,band)=>{if(band==="critwin"||band==="success"){w._doubleAgent=true;M().intel=(M().intel||0)+4;flashMsg&&flashMsg(w.name.split(" ")[0]+" will feed the regime YOUR disinformation now");}
+         else{REG().awareness=clamp((REG().awareness||0)+8,0,100);}},
+       reply:{win:"\"...A double game. If they catch me, I'm dead. But I owe you that much. Alright.\"",lose:"\"I can't. They'd know. They always know. Please, just go.\""},
+       goto:"end"},
+      {kind:"free",text:"[Leave]",goto:"end"},
+    ]
+  },
+  informant_turn:{
+    line:"\"Are you... are you going to turn me in to the others?\"",
+    choices:[
+      {kind:"push",text:"No. Come back to us. Stop feeding them.",gate:{attr:"presence",min:6},
+       risk:{attr:"presence",diff:12},
+       effect:(w,band)=>{if(band==="critwin"||band==="success"){w.informant=false;const i=REG().informants.indexOf(w.id);if(i>=0)REG().informants.splice(i,1);w.allegiance=clamp((w.allegiance||0)+15,-100,100);flashMsg&&flashMsg(w.name.split(" ")[0]+" is no longer informing on you");}
+         else{w.allegiance=clamp((w.allegiance||0)-5,-100,100);}},
+       reply:{win:"\"...Okay. Okay. No more reports. I'm done being their dog.\"",lose:"\"I want to. But they'll hurt my family. I can't risk it.\""},
+       goto:"end"},
+      {kind:"free",text:"Just stop hurting people. That's all I ask.",reply:"\"...I'll try. That's all I can promise.\"",goto:"end"},
+    ]
+  },
+  end:null,
+};
+
+// resolve a value that may be a string or a fn(wisp)
+function dlgVal(v,w){return (typeof v==="function")?v(w):v;}
+
+// is this wisp recruitable RIGHT NOW from within a conversation? (the talk-path has softened them)
+function dlgCanRecruit(w){
+  return w && !w.recruited && !w.informant && !isChild(w) && ((w._recruitReady)||((w.allegiance||0)>=40));
+}
+// recruit from within the conversation — routes through recruitWisp, but the conversational groundwork
+// gives a real edge (a temporary allegiance bump so the underlying roll is more favorable). This is the
+// PAYOFF of the talk-to-recruit path: talking your way there makes the ask far more likely to land.
+function dlgRecruit(w){
+  if(!dlgCanRecruit(w)){flashMsg&&flashMsg("They're not ready to be recruited yet");return false;}
+  const m=M();
+  if((m.intel||0)<8){flashMsg&&flashMsg("Need 8 intel to make the ask");return false;}
+  // groundwork bonus: briefly boost allegiance so radicalPotential (which recruitWisp reads) is higher
+  const saved=w.allegiance;
+  w.allegiance=clamp((w.allegiance||0)+20,-100,100);   // the rapport you built
+  const ok=recruitWisp(w);
+  if(!ok)w.allegiance=Math.max(saved,w.allegiance);    // keep any net gain, don't punish below where they were
+  return ok;
+}
+
+// render the conversation panel
+function renderDialogue(){
+  const st=DLG_STATE.active;
+  let el=document.getElementById("dlg-panel");
+  if(!st){if(el)el.remove();return;}
+  const w=ST.pawns.find(p=>p.id===st.wispId);
+  if(!w||w.hp<=0){endDialogue();return;}
+  const node=DLG_NODES[st.node];
+  if(!node){endDialogue();return;}
+  const av=theAvatar();
+  if(!el){el=document.createElement("div");el.id="dlg-panel";
+    el.style.cssText="position:fixed;left:50%;transform:translateX(-50%);bottom:72px;width:min(440px,94vw);background:rgba(8,10,20,.98);border:1px solid rgba(162,89,255,.5);border-radius:11px;padding:14px 16px;z-index:60;box-shadow:0 8px 32px rgba(0,0,0,.75)";
+    document.body.appendChild(el);}
+  // header: who you're talking to + their disposition
+  const al=w.allegiance||0;
+  const disp=al<=-20?["hostile","#ff5470"]:al>=35?["warm","#5cff9e"]:al>=15?["sympathetic","#7aa2ff"]:["wary","#8aa8c8"];
+  const nm=w.name+(w.recruited?" \u00b7 <span style='color:#5cff9e'>cell</span>":"");
+  let h="<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px'>";
+  h+="<div style='font-family:var(--disp);font-weight:700;font-size:13px;color:#c9b3ff'>"+nm+"</div>";
+  h+="<div style='font-size:9px;color:"+disp[1]+";letter-spacing:.05em'>"+disp[0].toUpperCase()+"</div></div>";
+  // the wisp's line
+  h+="<div style='color:#dfe8ff;font-size:12px;line-height:1.5;margin-bottom:11px;font-style:italic'>"+dlgVal(node.line,w)+"</div>";
+  // the choices
+  h+="<div style='display:flex;flex-direction:column;gap:5px'>";
+  // DYNAMIC RECRUIT — when the talk-path has softened the wisp enough, surface the ask right here. This is
+  // the front door to the cell: conversation led them to the edge, now you close.
+  if(dlgCanRecruit(w)){
+    h+="<button class='tb dlg-choice' data-dlg-recruit='1' style='text-align:left;padding:8px 10px;font-size:11px;border-color:rgba(92,255,158,.5);color:#5cff9e;background:rgba(92,255,158,.08)'>\u2605 \""+"Join us. For real this time."+"\" <span style='display:block;font-size:8px;opacity:.7;margin-top:1px'>Recruit "+w.name.split(" ")[0]+" \u2014 8 intel (your rapport makes this likely)</span></button>";
+  }
+  node.choices.forEach((c,idx)=>{
+    // hidden entirely if a non-stat `need` isn't met
+    if(c.need&&!c.need(w))return;
+    // stat gate: locked (grayed) if the attr is too low
+    let locked=false,gateLabel="";
+    if(c.gate){const have=ops(av,c.gate.attr);locked=have<c.gate.min;gateLabel="["+dlgAttrLabel(c.gate.attr)+" "+c.gate.min+"+] ";}
+    const riskTag=c.risk?" <span style='font-size:8px;opacity:.6'>\u26a0 "+dlgAttrLabel(c.risk.attr)+" check</span>":"";
+    const kindCol=c.kind==="push"?"#ff8da3":c.kind==="probe"?"#7aa2ff":"#c8d4e8";
+    if(locked){
+      h+="<div style='padding:7px 10px;font-size:11px;border:1px solid rgba(120,130,160,.2);border-radius:7px;color:#5a6580;opacity:.55;cursor:not-allowed'><span style='color:#7a6aa0'>"+gateLabel+"</span>"+dlgVal(c.text,w)+riskTag+"</div>";
+    }else{
+      h+="<button class='tb dlg-choice' data-dlg-choice='"+idx+"' style='text-align:left;padding:7px 10px;font-size:11px;border-color:rgba(120,130,160,.35);color:"+kindCol+"'>"+(gateLabel?"<span style='color:#9a8ad0'>"+gateLabel+"</span>":"")+dlgVal(c.text,w)+riskTag+"</button>";
+    }
+  });
+  h+="</div>";
+  el.innerHTML=h;
+}
+
+// the player picks a choice
+function dlgChoose(idx){
+  const st=DLG_STATE.active;if(!st)return;
+  const w=ST.pawns.find(p=>p.id===st.wispId);if(!w){endDialogue();return;}
+  const node=DLG_NODES[st.node];if(!node)return;
+  const c=node.choices[idx];if(!c)return;
+  // re-check the gate (defensive)
+  if(c.gate&&ops(theAvatar(),c.gate.attr)<c.gate.min)return;
+  if(c.need&&!c.need(w))return;
+  SFX&&SFX.ui&&SFX.ui();
+  let band="ok",replyLine=c.reply;
+  // RISKY choice -> opsCheck decides the band
+  if(c.risk){
+    const res=opsCheck(c.risk.attr,c.risk.diff);
+    band=res.band;
+    const won=(band==="critwin"||band==="success"||band==="partial");
+    if(c.reply&&typeof c.reply==="object")replyLine=won?c.reply.win:c.reply.lose;
+    // a small float telegraphing the roll outcome
+    float(w.px,w.py,band==="critwin"?"!!":band==="critfail"?"\u2717":won?"\u2713":"\u2717", won?"#5cff9e":"#ff5470");
+  }
+  // apply the effect
+  if(c.effect){try{c.effect(w,band);}catch(e){}}
+  // show the wisp's reply briefly (as a say bubble) if present
+  if(replyLine){const rl=dlgVal(replyLine,w);if(typeof sayLine==="function")sayLine(w,rl.replace(/^"|"$/g,""));}
+  // advance
+  let next=c.goto;
+  if(typeof next==="function")next=next(w);
+  if(!next||next==="end"||!DLG_NODES[next]){endDialogue();return;}
+  st.node=next;st.history.push(idx);
+  renderDialogue();
+}
+
+// delegated click handler for dialogue choices
+if(typeof document!=="undefined"&&document.addEventListener)document.addEventListener("click",e=>{
+  const rb=e.target.closest&&e.target.closest("[data-dlg-recruit]");
+  if(rb){const st=DLG_STATE.active;if(st){const w=ST.pawns.find(p=>p.id===st.wispId);if(w){SFX&&SFX.ui&&SFX.ui();
+    const ok=dlgRecruit(w);
+    if(ok){if(typeof sayLine==="function")sayLine(w,"I'm with you. Whatever it takes.");if(typeof banner==="function")banner("RECRUITED","good");endDialogue();}
+    else{if(typeof sayLine==="function")sayLine(w,"I... I can't. Not yet.");renderDialogue();}}}return;}
+  const b=e.target.closest&&e.target.closest("[data-dlg-choice]");
+  if(b){dlgChoose(+b.dataset.dlgChoice);}
+});
+
 function maybeStoryEvent(){
   if(activeEvent)return;                          // one at a time
   if(ST.pawns.length<3||ST.tick<TPD*2)return;     // early grace
@@ -10627,7 +10985,11 @@ function renderInspectCore(){const el=$("inspect");
     }
     // (DIRECT ORDERS grid removed from the character panel to free space — the bottom-left COMMAND menu
     //  issues the same orders to a selected citizen.)
-    if(aiReady())h+="<button class='tb i-talk' id='i-talk'>\u25c6 TALK</button>";
+    // AUTHORED CONVERSATION — the stat-gated dialogue system (works WITHOUT the AI; distinct from AI TALK).
+    if(!e.isAvatar&&!isChild(e)&&!e.isEnvoy&&e.hp>0){
+      h+="<button class='tb i-talk' id='i-converse' style='background:rgba(120,90,200,.16)!important;border-color:rgba(140,110,220,.45)!important'>\u25c8 TALK</button>";
+    }
+    if(aiReady())h+="<button class='tb i-talk' id='i-talk'>\u25c6 AI TALK</button>";
     // ELECTION: if a vote is underway and this wisp could hold the seat, let the player back them
     if(ST.election&&!ST.election.resolved&&!e.isAvatar&&!e.role&&!e.child&&e.hp>0){
       const backing=ST.election.playerPick===e.id;
@@ -10730,6 +11092,7 @@ $("inspect").addEventListener("click",e=>{
     renderInspect();syncHUD();return;
   }
   if(id==="i-talk"&&sel&&sel.kind==="pawn")openChat(sel);
+  if(id==="i-converse"&&sel&&sel.kind==="pawn")startDialogue(sel);
   else if(id==="i-lielow"){if(goToGround()){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
   else if(id==="i-back"&&sel&&sel.kind==="pawn"){if(proposeCandidate(sel.id)){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
   else if(id==="i-recruit"&&sel&&sel.kind==="pawn"){if(recruitWisp(sel)){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
