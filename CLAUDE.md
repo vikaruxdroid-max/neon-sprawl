@@ -35,6 +35,35 @@ done yet.
 **IMMEDIATE city-first work queue:** ~~character-CREATION SCREEN~~ (DONE) → stat-gated DIALOGUE
 (opsCheck/ops built to feed it) → job/farming VISUALS + litter → deep testing/tuning.
 
+## ⚡ LATEST STATE — BASE OF OPERATIONS (HQ foundation) + 3 INTERLOCKING DESIGN SPECS ⚡
+
+**Build `3e7c898b` in outputs, to be committed (prior commit `309e1440`). One CODE build (HQ foundation) + a big DESIGN session.** Carlo redirected from the world layer: "we need MORE TO DO in the city — make it about INTRIGUE/ESPIONAGE not city-building." Led to three interlocking specs, then the first build.
+
+### THE STRATEGIC PIVOT (Carlo's direction)
+The economy is currently a CITY-BUILDER economy (income buys housing/hospitals/furniture) but the game is CLANDESTINE INFLUENCE. The fix: refocus income onto ESPIONAGE — gear, infrastructure, and a developable HQ. Three specs designed this session, all built on the same principle (reuse existing systems, no invented mechanics):
+
+1. **[DOCUMENT] `/mnt/user-data/outputs/NEON_SPRAWL_Espionage_Economy_Spec.md`** — income buys GEAR (portable, equipped, boosts ops) + INFRASTRUCTURE (placed: cameras/taps/safehouses) across 4 pillars (spy/defend/monitor/hack). HACK pillar unlocks NEW remote ops. **[AUDIT] `NEON_SPRAWL_Espionage_Economy_Audit.md`** — verified the architecture: difficulty has ONE chokepoint (`opsCheck(op.stat, op.diff+expPenalty+wit.pen+fearPen)` ~line 2665) → gear `diff` mod is one added term. witnessPenalty/inOpRange/sightRange all clean single hooks. CAVEAT: exposure has NO chokepoint (scattered) → exposure-reducing gear must be scoped to op-failure exposure (precedent: resolveMod already does this). Infrastructure reuses `securityTick`/`secRadius` verbatim. Loadout is genuinely new.
+
+2. **[DOCUMENT] `/mnt/user-data/outputs/NEON_SPRAWL_Base_Of_Operations_Spec.md`** — a DEVELOPABLE HQ (build ONE base, grow it via STATIONS that unlock capability). The HQ is the HUB the espionage economy runs through: gear crafted at the Workbench, cameras managed at the Surveillance Hub, hack unlocked by the Server Room, exposure recovered in the Safe Room. Origin: CLAIM the fixer's borrowed room (the code already flags it "borrowed, not owned" — pays off that arc). The HQ + espionage specs MERGE into one system.
+
+3. (The world-layer dormant-city spec + Living City specs from prior remain parked.)
+
+### BUILT THIS SESSION: HQ FOUNDATION (Steps 1-2 of the Base spec)
+Build `3e7c898b`. The load-bearing data+logic layer (NO UI yet — deliberately):
+- **`ST.hq`** established at game start `{claimed:false, room:ST.fixerHome, stations:{}, foundedTick:0}` — seeded from the fixer room, starts UNCLAIMED.
+- **`HQ_STATIONS`** catalog (5): planning (Planning Table, ops hub, 90), workbench (gear, 120), survhub (monitor, 150), serverroom (hack, 180), saferoom (defend, 100). Each has cost(income)/pillar/`unlocks` capability string.
+- **`claimHQ()`** — converts the borrowed room to YOURS, raises avatar `attach` 2→8 (it's home now), one-time. **`buildStation(kind)`** — pays income via afford()/pay(), marks built, can't double-build/build-broke/build-before-claim. **`hasStation(kind)` + `hqUnlocks(cap)`** — THE OWNERSHIP GATE the espionage economy reads (gear locked until Workbench, hack until Server Room). **`hqStationCount()`**.
+- `ST.hq` SERIALIZED (added to serializeState ~12410 + applyState, re-links room to live fixerHome ref). VERIFIED: claim/build/gate/cost all work, survives save/load, 300 ticks stable claimed+unclaimed. The 4 HQ fns show as "dead" in the dead-code scan — EXPECTED, they're the API the not-yet-built UI will call.
+
+### ⚠️ CRITICAL — THIS IS A FOUNDATION, NOT YET PLAYABLE/VISIBLE
+The HQ build is the ENGINE only. **NO UI** — nothing in-game calls claimHQ/buildStation yet, so loading the build looks IDENTICAL to before. **NO visual station placement.** **The espionage economy itself isn't built** — the gate is ready (gear locks behind Workbench) but the gear/cameras/hack ops don't exist yet (the gate guards a door with no room behind it). This is correct for a foundation step but means there's nothing new to SEE. **NEXT (when Carlo returns):** the HQ PANEL (so claim+build is real/visible in-game — fastest path to something touchable), THEN the gear framework (the first capability the Workbench unlocks). Multi-build arc.
+
+### STANDING ITEMS
+- House/room interior backgrounds — still PARKED (Carlo: "do later").
+- The prior session's Living City visuals (auras, ripple, crowds, cityReact) + walk-to-target + walk-to-talk + dialogue backdrop — COMMITTED at `309e1440`, Carlo confirmed the aura + chat feel render; the rest is QA-pending in play. All numbers first-draft.
+
+---
+
 ## ⚡ LATEST STATE — LIVING CITY (gaps 1-4) + WALK-TO-TARGET + WALK-TO-TALK + DIALOGUE BACKDROP ⚡
 
 **Build `309e1440` in outputs, to be committed (prior commit `72b6de3`; this is SIX builds stacked on top).** A big session: the character-creation WIZARD redesign (committed at `72b6de3`), then a walk-to-target UX fix, a dialogue bleed-through fix + atmospheric backdrop, and the full LIVING CITY layer (4 gaps). Carlo confirmed in playtest: the aura renders, the new chat menu + conversation feel "love it", walk-to-talk requested + built.

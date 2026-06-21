@@ -4399,6 +4399,67 @@ function claimHome(p,home){
   p.attach=(p.attach||0); // attachment to property, builds with tenure
 }
 // losing owned property: big mood hit + a grudge against whoever caused it
+
+// ═══ BASE OF OPERATIONS — the developable HQ. You grow your base by building STATIONS, each unlocking a
+//    piece of the espionage economy. The HQ starts as the fixer's borrowed room; claiming + developing it
+//    makes it your operational stronghold. ═══
+// the station catalog — each is a capability installation. cost is district income. `unlocks` is the
+// espionage-economy capability it gates (read by the gear/infra/hack systems via hasStation()).
+const HQ_STATIONS={
+  planning:  {name:"Planning Table",   icon:"\u25a4", cost:90,  pillar:"core",
+              desc:"The ops command center \u2014 the heart of your base. Coordinate operations from here.",
+              unlocks:"ops_hub", blurb:"Makes the room a true base of operations."},
+  workbench: {name:"Workbench",        icon:"\u2692", cost:120, pillar:"spy",
+              desc:"Craft, buy, and store operative GEAR. Your loadout is outfitted here.",
+              unlocks:"gear", blurb:"Unlocks the gear catalog \u2014 outfit your operative."},
+  survhub:   {name:"Surveillance Hub", icon:"\u25c9", cost:150, pillar:"monitor",
+              desc:"The control room for your camera + wiretap network. Watch what your devices see.",
+              unlocks:"monitor", blurb:"Unlocks + manages your surveillance infrastructure."},
+  serverroom:{name:"Server Room",      icon:"\u2318", cost:180, pillar:"hack",
+              desc:"A hardened cyberdeck rig. Houses your electronic-warfare capability.",
+              unlocks:"hack", blurb:"Unlocks HACK ops \u2014 grid taps, data heists."},
+  saferoom:  {name:"Safe Room",        icon:"\u25a3", cost:100, pillar:"defend",
+              desc:"A shielded space to lie low. Exposure cools faster while you're based here.",
+              unlocks:"safe", blurb:"Recover exposure faster; a fallback when your cover is blown."},
+};
+// claim the HQ — the borrowed fixer room becomes YOURS (the moment you commit to it as a base). Raises the
+// operative's attachment to it (it's home now) and stamps when you founded it.
+function claimHQ(){
+  if(!ST.hq){ST.hq={claimed:false,room:ST.fixerHome||null,stations:{},foundedTick:0};}
+  if(ST.hq.claimed)return false;
+  ST.hq.claimed=true;ST.hq.foundedTick=ST.tick;
+  if(!ST.hq.room)ST.hq.room=ST.fixerHome||null;
+  const av=theAvatar();if(av)av.attach=Math.max(av.attach||0,8);   // it's yours now — attachment rises
+  if(typeof flashMsg==="function")flashMsg("This place is yours now \u2014 your base of operations.");
+  if(typeof log==="function")log("\u25a4 You've claimed the back room as your own \u2014 a base of operations takes shape.","good");
+  return true;
+}
+// is a station built? (the ownership gate the espionage economy reads — gear needs workbench, hack needs
+// server room, etc.)
+function hasStation(kind){return !!(ST.hq&&ST.hq.claimed&&ST.hq.stations&&ST.hq.stations[kind]);}
+// does the HQ grant a capability? (maps a capability string to whichever station unlocks it)
+function hqUnlocks(cap){
+  if(!ST.hq||!ST.hq.claimed)return false;
+  for(const k in HQ_STATIONS)if(HQ_STATIONS[k].unlocks===cap&&ST.hq.stations[k])return true;
+  return false;
+}
+// build a station — pay income, mark it built. (Placement of the physical installation in the room is a
+// later visual step; this is the capability layer.) Returns true on success.
+function buildStation(kind){
+  const def=HQ_STATIONS[kind];if(!def)return false;
+  if(!ST.hq||!ST.hq.claimed){if(typeof flashMsg==="function")flashMsg("Claim your base first");return false;}
+  if(hasStation(kind)){if(typeof flashMsg==="function")flashMsg(def.name+" is already built");return false;}
+  if(!afford({income:def.cost})){return false;}    // afford() flashes the shortfall
+  pay({income:def.cost});
+  ST.hq.stations[kind]={builtTick:ST.tick};
+  if(typeof flashMsg==="function")flashMsg(def.name+" built \u2014 "+def.blurb);
+  if(typeof log==="function")log("\u25a4 "+def.name+" installed in your base. "+def.blurb,"good");
+  if(typeof syncHUD==="function")syncHUD();
+  return true;
+}
+// count built stations (for progress display)
+function hqStationCount(){return ST.hq&&ST.hq.stations?Object.keys(ST.hq.stations).length:0;}
+
 function loseProperty(p,reason,culpritId){
   const att=p.attach||0;
   addMod(p,"propertyloss","Lost what was mine",-(6+att*0.1),TPD*2);
@@ -12347,6 +12408,7 @@ function serializeState(){
     heat:ST.heat||0,heatWarn:ST.heatWarn||false,
     requests:ST.requests||[],lastGlobalReqT:ST.lastGlobalReqT||0,lastUpkeep:ST.lastUpkeep||0,
     zones:ST.zones||null,cityHomes:ST.cityHomes||[],
+    hq:ST.hq||null,
     rooms:ST.rooms}}
 function applyState(d){
   ST.tick=d.tick||0;
@@ -12391,6 +12453,10 @@ function applyState(d){
       }
     }
   }
+  // restore the HQ (base of operations) — re-link its room to the live fixerHome reference
+  ST.hq=d.hq||{claimed:false,room:ST.fixerHome||null,stations:{},foundedTick:0};
+  if(ST.hq&&!ST.hq.room)ST.hq.room=ST.fixerHome||null;
+  if(ST.hq&&!ST.hq.stations)ST.hq.stations={};
   ST.beams=[];ST.floats=[];ST.emotes=[];ST.tombs=[];ST.says=[];ST.sel=[];ST.rooms=d.rooms||[];
   ST.phase="run";ST.paused=false;ST.speed=1;}
 function saveToSlot(slot){
@@ -12529,6 +12595,11 @@ function newGame(){
    ST.pawns.push(av);
    const ah=ST.fixerHome||ST.cityHomes[0];if(ah){claimHome(av,ah);av.attach=2;}  // low attach — it's borrowed, not owned
    av.startedAtFixer=true;
+   // ── BASE OF OPERATIONS — the fixer's borrowed room is the SEED of your HQ. You develop it over time by
+   //    building STATIONS (Planning Table, Workbench, Surveillance Hub, Server Room, Safe Room) that each
+   //    unlock a piece of the espionage economy. ST.hq tracks the base + which stations are built. It starts
+   //    UNCLAIMED (still the fixer's); claiming it (a small story beat / first investment) makes it yours.
+   ST.hq={claimed:false, room:ST.fixerHome||null, stations:{}, foundedTick:0};
    ST.sel=[av];  // start with your operative selected
   }
   cam.z=1.4;  // start zoomed into the core on the bigger map
