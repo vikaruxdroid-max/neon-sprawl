@@ -1994,28 +1994,31 @@ function opState(opKey){
   return {ok:true, reason:"ready", risk:riskTier, targeted:!!op.target, range:op.range};
 }
 // HOME VULNERABILITY — how easy is this target to socially work right now?
-// Returns 0..4 subtracted from difficulty for bribe/blackmail/steal.
-// Two drivers: (1) need desperation — unmet needs make people pliable; (2) wealth signal — a
-// visibly affluent home makes the target worth robbing and suggests they have something to lose.
+// opKey scopes which drivers apply:
+//   bribe/blackmail: desperation only (wealth = LESS desperate, not easier to corrupt)
+//   steal:           desperation + room-quality wealth signal (rich target = worth robbing)
+// Returns 0..4, subtracted from difficulty at the op-resolve chokepoint.
 // Numbers are first-draft; tune from play.
-function homeVulnerability(p){
+function homeVulnerability(p,opKey){
   if(!p||isChild(p))return 0;
   let v=0;
-  // PRIMARY: need desperation. Each need 0..100; below 30 is acutely unmet.
-  // Weight food/rest most heavily (survival pressure), hyg/fun/socN lightly.
+  // DESPERATION: unmet needs make people pliable. Each need 0..100; below threshold = shortfall.
+  // Weight food/rest most heavily (survival pressure), hyg/fun lightly.
   const needs=p.needs||{};
-  const foodShort =Math.max(0,30-(needs.food !=null?needs.food :100));  // 0..30
-  const restShort =Math.max(0,30-(needs.rest !=null?needs.rest :100));  // 0..30
-  const hygShort  =Math.max(0,20-(needs.hyg  !=null?needs.hyg  :100));  // 0..20
-  const funShort  =Math.max(0,20-(needs.fun  !=null?needs.fun  :100));  // 0..20
-  // map combined shortfall to 0..3 (a fully desperate target contributes ~3)
-  v += clamp((foodShort*0.06+restShort*0.04+hygShort*0.02+funShort*0.01),0,3);
-  // homeless flag: living rough = maximally pliable (no security to protect)
+  const foodShort=Math.max(0,30-(needs.food!=null?needs.food:100));  // 0..30
+  const restShort=Math.max(0,30-(needs.rest!=null?needs.rest:100));  // 0..30
+  const hygShort =Math.max(0,20-(needs.hyg !=null?needs.hyg :100));  // 0..20
+  const funShort =Math.max(0,20-(needs.fun !=null?needs.fun :100));  // 0..20
+  // map combined shortfall → 0..3
+  v+=clamp((foodShort*0.06+restShort*0.04+hygShort*0.02+funShort*0.01),0,3);
+  // homeless = maximally pliable (no security, no stability)
   if(p.homeless)v=Math.max(v,2.0);
-  // SECONDARY: wealth signal from home quality (affluent home = worth robbing / has leverage).
-  // Contributes up to +1 on top of need score.
-  const hr=homeRoom(p);
-  if(hr){const q=roomQuality(hr);v+=clamp((q-60)*0.025,0,1);}  // 0 below q60, up to +1 at q100
+  // WEALTH SIGNAL: a visibly affluent home means the target is worth robbing.
+  // Only applies to steal — wealth makes bribe/blackmail targets LESS desperate, not more.
+  if(opKey==="steal"){
+    const hr=homeRoom(p);
+    if(hr){const q=roomQuality(hr);v+=clamp((q-60)*0.025,0,1);}  // 0 below q60, up to +1 at q100
+  }
   return clamp(v,0,4);
 }
 // bribe receptivity: a feared operative buys silence more easily; a beloved one meets resistance to
@@ -2689,7 +2692,7 @@ function resolveAvatarOp(p){
   // Only applies to the three social/physical ops that target a pawn directly.
   const VULN_OPS=new Set(["bribe","blackmail","steal"]);
   const vulnPen=(VULN_OPS.has(ao.opKey)&&target&&target.kind==="pawn")
-    ?homeVulnerability(target):0;
+    ?homeVulnerability(target,ao.opKey):0;
   const check=opsCheck(op.stat,op.diff+expPenalty+wit.pen+fearPen-vulnPen);
   ao._witCount=wit.count;ao._witPen=wit.pen;           // remembered for the post-act fallout
   m.intel-=op.cost;

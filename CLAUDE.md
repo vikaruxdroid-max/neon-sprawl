@@ -35,6 +35,18 @@ done yet.
 **IMMEDIATE city-first work queue:** ~~character-CREATION SCREEN~~ (DONE) → stat-gated DIALOGUE
 (opsCheck/ops built to feed it) → job/farming VISUALS + litter → deep testing/tuning.
 
+## ⚡ LATEST STATE — homeVulnerability + char-creation UI fix (commits a84dc55, current) ⚡
+
+**Two small targeted builds on top of the HQ foundation commit (`f16cbf4`).**
+
+1. **`homeVulnerability(p, opKey)` (Step 1 of intrigue-wiring queue)** — pure derived function (no new serialized state). Reads `p.needs.{food,rest,hyg,fun}` shortfalls + `p.homeless` to compute a 0..4 desperation score, subtracted from difficulty at the one chokepoint (`opsCheck` in `resolveAvatarOp`) for three ops: **bribe, blackmail, steal**. Wealth/room-quality term applies to **steal only** (worth robbing); bribe/blackmail use desperation alone (a wealthy target is less desperate, not more corruptible). Verified: content target yields 0.00 reduction on bribe/blackmail, 0.50 on steal; desperate/homeless target yields 2.73 on all three. 19/19 tests green, save/load unaffected.
+
+2. **Char-creation +/− jump fix** (commit `a84dc55`) — removed the inline `.cc-effect` reveal-on-hover per-row; description now lives in a single `min-height:40px` fixed slot above the stat list. Rows are single fixed-height flex lines; no reflow on tap/hover.
+
+**NEXT in the intrigue-wiring queue:** the fail-forward / overdose system (or whichever item Carlo prioritizes next from the espionage economy spec).
+
+---
+
 ## ⚡ LATEST STATE — BASE OF OPERATIONS (HQ foundation) + 3 INTERLOCKING DESIGN SPECS ⚡
 
 **Build `3e7c898b` in outputs, to be committed (prior commit `309e1440`). One CODE build (HQ foundation) + a big DESIGN session.** Carlo redirected from the world layer: "we need MORE TO DO in the city — make it about INTRIGUE/ESPIONAGE not city-building." Led to three interlocking specs, then the first build.
