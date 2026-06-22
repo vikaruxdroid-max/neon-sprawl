@@ -885,8 +885,13 @@ const DEF={
   waterfac:   {name:"Water Facility",cost:{income:160},hp:100,blocks:1,work:190, cat:"b", desc:"Supplies clean water. Without it, hygiene and health decline across the block. Needs a worker to run.", utility:"water", wage:8},
   copstation: {name:"Precinct",     cost:{income:150},hp:110,blocks:1,work:160, cat:"b", desc:"Regime police post — the Enforcer's station. Suppresses crime and projects regime presence.", security:true, secRadius:16, wage:11, roleHome:"enforcer"},
   jail:       {name:"Holding Cells", cost:{income:120},hp:120,blocks:1,work:0,   cat:"b", desc:"The regime's lockup. Wisps caught in serious crimes are held here. Sentences escalate for repeat offenders — and the worst are never seen again.", jail:true},
-  // ESPIONAGE INFRASTRUCTURE — placed clandestine assets (monitor pillar; gate: survhub at HQ)
+  // ESPIONAGE INFRASTRUCTURE — placed clandestine assets (espionage:true flags them for infraTick)
+  // monitor pillar (gate: survhub) — passive intel generation
   camera:     {name:"Hidden Camera",  cost:{income:80},  hp:40,  blocks:0, work:0, cat:"b", desc:"A concealed surveillance node. Passively drips intel while active. Requires a Surveillance Hub at HQ.", espionage:true, pillar:"monitor", infraRadius:6},
+  wiretap:    {name:"Wiretap",        cost:{income:100}, hp:30,  blocks:0, work:0, cat:"b", desc:"A tap placed near regime infrastructure. Drips intel only when adjacent to a regime building — richer yield than a camera, but conditional. Requires a Surveillance Hub at HQ.", espionage:true, pillar:"monitor", infraRadius:4},
+  deadDrop:   {name:"Dead Drop",      cost:{income:60},  hp:30,  blocks:0, work:0, cat:"b", desc:"A clandestine node for your cell to pass intel without meeting. Intel yield scales with your recruited network. Requires a Surveillance Hub at HQ.", espionage:true, pillar:"monitor", infraRadius:3},
+  // safe pillar (gate: saferoom) — exposure recovery in the field
+  safehouse:  {name:"Safehouse",      cost:{income:140}, hp:60,  blocks:0, work:0, cat:"b", desc:"A field refuge away from HQ. When laying low nearby, exposure fades 2× faster — weaker than the Safe Room but deployable anywhere in the district. Requires a Safe Room at HQ.", espionage:true, pillar:"safe", infraRadius:7},
   streetvendor:{name:"Street Vendor",cost:{income:60}, hp:50, blocks:1,work:120, cat:"b", desc:"A noodle-and-stim cart on the strip — cheap food and goods, street-level commerce.", vendor:true, sells:"food", wage:7},
   mayorhouse: {name:"Admin Villa",  cost:{income:200},hp:120,blocks:1,work:150, cat:"b", desc:"The Mayor's fortified residence and office — the regime's seat in the district.", civic:"mayor", wage:12, roleHome:"mayor"},
   fixercorner:{name:"Fixer Corner", cost:{income:80}, hp:60, blocks:1,work:140, cat:"b", desc:"A back-alley node where the Fixer brokers data, gear, and favors off the books.", vendor:true, illicit:true, wage:10, roleHome:"fixer"},
@@ -898,7 +903,7 @@ const DEF={
   vendmachine:{name:"Vending Machine",nat:1,hp:50,blocks:1},
   planter:    {name:"Planter",     nat:1, hp:30, blocks:0}
 };
-const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","cafeteria","streetvendor","bar","medbed","dealer","farmplot","sporevat","loggingcamp","mineshaft","fixercorner","park","arcade","hospital","school","nursery","market","hall","mayorhouse","furnstore","housing","powerstation","waterfac","watchpost","copstation","jail","camera"];
+const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","cafeteria","streetvendor","bar","medbed","dealer","farmplot","sporevat","loggingcamp","mineshaft","fixercorner","park","arcade","hospital","school","nursery","market","hall","mayorhouse","furnstore","housing","powerstation","waterfac","watchpost","copstation","jail","camera","wiretap","deadDrop","safehouse"];
 // Build menu: curated minimal categories (start small, expand later). Each entry: type.
 const BUILD_CATS=[
   {name:"Home",     items:["wall","door","pod","lamp","fridge","shower","toilet"]},
@@ -909,7 +914,8 @@ const BUILD_CATS=[
   {name:"Order",    items:["watchpost","copstation"]},
   {name:"Utility",  items:["powerstation","waterfac"]},
   {name:"Growth",   items:["housing"]},
-  {name:"Espionage",items:["camera"], gate:()=>hqUnlocks("monitor")},
+  {name:"Espionage",  items:["camera","wiretap","deadDrop"], gate:()=>hqUnlocks("monitor")},
+  {name:"Safe Houses",items:["safehouse"],                  gate:()=>hqUnlocks("safe")},
 ];
 // glyph per fixture for the build cards
 // Spore Vat upgrade chain — start as mushrooms, upgrade up the bio-tech ladder
@@ -922,7 +928,7 @@ function vatTier(s){return VAT_TIERS[clamp((s.tier||1)-1,0,2)];}
 const BUILD_ICON={wall:"▦",door:"⌷",pod:"☖",lamp:"✦",fridge:"❄",shower:"♒",toilet:"⊡",tv:"▭",gym:"⛏",
   workstation:"⌨",chemlab:"⚗",workshop:"⚙",stimlab:"⚕",gearshop:"⛭",counter:"▤",bar:"♨",medbed:"✚",
   dealer:"☠",farmplot:"❀",sporevat:"🍄",loggingcamp:"♻",mineshaft:"⌬",park:"❦",arcade:"►",hospital:"✚",school:"✎",nursery:"⊙",market:"⇄",hall:"⌂",furnstore:"🛋",housing:"⌂",watchpost:"◈",powerstation:"⚡",waterfac:"💧",copstation:"⚖",jail:"⛓",streetvendor:"🍜",mayorhouse:"♔",fixercorner:"⟁",cafeteria:"🍽",couch:"⌗",bookshelf:"▤",art:"◳",rug:"▢",
-  camera:"◉"};
+  camera:"◉", wiretap:"⊕", deadDrop:"◫", safehouse:"⌂"};
 
 
 // weapons removed — city sim mode
@@ -1630,6 +1636,19 @@ function insurrectionTick(){
       if(rm&&av&&av.hp>0){
         const cx=rm.x0+rm.w/2, cy=rm.y0+rm.h/2;
         if(DIST(av.px,av.py,cx,cy)<8)fade*=2.5;
+      }
+    }
+    // safehouse structs: a placed field refuge gives 2× fade when the avatar is within its infraRadius
+    // (weaker than the hardened HQ Safe Room at 2.5×, but deployable anywhere in the district)
+    if(!hasStation("saferoom")||fade<2){   // only apply if safe room didn't already multiply
+      const avSH=theAvatar();
+      if(avSH&&avSH.hp>0){
+        for(const s of ST.structs.values()){
+          if(!s.bp&&s.espionage&&s.pillar==="safe"&&!s.isBroken){
+            const r=(DEF[s.type]&&DEF[s.type].infraRadius)||7;
+            if(DIST(avSH.px,avSH.py,s.x,s.y)<=r){fade*=2;break;}
+          }
+        }
       }
     }
     m.exposure=Math.max(0,m.exposure-fade);
@@ -3539,6 +3558,7 @@ function canPlace(type,x,y){if(!INB(x,y))return false;if(structAt(x,y))return fa
 function placeBp(type,x,y){const d=DEF[type];
   if(!canPlace(type,x,y))return false;
   if(d.espionage&&d.pillar==="monitor"&&!hqUnlocks("monitor")){if(typeof flashMsg==="function")flashMsg("Need a Surveillance Hub at HQ");return false;}
+  if(d.espionage&&d.pillar==="safe"&&!hqUnlocks("safe")){if(typeof flashMsg==="function")flashMsg("Need a Safe Room at HQ");return false;}
   if(!afford(d.cost||{}))return false;       // gate: can't queue what you can't pay for
   pay(d.cost||{});                            // charge district credits up front
   addStruct({id:uid(),kind:"s",type,x,y,hp:1,maxHp:d.hp,bp:true,prog:0,need:d.work,
@@ -5298,15 +5318,38 @@ function securityTick(){
   }
 }
 // INFRA TICK — passive espionage infrastructure effects (mirror of securityTick)
-// monitor-pillar cameras drip intel every 200 ticks (≈12×/day); 0.06/camera, capped at 0.3/cadence.
+// Cadence: ST.tick%200 (≈12×/day). Caps prevent camera-farming trivializing intel.
+//   camera:   0.06/node, cap 0.30/cadence (≈3.6/day max)
+//   wiretap:  0.10/node when adjacent to a regime building, cap 0.30/cadence (shared monitor cap)
+//   deadDrop: 0.03 × recruited count per node, cap 0.25/cadence (network-scaled)
+//   safehouse: handled in insurrectionTick's exposure cooldown block (spatial fade multiplier)
 function infraTick(){
   if(!M||!M())return;
-  const cams=[];
-  for(const s of ST.structs.values())if(!s.bp&&s.espionage&&s.pillar==="monitor"&&!s.isBroken)cams.push(s);
-  if(!cams.length)return;
-  if(ST.tick%200===0){
-    const drip=Math.min(cams.length*0.06,0.3);
-    M().intel=Math.min(999,(M().intel||0)+drip);
+  if(ST.tick%200!==0)return;   // all effects share the same cadence — bail early if not due
+  const mov=M();
+  // --- MONITOR PILLAR: cameras + wiretaps + dead drops ---
+  // collect all monitor-pillar assets once
+  const monitorAssets=[];
+  for(const s of ST.structs.values())if(!s.bp&&s.espionage&&s.pillar==="monitor"&&!s.isBroken)monitorAssets.push(s);
+  if(monitorAssets.length){
+    // cameras: flat drip
+    const cams=monitorAssets.filter(s=>s.type==="camera");
+    const camDrip=Math.min(cams.length*0.06,0.30);
+    // wiretaps: drip only when within 6 tiles of a regime building (copstation or mayorhouse)
+    const regimeStructs=[];
+    for(const s of ST.structs.values())if(!s.bp&&DEF[s.type]&&(DEF[s.type].roleHome==="enforcer"||DEF[s.type].roleHome==="mayor"))regimeStructs.push(s);
+    const taps=monitorAssets.filter(s=>s.type==="wiretap");
+    let tapDrip=0;
+    for(const t of taps){
+      const nearRegime=regimeStructs.some(r=>DIST(t.x,t.y,r.x,r.y)<=6);
+      if(nearRegime)tapDrip+=0.10;
+    }
+    tapDrip=Math.min(tapDrip,0.30);
+    // dead drops: drip scales with recruited network
+    const drops=monitorAssets.filter(s=>s.type==="deadDrop");
+    const recruitedCount=ST.pawns.filter(p=>p.recruited&&!isChild(p)&&!p.isAvatar).length;
+    const dropDrip=Math.min(drops.length*0.03*recruitedCount,0.25);
+    mov.intel=Math.min(999,(mov.intel||0)+camDrip+tapDrip+dropDrip);
   }
 }
 // is a point under security coverage? (used to suppress crime)
