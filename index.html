@@ -885,6 +885,8 @@ const DEF={
   waterfac:   {name:"Water Facility",cost:{income:160},hp:100,blocks:1,work:190, cat:"b", desc:"Supplies clean water. Without it, hygiene and health decline across the block. Needs a worker to run.", utility:"water", wage:8},
   copstation: {name:"Precinct",     cost:{income:150},hp:110,blocks:1,work:160, cat:"b", desc:"Regime police post — the Enforcer's station. Suppresses crime and projects regime presence.", security:true, secRadius:16, wage:11, roleHome:"enforcer"},
   jail:       {name:"Holding Cells", cost:{income:120},hp:120,blocks:1,work:0,   cat:"b", desc:"The regime's lockup. Wisps caught in serious crimes are held here. Sentences escalate for repeat offenders — and the worst are never seen again.", jail:true},
+  // ESPIONAGE INFRASTRUCTURE — placed clandestine assets (monitor pillar; gate: survhub at HQ)
+  camera:     {name:"Hidden Camera",  cost:{income:80},  hp:40,  blocks:0, work:0, cat:"b", desc:"A concealed surveillance node. Passively drips intel while active. Requires a Surveillance Hub at HQ.", espionage:true, pillar:"monitor", infraRadius:6},
   streetvendor:{name:"Street Vendor",cost:{income:60}, hp:50, blocks:1,work:120, cat:"b", desc:"A noodle-and-stim cart on the strip — cheap food and goods, street-level commerce.", vendor:true, sells:"food", wage:7},
   mayorhouse: {name:"Admin Villa",  cost:{income:200},hp:120,blocks:1,work:150, cat:"b", desc:"The Mayor's fortified residence and office — the regime's seat in the district.", civic:"mayor", wage:12, roleHome:"mayor"},
   fixercorner:{name:"Fixer Corner", cost:{income:80}, hp:60, blocks:1,work:140, cat:"b", desc:"A back-alley node where the Fixer brokers data, gear, and favors off the books.", vendor:true, illicit:true, wage:10, roleHome:"fixer"},
@@ -896,7 +898,7 @@ const DEF={
   vendmachine:{name:"Vending Machine",nat:1,hp:50,blocks:1},
   planter:    {name:"Planter",     nat:1, hp:30, blocks:0}
 };
-const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","cafeteria","streetvendor","bar","medbed","dealer","farmplot","sporevat","loggingcamp","mineshaft","fixercorner","park","arcade","hospital","school","nursery","market","hall","mayorhouse","furnstore","housing","powerstation","waterfac","watchpost","copstation","jail"];
+const BUILD_ORDER=["wall","door","lamp","pod","shower","toilet","fridge","tv","gym","couch","bookshelf","art","rug","workstation","chemlab","workshop","stimlab","gearshop","counter","cafeteria","streetvendor","bar","medbed","dealer","farmplot","sporevat","loggingcamp","mineshaft","fixercorner","park","arcade","hospital","school","nursery","market","hall","mayorhouse","furnstore","housing","powerstation","waterfac","watchpost","copstation","jail","camera"];
 // Build menu: curated minimal categories (start small, expand later). Each entry: type.
 const BUILD_CATS=[
   {name:"Home",     items:["wall","door","pod","lamp","fridge","shower","toilet"]},
@@ -907,6 +909,7 @@ const BUILD_CATS=[
   {name:"Order",    items:["watchpost","copstation"]},
   {name:"Utility",  items:["powerstation","waterfac"]},
   {name:"Growth",   items:["housing"]},
+  {name:"Espionage",items:["camera"], gate:()=>hqUnlocks("monitor")},
 ];
 // glyph per fixture for the build cards
 // Spore Vat upgrade chain — start as mushrooms, upgrade up the bio-tech ladder
@@ -918,7 +921,8 @@ const VAT_TIERS=[
 function vatTier(s){return VAT_TIERS[clamp((s.tier||1)-1,0,2)];}
 const BUILD_ICON={wall:"▦",door:"⌷",pod:"☖",lamp:"✦",fridge:"❄",shower:"♒",toilet:"⊡",tv:"▭",gym:"⛏",
   workstation:"⌨",chemlab:"⚗",workshop:"⚙",stimlab:"⚕",gearshop:"⛭",counter:"▤",bar:"♨",medbed:"✚",
-  dealer:"☠",farmplot:"❀",sporevat:"🍄",loggingcamp:"♻",mineshaft:"⌬",park:"❦",arcade:"►",hospital:"✚",school:"✎",nursery:"⊙",market:"⇄",hall:"⌂",furnstore:"🛋",housing:"⌂",watchpost:"◈",powerstation:"⚡",waterfac:"💧",copstation:"⚖",jail:"⛓",streetvendor:"🍜",mayorhouse:"♔",fixercorner:"⟁",cafeteria:"🍽",couch:"⌗",bookshelf:"▤",art:"◳",rug:"▢"};
+  dealer:"☠",farmplot:"❀",sporevat:"🍄",loggingcamp:"♻",mineshaft:"⌬",park:"❦",arcade:"►",hospital:"✚",school:"✎",nursery:"⊙",market:"⇄",hall:"⌂",furnstore:"🛋",housing:"⌂",watchpost:"◈",powerstation:"⚡",waterfac:"💧",copstation:"⚖",jail:"⛓",streetvendor:"🍜",mayorhouse:"♔",fixercorner:"⟁",cafeteria:"🍽",couch:"⌗",bookshelf:"▤",art:"◳",rug:"▢",
+  camera:"◉"};
 
 
 // weapons removed — city sim mode
@@ -3534,6 +3538,7 @@ function canPlace(type,x,y){if(!INB(x,y))return false;if(structAt(x,y))return fa
   if(DEF[type].blocks!==0&&entityOn(x,y))return false;return true}
 function placeBp(type,x,y){const d=DEF[type];
   if(!canPlace(type,x,y))return false;
+  if(d.espionage&&d.pillar==="monitor"&&!hqUnlocks("monitor")){if(typeof flashMsg==="function")flashMsg("Need a Surveillance Hub at HQ");return false;}
   if(!afford(d.cost||{}))return false;       // gate: can't queue what you can't pay for
   pay(d.cost||{});                            // charge district credits up front
   addStruct({id:uid(),kind:"s",type,x,y,hp:1,maxHp:d.hp,bp:true,prog:0,need:d.work,
@@ -3542,6 +3547,7 @@ function placeBp(type,x,y){const d=DEF[type];
 function cancelBp(s){if(s.paid)ST.income+=s.paid;removeStruct(s);syncHUD()}
 function finishBuild(s){s.bp=false;s.hp=s.maxHp;s.prog=0;ST.stats.built++;
   if(DEF[s.type].furn&&s.qual===undefined)s.qual=1;
+  if(DEF[s.type].espionage){s.espionage=true;s.pillar=DEF[s.type].pillar||null;}
   SFX.build();
   if(s.type==="housing"){
     // register a new home slot near the housing unit — uses struct location as virtual bed
@@ -5289,6 +5295,18 @@ function securityTick(){
         if(covered)break;}
       if(covered)g.gangHeat=Math.max(0,(g.gangHeat||0)-3);
     }
+  }
+}
+// INFRA TICK — passive espionage infrastructure effects (mirror of securityTick)
+// monitor-pillar cameras drip intel every 200 ticks (≈12×/day); 0.06/camera, capped at 0.3/cadence.
+function infraTick(){
+  if(!M||!M())return;
+  const cams=[];
+  for(const s of ST.structs.values())if(!s.bp&&s.espionage&&s.pillar==="monitor"&&!s.isBroken)cams.push(s);
+  if(!cams.length)return;
+  if(ST.tick%200===0){
+    const drip=Math.min(cams.length*0.06,0.3);
+    M().intel=Math.min(999,(M().intel||0)+drip);
   }
 }
 // is a point under security coverage? (used to suppress crime)
@@ -7845,6 +7863,7 @@ function tick(){ST.tick++;
   if(ST.tick%50===0)checkContextualHints();
   if(ST.tick%200===0&&ST.gangs.length)gangTick();
   securityTick();
+  infraTick();
   if(ST.gangs.length)crimeTick();
   if(ST.tick%TPD===0&&ST.tick>0){
     // gear expiry check
@@ -12005,6 +12024,7 @@ function buildCardHTML(t){
 function renderBuildMenu(){
   let h=smHeader("BUILD");
   for(const cat of BUILD_CATS){
+    if(cat.gate&&!cat.gate())continue;
     h+="<div class='bcat'>"+cat.name+"</div><div class='bgrid'>";
     for(const t of cat.items)h+=buildCardHTML(t);
     h+="</div>";}
