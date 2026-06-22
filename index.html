@@ -12410,6 +12410,101 @@ function opsStatsHTML(){
   h+="</div>";
   return h;
 }
+// ── THOUGHTS TAB ─────────────────────────────────────────────────────────────
+function opsThoughtsHTML(){
+  const av=theAvatar();
+  if(!av)return "<div style='color:var(--dim);font-size:11px;padding:12px'>No operative found.</div>";
+  const nd=av.needs||{};
+  const food=nd.food!=null?nd.food:100, rest=nd.rest!=null?nd.rest:100;
+  const hyg=nd.hyg!=null?nd.hyg:100, fun=nd.fun!=null?nd.fun:100, socN=nd.socN!=null?nd.socN:100;
+  const mood=av.mood||50, stress=av.stress||0, hp=av.hp!=null?av.hp:100;
+  const addiction=av.addiction||0;
+  const exposure=ST.mov?ST.mov.exposure||0:0;
+  const posture=ST.avatarPosture||"normal";
+  let h="";
+
+  // ── 1. THOUGHTS ──
+  const thoughts=wispThoughts(av);
+  if(thoughts.length){
+    h+="<div style='display:flex;flex-direction:column;gap:5px;margin-bottom:14px;padding:10px 12px;background:rgba(8,18,36,.5);border:1px solid rgba(120,160,200,.15);border-radius:8px'>";
+    for(const th of thoughts)
+      h+="<div style='font-size:11px;line-height:1.5;font-style:italic;color:"+th.col+"'>“"+th.txt+"”</div>";
+    h+="</div>";
+  }
+
+  // ── 2. STATE block ──
+  h+="<div style='font-size:10px;color:var(--dim);letter-spacing:.08em;margin-bottom:6px'>STATE</div>";
+  h+="<div style='display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-bottom:12px;padding:8px 10px;background:rgba(8,18,36,.4);border:1px solid rgba(120,160,200,.12);border-radius:7px'>";
+  // mood
+  const moodCol=mood>65?"#5cff9e":mood>35?"#7aa2ff":"#ff6b6b";
+  h+="<div style='font-size:10px'><span style='color:var(--dim)'>Mood </span><span style='color:"+moodCol+";font-weight:600'>"+Math.round(mood)+"</span></div>";
+  // stress
+  const stressCol=stress>70?"#ff6b6b":stress>40?"#ffb454":"#8aa8c8";
+  h+="<div style='font-size:10px'><span style='color:var(--dim)'>Stress </span><span style='color:"+stressCol+";font-weight:600'>"+Math.round(stress)+"</span></div>";
+  // hp
+  const hpCol=hp>60?"#5cff9e":hp>30?"#ffb454":"#ff6b6b";
+  h+="<div style='font-size:10px'><span style='color:var(--dim)'>HP </span><span style='color:"+hpCol+";font-weight:600'>"+Math.round(hp)+"</span></div>";
+  // exposure / personal heat
+  const expCol=exposure>60?"#ff5470":exposure>30?"#ffb454":"#8aa8c8";
+  h+="<div style='font-size:10px'><span style='color:var(--dim)'>Heat </span><span style='color:"+expCol+";font-weight:600'>"+Math.round(exposure)+"</span></div>";
+  // addiction (only if > 0)
+  if(addiction>0){const adCol=addiction>50?"#c98bff":addiction>25?"#ff8da3":"#8aa8c8";
+    h+="<div style='font-size:10px'><span style='color:var(--dim)'>Addiction </span><span style='color:"+adCol+";font-weight:600'>"+Math.round(addiction)+"</span></div>";}
+  // posture
+  const postLabel={laylow:"▭ Lay Low",normal:"○ Normal",revolucionario:"⚑ Revolucionario"}[posture]||posture;
+  const postCol=posture==="revolucionario"?"#ff8da3":posture==="laylow"?"#7aa2ff":"#8aa8c8";
+  h+="<div style='font-size:10px'><span style='color:var(--dim)'>Posture </span><span style='color:"+postCol+";font-weight:600'>"+postLabel+"</span></div>";
+  // active op or idle
+  const ao=av.activeOp;
+  if(ao){const pct=ao.duration>0?Math.round(ao.prog/ao.duration*100):0;
+    h+="<div style='font-size:10px;grid-column:1/-1'><span style='color:var(--dim)'>Op </span><span style='color:#ffd84a;font-weight:600'>"+ao.opKey+" "+pct+"%</span></div>";}
+  else h+="<div style='font-size:10px'><span style='color:var(--dim)'>Op </span><span style='color:var(--dim)'>idle</span></div>";
+  // flags
+  const flags=[];
+  if(av.jailed)flags.push({t:"JAILED",c:"#ff5470"});
+  if(av.sick)flags.push({t:"SICK",c:"#ff6b6b"});
+  if(av.homeless)flags.push({t:"HOMELESS",c:"#ff8c42"});
+  if(flags.length){
+    h+="<div style='font-size:10px;grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap'>";
+    for(const f of flags)h+="<span style='color:"+f.c+";font-weight:700;letter-spacing:.06em'>"+f.t+"</span>";
+    h+="</div>";}
+  h+="</div>";
+
+  // ── 3. NEEDS strip ──
+  h+="<div style='font-size:10px;color:var(--dim);letter-spacing:.08em;margin-bottom:6px'>NEEDS</div>";
+  h+="<div style='display:flex;gap:6px;margin-bottom:14px'>";
+  const NEED_DEFS=[
+    {k:"food",label:"Food",v:food,crit:15,low:30},
+    {k:"rest",label:"Rest",v:rest,crit:15,low:30},
+    {k:"hyg",label:"Hygiene",v:hyg,crit:20,low:40},
+    {k:"fun",label:"Fun",v:fun,crit:20,low:40},
+    {k:"soc",label:"Social",v:socN,crit:20,low:40},
+  ];
+  for(const nd2 of NEED_DEFS){
+    const col=nd2.v<nd2.crit?"#ff6b6b":nd2.v<nd2.low?"#ffb454":"#5cff9e";
+    h+="<div style='flex:1;display:flex;flex-direction:column;align-items:center;gap:3px'>";
+    h+="<div style='font-size:8px;color:var(--dim);letter-spacing:.05em'>"+nd2.label.toUpperCase()+"</div>";
+    h+="<div style='width:100%;height:4px;background:rgba(120,160,200,.15);border-radius:2px'>";
+    h+="<div style='height:100%;width:"+(nd2.v)+"%25;background:"+col+";border-radius:2px'></div>";
+    h+="</div>";
+    h+="<div style='font-size:9px;color:"+col+";font-weight:600'>"+Math.round(nd2.v)+"</div>";
+    h+="</div>";
+  }
+  h+="</div>";
+
+  // ── 4. RECENT memories ──
+  const mem=(av.mem||[]);
+  if(mem.length){
+    h+="<div style='font-size:10px;color:var(--dim);letter-spacing:.08em;margin-bottom:6px'>RECENT</div>";
+    h+="<div style='display:flex;flex-direction:column;gap:3px'>";
+    const recent=mem.slice(-4).reverse();
+    for(const m of recent)
+      h+="<div style='font-size:10px;color:var(--tx);line-height:1.4;padding:4px 8px;background:rgba(8,18,36,.4);border-left:2px solid rgba(120,160,200,.25);border-radius:0 4px 4px 0'>"
+        +"<span style='font-size:9px;color:var(--dim)'>day "+m.d+" h"+m.h+" </span>"+m.t+"</div>";
+    h+="</div>";
+  }
+  return h;
+}
 // ── BASE OF OPERATIONS PANEL ──────────────────────────────────────────────────
 // Renders into the shared modal. Re-calls itself after claim/build so state
 // updates live without a separate refresh mechanism.
@@ -12521,7 +12616,7 @@ function showOutfitter(){showModal("<h1 style='font-size:18px;letter-spacing:.14
 // ── OPERATIVE SCREEN (tabbed host) ───────────────────────────────────────────
 let OPSTAB="stats";
 function showOpsScreen(){
-  const TABS=[{k:"stats",label:"Stats"},{k:"base",label:"Base"},{k:"equipment",label:"Equipment"}];
+  const TABS=[{k:"stats",label:"Stats"},{k:"thoughts",label:"Thoughts"},{k:"base",label:"Base"},{k:"equipment",label:"Equipment"}];
   // ── tab bar ──
   let h="<h1 style='font-size:16px;letter-spacing:.14em;margin-bottom:10px'>◈ OPERATIVE</h1>";
   h+="<div style='display:flex;gap:3px;margin-bottom:14px;border-bottom:1px solid rgba(120,160,200,.18);padding-bottom:8px'>";
@@ -12532,6 +12627,7 @@ function showOpsScreen(){
   h+="</div>";
   // ── active tab body ──
   if(OPSTAB==="stats")h+=opsStatsHTML();
+  else if(OPSTAB==="thoughts")h+=opsThoughtsHTML();
   else if(OPSTAB==="base")h+=hqPanelHTML();
   else if(OPSTAB==="equipment")h+=outfitterHTML();
   h+="<div style='margin-top:14px'><button class='tb' id='m-close' style='width:100%;padding:10px;font-size:11px;letter-spacing:.1em'>CLOSE</button></div>";
