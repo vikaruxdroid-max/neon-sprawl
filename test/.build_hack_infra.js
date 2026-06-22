@@ -1,526 +1,32 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<meta name="color-scheme" content="dark">
-<title>NEON SPRAWL — Colony Protocol</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-<style>
-:root{
-  /* Cyberpunk + bioluminescent surreal palette */
-  --cy:#22ddff; --mg:#e85ffb; --yl:#ffd24a; --gn:#5cff9e; --rd:#ff5470; --or:#ff9a52;
-  --vi:#b478ff; --am:#ffc05a; /* violet + amber for bioluminescence */
-  --bg:#010408; --panel:rgba(6,13,26,.96); --bd:#16335c; --tx:#e4f4ff; --dim:#8aa8c8;
-  --disp:"Chakra Petch",system-ui,sans-serif; --mono:"JetBrains Mono","Cascadia Mono",monospace;
-  --hud-h:46px;
-}
-*{box-sizing:border-box}
-html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
-  font-family:var(--mono);color:var(--tx);
-  -webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
-#c{position:fixed;inset:0;display:block;touch-action:none;cursor:crosshair}
+// ---- headless DOM/canvas stubs ----
+function mkCtx(){const t={};return new Proxy(t,{
+  get(o,p){if(p==="createRadialGradient"||p==="createLinearGradient")return ()=>({addColorStop(){}});
+    if(p in o)return o[p];return ()=>{}},
+  set(o,p,v){o[p]=v;return true}})}
+function mkEl(){return{style:{},dataset:{},children:[],className:"",innerHTML:"",textContent:"",title:"",
+  width:0,height:0,
+  classList:{_s:new Set(),add(c){this._s.add(c)},remove(c){this._s.delete(c)},
+    toggle(c,v){if(v===undefined){this._s.has(c)?this._s.delete(c):this._s.add(c)}else{v?this._s.add(c):this._s.delete(c)}},
+    contains(c){return this._s.has(c)}},
+  addEventListener(){},appendChild(c){this.children.push(c)},prepend(c){this.children.unshift(c)},
+  remove(){},setAttribute(){},dataset:{},style:this.style||{},
+  removeChild(c){const i=this.children.indexOf(c);if(i>=0)this.children.splice(i,1)},
+  get lastChild(){return this.children[this.children.length-1]},
+  getContext(){return mkCtx()}}}
+const _els={};
+globalThis.document={getElementById(id){return _els[id]||(_els[id]=mkEl())},
+  addEventListener(){},body:mkEl(),
+  createElement(tag){return tag==="canvas"?{width:0,height:0,style:{},getContext:()=>mkCtx()}:mkEl()}};
+globalThis.window={addEventListener(){},devicePixelRatio:1,innerWidth:1280,innerHeight:800};
+globalThis.requestAnimationFrame=()=>0;
 
-/* ── PANELS ── */
-.panel{background:var(--panel);border:1px solid var(--bd);border-radius:6px;z-index:10;
-  box-shadow:0 4px 24px rgba(0,0,0,.6)}
-.tb{background:rgba(8,18,36,.85);border:1px solid var(--bd);color:var(--tx);padding:7px 12px;
-  font:inherit;font-size:12px;letter-spacing:.06em;cursor:pointer;border-radius:5px;
-  white-space:nowrap;transition:border-color .12s,box-shadow .12s,color .12s}
-.tb:hover{border-color:var(--cy);color:#e8f6ff;box-shadow:0 0 10px rgba(0,212,255,.3)}
-.tb.on{border-color:var(--cy);color:var(--cy);background:rgba(0,212,255,.1);
-  box-shadow:0 0 12px rgba(0,212,255,.35),inset 0 0 6px rgba(0,212,255,.08)}
-.tb.warnb{border-color:rgba(255,61,90,.5)}
-.gap{flex:1}
+// in-memory localStorage shim for save/load tests
+global.localStorage={_d:Object.create(null),
+  getItem(k){return k in this._d?this._d[k]:null},
+  setItem(k,v){this._d[k]=String(v)},
+  removeItem(k){delete this._d[k]}};
 
-/* ── HUD (single unified bar) ── */
-#hud{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:0;
-  height:var(--hud-h);z-index:20;border-bottom:1px solid var(--bd);overflow:visible;
-  background:linear-gradient(180deg,rgba(2,8,22,.98) 0%,rgba(2,8,22,.82) 100%)}
-/* the right-hand controls must never get pushed off-screen; the middle content yields instead */
-#hud > .hud-seg:last-child{margin-left:auto;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;row-gap:2px}
-#hud .hud-goods{flex-shrink:1;min-width:0;overflow:hidden}
-.hud-seg{display:flex;align-items:center;gap:8px;padding:0 14px;height:100%;
-  border-right:1px solid rgba(13,32,64,.8)}
-.hud-seg:last-child{border-right:none}
-.hud-label{font-size:10px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase}
-.hud-val{font-family:var(--disp);font-size:14px;font-weight:600;color:#f0faff;letter-spacing:.04em}
-.hud-val.danger{color:var(--rd);animation:pulse-red 1s ease-in-out infinite}
-.hud-val.warn{color:var(--yl)}
-.hud-pip{display:inline-flex;align-items:center;gap:3px;font-size:11px;white-space:nowrap}
-.hud-pip .dot{width:6px;height:6px;border-radius:1px;flex-shrink:0}
-.hud-goods{display:flex;align-items:center;gap:10px;padding:0 12px}
-.hud-day{font-family:var(--disp);font-size:12px;letter-spacing:.1em;color:var(--cy);
-  text-shadow:0 0 10px rgba(0,212,255,.5)}
-@keyframes pulse-red{0%,100%{opacity:1}50%{opacity:.55}}
-#hud.crisis{border-bottom-color:rgba(255,61,90,.6);
-  box-shadow:0 0 20px rgba(255,61,90,.25) inset}
 
-/* ── DIARY entries (rendered inside overlay) ── */
-.dday{font-family:var(--disp);font-size:9px;letter-spacing:.22em;color:var(--vi);
-  text-transform:uppercase;padding:6px 0 3px;border-top:1px solid rgba(13,32,64,.6);
-  margin-top:4px}
-.dday:first-child{border-top:none;margin-top:0}
-.dent{display:flex;align-items:baseline;gap:6px;padding:2px 0;font-size:10px;line-height:1.4}
-.dent .dtime{color:var(--dim);font-size:9px;flex-shrink:0;letter-spacing:.04em}
-.dent .dtag{font-family:var(--disp);font-size:8px;letter-spacing:.1em;
-  padding:1px 5px;border-radius:3px;flex-shrink:0;border:1px solid currentColor;opacity:.85}
-.dent .dmsg{color:var(--tx);opacity:.88}
-.dtag.crime{color:#ff6b6b}.dtag.eco{color:#47d4b8}.dtag.social{color:var(--vi)}
-.dtag.health{color:#6bcfff}.dtag.district{color:var(--yl)}.dtag.info{color:var(--dim)}
-
-/* ── INSPECT ── */
-#inspect{position:fixed;left:8px;bottom:60px;width:360px;height:560px;max-height:calc(100vh - 130px);padding:14px 16px;
-  font-size:12px;display:none;line-height:1.55;z-index:30;overflow-y:auto;overflow-x:hidden;box-sizing:border-box}
-#inspect h3{margin:0 0 3px;font-family:var(--disp);font-weight:700;font-size:18px;
-  color:#eafff4;letter-spacing:.02em}
-#inspect .sub{color:var(--dim);font-size:11px;margin-bottom:5px;line-height:1.5}
-.bar{height:5px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);
-  border-radius:3px;margin:2px 0 6px;overflow:hidden}
-.bar i{display:block;height:100%;border-radius:3px}
-.blab{display:flex;justify-content:space-between;font-size:10px;color:var(--dim)}
-#inspect .tb{margin-top:6px;margin-right:5px;padding:5px 9px}
-.ordsec{font-family:var(--disp);font-weight:600;font-size:9px;letter-spacing:.2em;
-  color:var(--dim);text-transform:uppercase;margin:11px 0 7px;
-  display:flex;align-items:center;gap:7px}
-.ordsec::after{content:"";flex:1;height:1px;background:var(--bd)}
-/* reactive ops menu */
-.opcat{font-family:var(--disp);font-weight:600;font-size:8px;letter-spacing:.18em;
-  color:var(--dim);opacity:.75;text-transform:uppercase;margin:7px 0 0;
-  display:flex;align-items:center;gap:6px}
-.opcat::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--bd),transparent)}
-.i-op{transition:border-color .15s,color .15s,box-shadow .15s,transform .08s}
-.i-op:active{transform:scale(.96)}
-.i-op.armed{animation:oparm 1s ease-in-out infinite}
-@keyframes oparm{0%,100%{box-shadow:0 0 0 rgba(255,210,74,0)}50%{box-shadow:0 0 9px rgba(255,210,74,.5)}}
-.i-op.opdis{cursor:not-allowed;opacity:.7}
-.optargethint{padding:5px 8px;background:rgba(255,210,74,.08);border-radius:5px;border:1px solid rgba(255,210,74,.25)}
-/* act-on-wisp operation buttons */
-.wisp-ops{display:flex;flex-direction:column;gap:3px;margin:4px 0}
-.wisp-op{text-align:left;font-size:9px;padding:5px 8px;letter-spacing:.03em;transition:border-color .15s,color .15s,box-shadow .15s}
-.wisp-op:not(.dim):hover{box-shadow:0 0 8px rgba(34,221,255,.3)}
-.wisp-op.dim{cursor:default}
-.ordgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
-.ob{font-family:var(--disp);font-weight:600;font-size:10px;
-  background:rgba(0,212,255,.06);border:1px solid var(--bd);color:var(--tx);
-  padding:8px 4px;border-radius:6px;cursor:pointer;
-  display:flex;flex-direction:column;align-items:center;gap:3px;
-  transition:border-color .12s,background .12s}
-.ob span{font-size:14px;line-height:1}
-.ob:hover{border-color:var(--cy);color:#eafff4;background:rgba(0,212,255,.12)}
-.i-talk{background:rgba(162,89,255,.16)!important;border-color:rgba(162,89,255,.42)!important;color:#e7dcff!important}
-
-/* ── DISTRICT STATS (rendered inside overlay) ── */
-.ov-body h4{color:var(--cy);letter-spacing:.12em;font-size:11px;
-  margin:10px 0 6px;text-transform:uppercase;
-  display:flex;align-items:center;gap:6px}
-.ov-body h4::after{content:"";flex:1;height:1px;background:var(--bd)}
-.ov-body .srow{display:flex;justify-content:space-between;color:var(--dim);margin-bottom:4px;font-size:12px;line-height:1.55}
-.ov-body .srow b{color:var(--tx)}
-.ov-body .sbad{color:var(--rd)}
-.ov-body .sgood{color:var(--gn)}
-
-/* ── REQUESTS ── */
-#requests{position:fixed;left:8px;top:calc(var(--hud-h) + 32vh + 18px);
-  width:310px;max-height:28vh;overflow-y:auto;padding:4px 6px;display:none;z-index:11}
-#requests .rq-hdr{color:var(--cy);font-size:9px;letter-spacing:.18em;margin-bottom:4px;
-  padding-bottom:3px;border-bottom:1px solid var(--bd)}
-.rq-card{background:rgba(6,12,28,.9);border:1px solid var(--bd);border-radius:5px;
-  padding:8px 10px;margin-bottom:5px;font-size:11px;line-height:1.45}
-.rq-card.rq-warn{border-color:rgba(255,140,66,.4)}
-.rq-card.rq-urgent{border-color:rgba(255,61,90,.5)}
-.rq-name{font-size:9px;letter-spacing:.1em;margin-bottom:3px;color:var(--dim)}
-.rq-text{color:#c8d8f0;margin-bottom:7px}
-.rq-opts{display:flex;gap:5px;flex-wrap:wrap}
-.rq-opts .tb{padding:4px 9px;font-size:10px}
-@keyframes rq-expire{0%{border-color:rgba(255,140,66,.4)}100%{border-color:rgba(255,61,90,.6)}}
-
-/* ── CHAT ── */
-#chat{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
-  width:390px;max-width:calc(100vw - 28px);height:min(72vh,540px);
-  display:none;flex-direction:column;background:rgba(4,10,22,.97);
-  border:1px solid rgba(0,212,255,.25);border-radius:12px;
-  box-shadow:0 0 50px rgba(0,0,0,.8),0 0 20px rgba(0,212,255,.08);z-index:80;overflow:hidden}
-#chat.open{display:flex}
-#chat .ch-hd{display:flex;align-items:center;gap:8px;padding:12px 14px;
-  border-bottom:1px solid var(--bd)}
-#chat .ch-hd h4{margin:0;font-family:var(--disp);font-size:14px;letter-spacing:.04em;flex:1}
-#chat .ch-x{cursor:pointer;color:var(--dim);font-size:16px;line-height:1;padding:2px 6px}
-#chat .ch-x:hover{color:var(--tx)}
-#chat .ch-log{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
-#chat .cm{font-size:12px;line-height:1.45;padding:8px 11px;border-radius:10px;
-  max-width:86%;white-space:pre-wrap;word-break:break-word}
-#chat .cm.u{align-self:flex-end;background:rgba(0,212,255,.12);
-  border:1px solid rgba(0,212,255,.28);color:var(--tx)}
-#chat .cm.a{align-self:flex-start;background:rgba(162,89,255,.11);
-  border:1px solid rgba(162,89,255,.28);color:var(--tx)}
-#chat .cm.sys{align-self:center;color:var(--dim);font-size:10px;background:none;border:none;text-align:center}
-#chat .cm.act{align-self:center;background:rgba(57,255,136,.1);
-  border:1px solid rgba(57,255,136,.32);color:#bdffe0;font-size:11px;
-  font-family:var(--disp);letter-spacing:.02em;text-align:center}
-#chat .ch-in{display:flex;gap:6px;padding:10px 14px;border-top:1px solid var(--bd)}
-#chat .ch-in input{flex:1;background:rgba(2,8,20,.8);border:1px solid var(--bd);
-  color:var(--tx);font-family:var(--mono);font-size:12px;padding:8px 10px;
-  border-radius:7px;outline:none}
-#chat .ch-in input:focus{border-color:rgba(0,212,255,.5)}
-#chat .ch-in button{background:var(--cy);color:#010408;border:none;
-  font-family:var(--disp);font-size:12px;font-weight:700;
-  padding:8px 14px;border-radius:7px;cursor:pointer}
-#chat .ch-in button:disabled{opacity:.35;cursor:default}
-#aimeter{position:fixed;right:13px;bottom:12px;display:none;font-family:var(--mono);
-  font-size:10px;color:var(--dim);background:rgba(4,10,22,.9);
-  border:1px solid var(--bd);border-radius:6px;padding:4px 9px;z-index:55;
-  pointer-events:none;letter-spacing:.02em}
-
-/* ── TOOLBAR ── */
-/* ── OPERATIVE DOCK — a quiet persistent status strip that expands into controls on demand ── */
-/* OPS COMMAND BAR — bottom-CENTER, stacked just ABOVE the build toolbar (which already owns bottom:8px). The
-   operative's toolkit sits front-and-center as the primary action surface. The collapsible strip rises into
-   the ops panel upward. NOTE: the build submenu also pops up here transiently when a tool category is open —
-   the ops bar yields to it (lower z-index) so it doesn't fight the submenu while you're placing buildings. */
-#op-dock{position:fixed;left:50%;transform:translateX(-50%);bottom:56px;z-index:16;font-family:var(--mono);
-  display:flex;flex-direction:column;gap:0;max-width:520px;width:max-content;align-items:stretch;user-select:none}
-#op-dock .od-strip{display:flex;align-items:center;gap:8px;cursor:pointer;
-  background:rgba(4,10,22,.95);border:1px solid var(--bd);border-radius:8px;
-  padding:6px 11px;box-shadow:0 -2px 14px rgba(0,0,0,.4);transition:border-color .15s,box-shadow .15s}
-#op-dock .od-strip:hover{border-color:var(--cy);box-shadow:0 0 12px rgba(34,221,255,.25)}
-#op-dock .od-glyph{font-size:13px;color:var(--cy);filter:drop-shadow(0 0 4px rgba(34,221,255,.6))}
-#op-dock .od-title{font-family:var(--disp);font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--cy)}
-#op-dock .od-state{font-size:9.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
-#op-dock .od-state b{color:var(--tx);font-weight:600}
-#op-dock .od-chev{margin-left:auto;font-size:9px;color:var(--dim);transition:transform .2s}
-#op-dock.expanded .od-chev{transform:rotate(180deg)}
-#op-dock .od-panel{display:none;background:rgba(4,10,22,.97);border:1px solid var(--bd);
-  border-bottom:none;border-radius:8px 8px 0 0;padding:9px 11px;margin-bottom:-1px;
-  box-shadow:0 -4px 18px rgba(0,0,0,.5);animation:odrise .18s ease-out}
-#op-dock.expanded .od-panel{display:block}
-#op-dock.expanded .od-strip{border-radius:0 0 8px 8px}
-@keyframes odrise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-#op-dock .od-row{display:flex;gap:6px;margin-top:7px}
-#op-dock .od-btn{flex:1;background:rgba(8,18,36,.85);border:1px solid var(--bd);color:var(--tx);
-  font-family:var(--disp);font-size:9.5px;font-weight:600;letter-spacing:.06em;
-  padding:6px 4px;border-radius:6px;cursor:pointer;transition:border-color .15s,color .15s,box-shadow .15s}
-#op-dock .od-btn:hover{border-color:var(--cy);color:var(--cy);box-shadow:0 0 9px rgba(34,221,255,.3)}
-#op-dock .od-btn.on{border-color:var(--cy);color:var(--cy);background:rgba(34,221,255,.12)}
-#op-dock .od-stat{display:flex;gap:11px;font-size:9px;color:var(--dim);margin-top:2px}
-#op-dock .od-stat b{font-weight:700}
-#op-dock .od-prog{height:4px;background:rgba(255,210,74,.15);border-radius:3px;margin-top:6px;overflow:hidden}
-#op-dock .od-prog i{display:block;height:100%;background:var(--yl);border-radius:3px;transition:width .2s}
-@media(max-width:760px){#op-dock{max-width:220px}#op-dock .od-state{max-width:110px}}
-#toolbar{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);
-  display:flex;gap:5px;padding:5px;max-width:96vw;overflow-x:auto;
-  background:rgba(4,10,22,.95);border:1px solid var(--bd);border-radius:8px;
-  box-shadow:0 -4px 20px rgba(0,0,0,.5)}
-#submenu{position:fixed;bottom:54px;left:50%;transform:translateX(-50%);
-  display:none;flex-direction:column;gap:6px;padding:8px;max-width:96vw;max-height:62vh;overflow-y:auto;
-  background:rgba(4,10,22,.97);border:1px solid var(--bd);border-radius:10px;
-  box-shadow:0 -4px 24px rgba(0,0,0,.6);min-width:280px}
-#submenu.open{display:flex}
-#submenu .cost{color:var(--or);font-size:10px;margin-left:4px}
-/* submenu header — wallet readout */
-.sm-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
-  padding:2px 4px 6px;border-bottom:1px solid var(--bd);margin-bottom:2px}
-.sm-title{font-family:var(--disp);font-size:11px;letter-spacing:.14em;color:var(--cy)}
-.sm-wallet{display:flex;align-items:center;gap:5px;font-family:var(--disp);font-size:13px;font-weight:700;color:var(--yl)}
-.sm-wallet .coin{width:13px;height:13px;border-radius:50%;
-  background:radial-gradient(circle at 35% 30%,#ffe07a,#e0a020 70%);
-  border:1px solid #b8851a;box-shadow:0 0 6px rgba(255,200,80,.4)}
-/* build category section */
-.bcat{font-family:var(--disp);font-size:9px;letter-spacing:.18em;color:var(--dim);
-  margin:4px 2px 1px;text-transform:uppercase}
-.bgrid{display:grid;grid-template-columns:repeat(2,minmax(125px,1fr));gap:5px}
-/* build card — the affordability is the whole story */
-.bcard{display:flex;align-items:center;gap:7px;padding:6px 8px;cursor:pointer;
-  background:rgba(8,18,36,.7);border:1px solid var(--bd);border-radius:7px;
-  transition:border-color .12s,background .12s,opacity .12s;text-align:left}
-.bcard .ic{font-size:16px;line-height:1;width:18px;text-align:center;flex-shrink:0}
-.bcard .nm{flex:1;font-size:11px;font-weight:600;line-height:1.15}
-.bcard .pr{display:flex;align-items:center;gap:3px;font-size:10px;font-weight:700;font-family:var(--disp)}
-.bcard .pr .coin{width:10px;height:10px;border-radius:50%;
-  background:radial-gradient(circle at 35% 30%,#ffe07a,#e0a020 70%);border:1px solid #b8851a}
-.bcard .pr.free{color:var(--gn)}
-/* affordable: bright, cyan-edged. unaffordable: dim, red price */
-.bcard.afford{border-color:rgba(0,212,255,.3)}
-.bcard.afford:hover{border-color:var(--cy);background:rgba(0,212,255,.08)}
-.bcard.afford .pr{color:var(--yl)}
-.bcard.broke{opacity:.45;cursor:not-allowed}
-.bcard.broke .pr{color:var(--rd)}
-.bcard.on{border-color:var(--cy);background:rgba(0,212,255,.14);box-shadow:0 0 0 1px var(--cy) inset}
-/* command grid */
-.cmd-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
-.cmd-b{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px;cursor:pointer;
-  background:rgba(8,18,36,.7);border:1px solid var(--bd);border-radius:7px;
-  font-family:var(--disp);font-weight:600;font-size:9.5px;letter-spacing:.04em;
-  transition:border-color .12s,background .12s}
-.cmd-b:hover{border-color:var(--cy);background:rgba(0,212,255,.08);color:var(--cy)}
-.cmd-b .ci{font-size:17px;line-height:1}
-.cmd-sel{font-size:10px;color:var(--dim);padding:2px 4px}
-.cmd-sel b{color:var(--cy)}
-#cancelTool{position:fixed;bottom:62px;left:50%;transform:translateX(-50%);
-  display:none;z-index:21;padding:9px 14px;font-size:12px}
-
-/* ── BANNER ── */
-#banner{position:fixed;top:15%;left:50%;transform:translateX(-50%);
-  font-family:var(--disp);font-size:18px;font-weight:600;letter-spacing:.45em;
-  color:var(--cy);text-shadow:0 0 22px rgba(0,212,255,.9);
-  opacity:0;transition:opacity .3s;pointer-events:none;z-index:40;white-space:nowrap}
-#banner.bad{color:var(--rd);text-shadow:0 0 22px rgba(255,61,90,.9)}
-#banner.good{color:var(--gn);text-shadow:0 0 22px rgba(57,255,136,.9)}
-#banner.warn{color:var(--yl);text-shadow:0 0 22px rgba(255,201,71,.9)}
-#banner.show{opacity:1}
-
-/* ── MODAL ── */
-#modal{position:fixed;inset:0;background:rgba(1,4,8,.88);display:none;
-  align-items:center;justify-content:center;z-index:50;
-  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
-#modal.open{display:flex}
-/* ── FULL-SCREEN OVERLAY WINDOWS (diary / crew / district) ── */
-#overlay{position:fixed;inset:0;background:rgba(1,4,8,.9);display:none;z-index:55;
-  backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
-  flex-direction:column;align-items:center;padding:24px 16px}
-#overlay.open{display:flex}
-.ov-box{width:min(860px,96vw);max-height:90vh;display:flex;flex-direction:column;
-  border:1px solid rgba(0,212,255,.3);background:rgba(4,10,22,.99);border-radius:12px;
-  box-shadow:0 0 70px rgba(0,212,255,.14);overflow:hidden}
-.ov-head{display:flex;align-items:center;justify-content:space-between;
-  padding:14px 18px;border-bottom:1px solid var(--bd);flex-shrink:0}
-.ov-head h2{margin:0;font-family:var(--disp);font-size:16px;letter-spacing:.22em;color:var(--cy)}
-.ov-x{cursor:pointer;font-size:18px;color:var(--dim);padding:2px 8px;line-height:1;border-radius:6px;transition:.12s}
-.ov-x:hover{color:var(--rd);background:rgba(255,61,90,.1)}
-.ov-tabs{display:flex;gap:4px;flex-wrap:wrap;padding:10px 18px 0;flex-shrink:0}
-.ov-tab{font-family:var(--disp);font-size:10px;letter-spacing:.1em;color:var(--dim);
-  padding:5px 12px;cursor:pointer;border:1px solid var(--bd);border-radius:6px;transition:.12s}
-.ov-tab:hover{color:var(--tx);border-color:var(--cy)}
-.ov-tab.on{color:var(--cy);border-color:var(--cy);background:rgba(0,212,255,.1)}
-.ov-body{flex:1;overflow-y:auto;padding:14px 18px;min-height:120px}
-.chronicle{display:flex;flex-direction:column;gap:2px}
-.chron-row{display:flex;align-items:baseline;gap:10px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.04)}
-.chron-day{font-family:var(--disp);font-size:9px;letter-spacing:.08em;color:var(--cy);min-width:46px;opacity:.8}
-.chron-ic{font-size:13px;min-width:18px;text-align:center}
-.chron-txt{font-size:12.5px;color:var(--tx);line-height:1.35;flex:1}
-.ov-body::-webkit-scrollbar{width:5px}
-.ov-body::-webkit-scrollbar-thumb{background:var(--bd);border-radius:3px}
-/* crew grid */
-.crew-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
-.crew-card{display:flex;align-items:center;gap:9px;padding:9px 11px;cursor:pointer;
-  background:rgba(8,18,36,.7);border:1px solid var(--bd);border-left:3px solid var(--bd);border-radius:9px;transition:.12s}
-.crew-card:hover{border-color:var(--cy);background:rgba(0,212,255,.07)}
-/* HIGHLIGHT IMPORTANT INFO — a colored left edge makes a wisp's status scannable at a glance across the grid:
-   red = in crisis (sick / broke / very low mood), amber = needs attention (homeless / hooked), green = thriving. */
-.crew-card.crew-crisis{border-left-color:#ff4757;background:rgba(255,71,87,.06)}
-.crew-card.crew-warn{border-left-color:#ff8c42}
-.crew-card.crew-good{border-left-color:#39ff88}
-.crew-st.busy{color:#8be0ff}        /* actively working/acting */
-.crew-st.idle{color:var(--dim);font-style:italic}   /* idle/sleeping — lower visual weight */
-.crew-card.sel{border-color:var(--cy);box-shadow:0 0 0 1px var(--cy) inset}
-.crew-ava{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-  font-family:var(--disp);font-weight:700;font-size:14px;color:#04101a;flex-shrink:0}
-.crew-meta{flex:1;min-width:0}
-.crew-nm{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.crew-st{font-size:9.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.crew-flags{display:flex;gap:3px;margin-top:2px}
-.crew-flag{font-size:8px;padding:1px 4px;border-radius:3px;font-weight:700;letter-spacing:.03em}
-/* crew detail (focused citizen) */
-.crew-detail{padding:0}
-.cd-back{display:inline-flex;align-items:center;gap:5px;cursor:pointer;color:var(--cy);
-  font-size:11px;font-family:var(--disp);margin-bottom:10px}
-.cd-back:hover{text-decoration:underline}
-.hud-icon{font-size:14px;line-height:1}
-#follow-ind{position:fixed;top:calc(var(--hud-h) + 10px);left:50%;transform:translateX(-50%);
-  z-index:18;font-family:var(--disp);font-size:10px;letter-spacing:.12em;
-  background:rgba(0,212,255,.14);border:1px solid rgba(0,212,255,.4);color:var(--cy);
-  padding:4px 12px;border-radius:14px;pointer-events:none;
-  box-shadow:0 0 14px rgba(0,212,255,.25);backdrop-filter:blur(3px)}
-.tb.on{border-color:var(--cy);background:rgba(0,212,255,.16);color:var(--cy)}
-.task-badge{position:absolute;top:-5px;right:-5px;min-width:15px;height:15px;
-  border-radius:8px;background:var(--rd);color:#fff;font-size:9px;font-weight:800;
-  font-family:var(--disp);display:flex;align-items:center;justify-content:center;
-  padding:0 3px;box-shadow:0 0 6px rgba(255,61,90,.6);animation:badgePulse 1.4s infinite}
-@keyframes badgePulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
-.task-sec{font-family:var(--disp);font-size:10px;letter-spacing:.14em;color:var(--cy);
-  margin:10px 2px 6px;text-transform:uppercase;border-bottom:1px solid var(--bd);padding-bottom:4px}
-.task-alert{display:flex;align-items:center;gap:9px;padding:8px 11px;margin-bottom:5px;
-  background:rgba(8,18,36,.7);border:1px solid var(--bd);border-left-width:3px;border-radius:7px}
-.task-alert .ta-ic{font-size:16px;flex-shrink:0}
-.task-alert .ta-body{flex:1;min-width:0}
-.task-alert .ta-t{font-size:12px;font-weight:600}
-.task-alert .ta-s{font-size:10px;color:var(--dim)}
-.task-alert.crit{border-left-color:var(--rd)}
-.task-alert.warn{border-left-color:var(--or)}
-.task-alert.info{border-left-color:var(--cy)}
-/* save slots */
-.slot-list{display:flex;flex-direction:column;gap:8px}
-.slot-row{display:flex;align-items:center;gap:10px;padding:11px 13px;
-  background:rgba(8,18,36,.7);border:1px solid var(--bd);border-radius:9px}
-.slot-row.filled{border-color:rgba(0,212,255,.3)}
-.slot-meta{flex:1;min-width:0}
-.slot-name{font-family:var(--disp);font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--cy)}
-.slot-info{font-size:10px;color:var(--dim);margin-top:2px}
-.hud-tier{font-family:var(--disp);font-weight:800;font-size:12px;color:#04101a;
-  background:linear-gradient(135deg,#ffe07a,#ffb020);border-radius:5px;padding:1px 6px;
-  box-shadow:0 0 8px rgba(255,200,80,.5);letter-spacing:.04em}
-.prosp-wrap{display:inline-block;width:54px;height:7px;border-radius:4px;
-  background:rgba(255,255,255,.08);overflow:hidden;margin:0 5px;vertical-align:middle}
-.prosp-fill{display:block;height:100%;width:0%;border-radius:4px;
-  background:linear-gradient(90deg,#ff3d5a,#ffc947 50%,#39ff88);transition:width .4s}
-.mbox{width:min(580px,92vw);max-width:92vw;box-sizing:border-box;max-height:88vh;overflow-y:auto;overflow-x:hidden;padding:26px 30px;
-  border:1px solid rgba(0,212,255,.25);background:rgba(4,10,22,.98);text-align:center;
-  box-shadow:0 0 60px rgba(0,212,255,.12);border-radius:10px}
-.mbox h1{margin:0;font-size:28px;letter-spacing:.3em;color:var(--cy);
-  text-shadow:0 0 24px rgba(0,212,255,.7)}
-.mbox .mh-sub{color:var(--mg);letter-spacing:.45em;font-size:11px;margin:4px 0 16px}
-.mbox p{font-size:12px;line-height:1.65;color:#9fb4d8}
-.mbox table{font-size:11px;border-collapse:collapse;width:100%;margin:8px 0;text-align:left}
-.mbox td{padding:3px 6px;border-bottom:1px solid #0d1a30}
-.mbox td:first-child{color:var(--cy);white-space:nowrap}
-.mbox .big{display:block;width:100%;box-sizing:border-box;padding:12px 24px;font-size:13px;letter-spacing:.2em;
-  border-color:var(--cy);color:var(--cy);margin-top:12px}
-.mbox .stat{color:#e8f6ff}
-/* character-creation wizard: tap/hover a stat row highlights it; description shows in the fixed slot above, not inline */
-.cc-attr-block:hover{background:rgba(34,221,255,.07)!important;border-color:rgba(34,221,255,.25)!important}
-.cc-attr-block.revealed{background:rgba(34,221,255,.10)!important;border-color:rgba(34,221,255,.35)!important}
-.cc-bg:hover{border-color:rgba(34,221,255,.5)!important}
-
-/* ── MISC ── */
-#checklist{display:none}
-@media (max-width:700px){
-  #hud{font-size:10px;gap:4px}
-  .hud-seg{gap:4px;padding:0 7px}
-  .hud-goods{gap:6px;padding:0 6px}
-  #inspect{width:300px;height:auto;max-height:50vh;bottom:96px;font-size:11px}
-  #requests{width:220px;top:calc(var(--hud-h) + 28vh + 14px)}
-  #toolbar{bottom:6px;padding:4px}
-  .tb{padding:5px 7px;font-size:10px}
-  #submenu{bottom:46px}
-  .mbox h1{font-size:20px}
-  #stats-panel{width:220px;font-size:10px}
-}
-</style>
-</head>
-<body>
-<canvas id="c"></canvas>
-
-<!-- UNIFIED HUD -->
-<div id="hud">
-  <!-- Left: time + district vitals -->
-  <div class="hud-seg">
-    <span class="hud-day" id="h-day">DAY 1 · 06:00</span>
-  </div>
-  <div class="hud-seg">
-    <span class="hud-label">POP</span><span class="hud-val" id="h-pop">7</span>
-    <span class="hud-label" style="margin-left:8px">CR</span><span class="hud-val" id="h-cred">0</span>
-    <span class="hud-label" style="margin-left:8px">DIST</span><span class="hud-val" id="h-income">0</span>
-    <span class="hud-label" style="margin-left:8px">EVICT</span><span class="hud-val" id="h-home">0</span>
-    <span class="hud-label" style="margin-left:8px">HEAT</span><span class="hud-val" id="h-heat">0</span>
-  </div>
-  <div class="hud-seg" id="h-tier-seg" title="District tier + prosperity">
-    <span class="hud-tier" id="h-tier">T1</span>
-    <span class="prosp-wrap"><span class="prosp-fill" id="h-prosp-fill"></span></span>
-    <span class="hud-val" id="h-prosp" style="font-size:10px">0</span>
-  </div>
-  <!-- Center: goods inline -->
-  <div class="hud-goods">
-    <span class="hud-pip" title="Food"><span class="dot" style="background:#b8ff5e"></span><span id="g-food" style="color:var(--dim)">0</span></span>
-    <span class="hud-pip" title="Scrap"><span class="dot" style="background:#a08a6a"></span><span id="g-scrap" style="color:var(--dim)">0</span></span>
-    <span class="hud-pip" title="Data"><span class="dot" style="background:#47c8ff"></span><span id="g-data" style="color:var(--dim)">0</span></span>
-    <span class="hud-pip" title="Chem"><span class="dot" style="background:#39ff88"></span><span id="g-chem" style="color:var(--dim)">0</span></span>
-    <span class="hud-pip" title="Parts"><span class="dot" style="background:#ff8c42"></span><span id="g-parts" style="color:var(--dim)">0</span></span>
-    <span class="hud-pip" title="Stims"><span class="dot" style="background:#c98bff"></span><span id="g-stims" style="color:var(--dim)">0</span></span>
-    <span class="hud-pip" title="Gear"><span class="dot" style="background:#7aa2ff"></span><span id="g-gear" style="color:var(--dim)">0</span></span>
-  </div>
-  <div class="hud-seg" id="mov-seg" title="The Movement — support · intel · exposure" style="gap:7px">
-    <span class="hud-pip" title="Support — share of the district behind your cause"><span style="color:#5cff9e">✊</span><span class="hud-val" id="m-support" style="font-size:12px;color:#5cff9e">5</span></span>
-    <span class="hud-pip" title="Intel — espionage resource, spend on ops"><span style="color:#22ddff">◆</span><span class="hud-val" id="m-intel" style="font-size:12px;color:#22ddff">0</span></span>
-    <span class="hud-pip" title="Exposure — how much the regime suspects you"><span style="color:#ff5470">◎</span><span class="hud-val" id="m-exposure" style="font-size:12px;color:#ff5470">0</span></span>
-    <span class="hud-pip" title="Regime grip on the district — drive it down"><span style="color:var(--dim)">⛓</span><span class="hud-val" id="m-grip" style="font-size:12px;color:var(--dim)">60</span></span>
-  </div>
-  <div class="gap"></div>
-  <!-- Right: controls -->
-  <div class="hud-seg" style="border-right:none;gap:4px">
-    <button class="tb spd" id="sp-p">⏸</button>
-    <button class="tb spd on" id="sp-1">1×</button>
-    <button class="tb spd" id="sp-2">2×</button>
-    <button class="tb spd" id="sp-3">3×</button>
-    <span style="width:1px;background:var(--bd);height:20px;margin:0 4px"></span>
-    <button class="tb" id="b-diary" title="Diary"><span class="hud-icon">📖</span></button>
-    <button class="tb" id="b-crew" title="Crew"><span class="hud-icon">👥</span></button>
-    <button class="tb" id="b-tasks" title="Tasks" style="position:relative"><span class="hud-icon">📋</span><span class="task-badge" id="task-badge" style="display:none">0</span></button>
-    <button class="tb" id="b-stats" title="District"><span class="hud-icon">📊</span></button>
-    <button class="tb" id="b-ops" title="Operative screen — base, gear &amp; more" style="font-size:10px;letter-spacing:.06em;padding:3px 7px">OPS</button>
-    <span style="width:1px;background:var(--bd);height:20px;margin:0 4px"></span>
-    <button class="tb" id="b-fs" title="Fullscreen">⛶</button>
-    <button class="tb" id="b-menu" title="Menu (Esc)"><span class="hud-icon">☰</span></button>
-  </div>
-</div>
-<div id="weather-menu" style="display:none;position:fixed;top:52px;right:12px;z-index:30;background:rgba(4,10,22,.97);border:1px solid var(--bd);border-radius:10px;padding:8px;box-shadow:0 6px 24px rgba(0,0,0,.5);min-width:150px">
-  <div style="font-family:var(--disp);font-size:9px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin:2px 4px 7px">Weather</div>
-  <button class="wx-opt" id="wx-rain" style="display:flex;align-items:center;gap:9px;width:100%;background:rgba(8,18,36,.7);border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:11px;padding:7px 9px;border-radius:7px;cursor:pointer;margin-bottom:5px"><span class="hud-icon">☂</span> Rain &amp; Fog <span id="wx-rain-state" style="margin-left:auto;font-size:9px;color:var(--dim)">off</span></button>
-  <button class="wx-opt" id="wx-storm" style="display:flex;align-items:center;gap:9px;width:100%;background:rgba(8,18,36,.7);border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:11px;padding:7px 9px;border-radius:7px;cursor:pointer"><span class="hud-icon">⚡</span> Lightning <span id="wx-storm-state" style="margin-left:auto;font-size:9px;color:var(--dim)">off</span></button>
-</div>
-
-<!-- ESC SYSTEM MENU — Escape with nothing selected opens this; Escape again (or click outside) closes it -->
-<div id="sys-menu" style="display:none;position:fixed;inset:0;z-index:60;background:rgba(2,6,14,.72);backdrop-filter:blur(3px);align-items:center;justify-content:center">
-  <div style="background:rgba(6,12,24,.98);border:1px solid var(--bd);border-radius:14px;padding:22px 20px;min-width:240px;box-shadow:0 12px 48px rgba(0,0,0,.6)">
-    <div style="font-family:var(--disp);font-size:13px;font-weight:700;letter-spacing:.2em;color:var(--cy);text-align:center;margin-bottom:16px">MENU</div>
-    <button class="sys-btn" id="sys-resume" style="display:block;width:100%;background:rgba(8,18,36,.85);border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:12px;padding:10px;border-radius:8px;cursor:pointer;margin-bottom:7px;letter-spacing:.05em">▸ RESUME</button>
-    <button class="sys-btn" id="sys-settings" style="display:block;width:100%;background:rgba(8,18,36,.85);border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:12px;padding:10px;border-radius:8px;cursor:pointer;margin-bottom:7px;letter-spacing:.05em">⚙ SETTINGS</button>
-    <button class="sys-btn" id="sys-save" style="display:block;width:100%;background:rgba(8,18,36,.85);border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:12px;padding:10px;border-radius:8px;cursor:pointer;margin-bottom:7px;letter-spacing:.05em">💾 SAVE</button>
-    <button class="sys-btn" id="sys-load" style="display:block;width:100%;background:rgba(8,18,36,.85);border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:12px;padding:10px;border-radius:8px;cursor:pointer;margin-bottom:7px;letter-spacing:.05em">📂 LOAD</button>
-    <button class="sys-btn" id="sys-help" style="display:block;width:100%;background:rgba(8,18,36,.85);border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:12px;padding:10px;border-radius:8px;cursor:pointer;margin-bottom:7px;letter-spacing:.05em">? HELP</button>
-    <button class="sys-btn" id="sys-newgame" style="display:block;width:100%;background:rgba(36,12,18,.85);border:1px solid rgba(255,84,112,.4);color:#ff8da3;font-family:var(--mono);font-size:12px;padding:10px;border-radius:8px;cursor:pointer;letter-spacing:.05em">⟲ NEW GAME</button>
-  </div>
-</div>
-
-<!-- SETTINGS PANEL — music (mute / volume / skip) + weather (rain / thunder), consolidated -->
-<div id="settings-menu" style="display:none;position:fixed;inset:0;z-index:61;background:rgba(2,6,14,.72);backdrop-filter:blur(3px);align-items:center;justify-content:center">
-  <div style="background:rgba(6,12,24,.98);border:1px solid var(--bd);border-radius:14px;padding:22px 22px;min-width:300px;box-shadow:0 12px 48px rgba(0,0,0,.6)">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-      <span style="font-family:var(--disp);font-size:13px;font-weight:700;letter-spacing:.2em;color:var(--cy)">SETTINGS</span>
-      <span id="settings-x" style="cursor:pointer;color:var(--dim);font-size:16px">✕</span>
-    </div>
-    <div style="font-family:var(--disp);font-size:9px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin:0 0 8px">Music</div>
-    <button class="set-opt" id="set-mute" style="display:flex;align-items:center;gap:9px;width:100%;background:rgba(8,18,36,.7);border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:11px;padding:8px 10px;border-radius:7px;cursor:pointer;margin-bottom:7px"><span class="hud-icon">🔊</span> Music <span id="set-mute-state" style="margin-left:auto;font-size:9px;color:var(--dim)">on</span></button>
-    <div style="display:flex;align-items:center;gap:9px;padding:4px 10px 8px"><span style="font-size:10px;color:var(--dim);min-width:48px">Volume</span><input type="range" id="set-vol" min="0" max="100" value="34" style="flex:1;accent-color:#22ddff"><span id="set-vol-val" style="font-size:10px;color:var(--cy);min-width:30px;text-align:right">34</span></div>
-    <button class="set-opt" id="set-skip" style="display:flex;align-items:center;gap:9px;width:100%;background:rgba(8,18,36,.7);border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:11px;padding:8px 10px;border-radius:7px;cursor:pointer;margin-bottom:13px"><span class="hud-icon">⏭</span> Skip Song</button>
-    <div style="font-family:var(--disp);font-size:9px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin:0 0 8px">Weather</div>
-    <button class="set-opt" id="set-rain" style="display:flex;align-items:center;gap:9px;width:100%;background:rgba(8,18,36,.7);border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:11px;padding:8px 10px;border-radius:7px;cursor:pointer;margin-bottom:7px"><span class="hud-icon">☂</span> Rain &amp; Fog <span id="set-rain-state" style="margin-left:auto;font-size:9px;color:var(--dim)">off</span></button>
-    <button class="set-opt" id="set-storm" style="display:flex;align-items:center;gap:9px;width:100%;background:rgba(8,18,36,.7);border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:11px;padding:8px 10px;border-radius:7px;cursor:pointer"><span class="hud-icon">⚡</span> Lightning <span id="set-storm-state" style="margin-left:auto;font-size:9px;color:var(--dim)">off</span></button>
-  </div>
-</div>
-
-<div id="checklist" class="panel"><ul id="ck"></ul></div>
-<!-- keep #log hidden for compatibility — diary is the visible log now -->
-<div id="log" style="display:none"></div>
-<div id="inspect" class="panel"></div>
-<div id="chat">
-  <div class="ch-hd"><h4 id="ch-name">—</h4><span class="ch-x" id="ch-x">✕</span></div>
-  <div class="ch-log" id="ch-log"></div>
-  <div class="ch-in"><input id="ch-input" placeholder="say something…" maxlength="280" autocomplete="off"><button id="ch-send">SEND</button></div>
-</div>
-<div id="aimeter"></div>
-<div id="requests" class="panel"></div>
-<!-- FULL-SCREEN OVERLAY (diary / crew / district) -->
-<div id="overlay">
-  <div class="ov-box">
-    <div class="ov-head"><h2 id="ov-title">—</h2><span class="ov-x" id="ov-x">✕</span></div>
-    <div class="ov-tabs" id="ov-tabs"></div>
-    <div class="ov-body" id="ov-body"></div>
-  </div>
-</div>
-<div id="submenu" class="panel"></div>
-<div id="op-dock"></div>
-<div id="toolbar">
-  <button class="tb mode" id="t-build">⛏ BUILD</button>
-  <button class="tb mode" id="t-zone">▦ ZONE</button>
-  <button class="tb mode" id="t-command">⚇ COMMAND</button>
-</div>
-<button id="cancelTool" class="tb warnb">✕ CANCEL</button>
-<div id="banner"></div>
-<div id="follow-ind" style="display:none"></div>
-<div id="modal"></div>
-<script>
 "use strict";
 /* ============================================================
    NEON SPRAWL — Colony Protocol  v0.1
@@ -13294,6 +12800,123 @@ function loop(ts){requestAnimationFrame(loop);
 window.addEventListener("resize",resize);
 resize();showStart();
 requestAnimationFrame(loop);
-</script>
-</body>
-</html>
+
+"use strict";
+let pass=0,fail=0;
+function ok(label,cond){if(cond){console.log("PASS",label);pass++;}else{console.log("FAIL",label);fail++;}}
+
+// ── DEF entries ───────────────────────────────────────────────────────────────
+ok("DEF.gridtap exists",          !!DEF.gridtap);
+ok("gridtap pillar=hack",         DEF.gridtap&&DEF.gridtap.pillar==="hack");
+ok("gridtap espionage=true",      DEF.gridtap&&DEF.gridtap.espionage===true);
+ok("gridtap infraRadius=5",       DEF.gridtap&&DEF.gridtap.infraRadius===5);
+ok("gridtap cost.income=120",     DEF.gridtap&&DEF.gridtap.cost&&DEF.gridtap.cost.income===120);
+ok("DEF.relay exists",            !!DEF.relay);
+ok("relay pillar=hack",           DEF.relay&&DEF.relay.pillar==="hack");
+ok("relay espionage=true",        DEF.relay&&DEF.relay.espionage===true);
+ok("relay infraRadius=6",         DEF.relay&&DEF.relay.infraRadius===6);
+
+// ── BUILD_CATS Cyberwar category ──────────────────────────────────────────────
+const cw=BUILD_CATS.find(c=>c.name==="Cyberwar");
+ok("Cyberwar cat exists",         !!cw);
+ok("Cyberwar has gridtap",        cw&&cw.items.includes("gridtap"));
+ok("Cyberwar has relay",          cw&&cw.items.includes("relay"));
+ok("Cyberwar gate fn exists",     cw&&typeof cw.gate==="function");
+
+// ── gate: hidden without serverroom, visible with it ─────────────────────────
+newGame();
+ok("Cyberwar hidden without HQ",  cw&&!cw.gate());
+if(!ST.hq)ST.hq={claimed:false,stations:{}};
+ST.hq.claimed=true;
+ST.hq.stations.serverroom=true;
+ok("Cyberwar visible with serverroom", cw&&cw.gate());
+
+// ── placeBp guard: blocked without serverroom ─────────────────────────────────
+ST.hq.stations.serverroom=false;
+let px=-1,py=-1;
+outer:for(let x=60;x<80;x++)for(let y=60;y<80;y++){if(!structAt(x,y)&&colCost(x,y)>=0){px=x;py=y;break outer;}}
+const before=ST.structs.size;
+const placed=placeBp("gridtap",px,py);
+ok("placeBp blocked without serverroom", !placed && ST.structs.size===before);
+
+// ── placeBp succeeds with serverroom ─────────────────────────────────────────
+ST.hq.stations.serverroom=true;
+ST.income=9999;
+const placed2=placeBp("gridtap",px,py);
+ok("placeBp succeeds with serverroom", placed2);
+const bp=ST.structs.get(K(px,py));
+ok("struct added as blueprint",   bp&&bp.bp===true);
+finishBuild(bp);
+const fin=ST.structs.get(K(px,py));
+ok("finishBuild sets espionage",  fin&&fin.espionage===true);
+ok("finishBuild sets pillar=hack",fin&&fin.pillar==="hack");
+
+// ── infraTick drip: 1 tap → 0.05 ────────────────────────────────────────────
+newGame();
+ST.hq={claimed:true,stations:{serverroom:true}};
+ST.income=9999;
+const m1=M();
+const i0=m1.intel||0;
+let tx=-1,ty=-1;
+outer2:for(let x=50;x<70;x++)for(let y=50;y<70;y++){if(!structAt(x,y)&&colCost(x,y)>=0){tx=x;ty=y;break outer2;}}
+placeBp("gridtap",tx,ty);
+const ts=ST.structs.get(K(tx,ty));
+finishBuild(ts);
+ST.tick=200;
+infraTick();
+const i1=m1.intel||0;
+ok("1 tap drips intel",           i1>i0);
+ok("1 tap drip ~0.05",            Math.abs((i1-i0)-0.05)<0.001);
+
+// ── infraTick cap: 4 taps → 0.20 ─────────────────────────────────────────────
+newGame();
+ST.hq={claimed:true,stations:{serverroom:true}};
+ST.income=9999;
+const m2=M();
+const i2=m2.intel||0;
+let used=new Set();
+let placed4=0;
+for(let x=55;x<80&&placed4<4;x++)for(let y=55;y<80&&placed4<4;y++){
+  if(!structAt(x,y)&&colCost(x,y)>=0&&!used.has(K(x,y))){
+    used.add(K(x,y));
+    placeBp("gridtap",x,y);
+    const s4=ST.structs.get(K(x,y));
+    if(s4){finishBuild(s4);placed4++;}
+  }
+}
+ST.tick=200;
+infraTick();
+const i3=m2.intel||0;
+ok("4 taps capped at 0.20",       Math.abs((i3-i2)-0.20)<0.001);
+
+// ── hasHackReach ──────────────────────────────────────────────────────────────
+newGame();
+ST.hq={claimed:true,stations:{serverroom:true}};
+ST.income=9999;
+let hx=-1,hy=-1;
+outer3:for(let x=68;x<85;x++)for(let y=68;y<85;y++){if(!structAt(x,y)&&colCost(x,y)>=0){hx=x;hy=y;break outer3;}}
+placeBp("gridtap",hx,hy);
+const ht=ST.structs.get(K(hx,hy));
+finishBuild(ht);
+ok("reach: target 3 tiles away",  hasHackReach({x:hx+3,y:hy}));
+ok("no reach: target 7 tiles away",!hasHackReach({x:hx+7,y:hy}));
+ok("no reach: null target",        !hasHackReach(null));
+
+// no taps at all
+newGame();
+ok("no reach: no taps placed",    !hasHackReach({x:50,y:50}));
+
+// broken tap → false
+newGame();
+ST.hq={claimed:true,stations:{serverroom:true}};
+ST.income=9999;
+let bx=-1,by=-1;
+outer4:for(let x=60;x<75;x++)for(let y=60;y<75;y++){if(!structAt(x,y)&&colCost(x,y)>=0){bx=x;by=y;break outer4;}}
+placeBp("gridtap",bx,by);
+const bt=ST.structs.get(K(bx,by));
+finishBuild(bt);
+bt.isBroken=true;
+ok("no reach: broken tap ignored", !hasHackReach({x:bx+2,y:by}));
+
+console.log(`\n${pass} PASS  ${fail} FAIL`);
+if(fail>0)process.exit(1);
