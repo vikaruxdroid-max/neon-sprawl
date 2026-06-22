@@ -12223,7 +12223,7 @@ $("b-diary").onclick=()=>{SFX.ui();openOverlay("diary")};
 $("b-crew").onclick=()=>{SFX.ui();openOverlay("crew")};
 $("b-tasks").onclick=()=>{SFX.ui();openOverlay("tasks")};
 $("b-stats").onclick=()=>{SFX.ui();openOverlay("district")};
-const bOps=$("b-ops");if(bOps)bOps.onclick=()=>{if(ST.phase!=="run")return;SFX.ui();OPSTAB="base";showOpsScreen();};
+const bOps=$("b-ops");if(bOps)bOps.onclick=()=>{if(ST.phase!=="run")return;SFX.ui();OPSTAB="stats";showOpsScreen();};
 function districtStatsHTML(){
   const pawns=ST.pawns;
   let h="";
@@ -12378,6 +12378,38 @@ const ATTR_EFFECT={
   tradecraft:"Fieldcraft \u2014 better surveillance, harder to spot while tailing, cleaner operations.",
   resolve:"Willpower \u2014 resists regime pressure: blown ops leak less, and your people refuse to break.",
 };
+// ── OPERATIVE STATS TAB ───────────────────────────────────────────────────────
+function opsStatsHTML(){
+  const av=theAvatar();
+  if(!av)return "<div style='color:var(--dim);font-size:11px;padding:12px'>No operative found.</div>";
+  const bg=OPS_BACKGROUNDS.find(b=>b.k===av.background)||{name:"Unknown",desc:""};
+  let h="";
+  // identity header
+  h+="<div style='padding:10px 12px;background:rgba(34,221,255,.07);border:1px solid rgba(34,221,255,.18);border-radius:8px;margin-bottom:14px'>";
+  h+="<div style='font-size:15px;font-weight:700;color:var(--cy);letter-spacing:.06em;margin-bottom:2px'>"+av.name+"</div>";
+  h+="<div style='font-size:10px;color:var(--dim);letter-spacing:.07em;margin-bottom:6px;text-transform:uppercase'>"+bg.name+"</div>";
+  h+="<div style='font-size:10px;color:var(--tx);line-height:1.55'>"+bg.desc+"</div>";
+  h+="</div>";
+  // attribute rows
+  h+="<div style='font-size:10px;color:var(--dim);letter-spacing:.08em;margin-bottom:8px'>OPERATIVE ATTRIBUTES</div>";
+  h+="<div style='display:flex;flex-direction:column;gap:7px'>";
+  for(const a of OPS_ATTRS){
+    const v=ops(av,a.k);
+    const col=v>=8?"#5cff9e":v>=5?"#7aa2ff":"#8aa8c8";
+    h+="<div style='display:flex;align-items:center;gap:9px'>";
+    // name + value
+    h+="<div style='flex:0 0 82px;font-size:11px;font-weight:600;color:"+col+"'>"+a.name+" <span style='font-size:13px'>"+v+"</span></div>";
+    // bar track
+    h+="<div style='flex:1 1 auto;height:5px;background:rgba(120,160,200,.15);border-radius:3px;overflow:hidden'>";
+    h+="<div style='height:100%;width:"+(v/10*100)+"%25;background:"+col+";border-radius:3px;transition:width .2s'></div>";
+    h+="</div>";
+    // blurb
+    h+="<div style='flex:0 0 auto;font-size:9px;color:var(--dim);max-width:120px;text-align:right;line-height:1.3'>"+a.blurb+"</div>";
+    h+="</div>";
+  }
+  h+="</div>";
+  return h;
+}
 // ── BASE OF OPERATIONS PANEL ──────────────────────────────────────────────────
 // Renders into the shared modal. Re-calls itself after claim/build so state
 // updates live without a separate refresh mechanism.
@@ -12487,9 +12519,9 @@ function outfitterHTML(){
 function showOutfitter(){showModal("<h1 style='font-size:18px;letter-spacing:.14em;margin-bottom:2px'>⚙ OUTFITTER</h1>"+outfitterHTML()+"<div style='margin-top:14px'><button class='tb' id='m-close' style='width:100%;padding:10px;font-size:11px;letter-spacing:.1em'>CLOSE</button></div>");}
 // ──────────────────────────────────────────────────────────────────────────────
 // ── OPERATIVE SCREEN (tabbed host) ───────────────────────────────────────────
-let OPSTAB="base";
+let OPSTAB="stats";
 function showOpsScreen(){
-  const TABS=[{k:"base",label:"Base"},{k:"equipment",label:"Equipment"}];
+  const TABS=[{k:"stats",label:"Stats"},{k:"base",label:"Base"},{k:"equipment",label:"Equipment"}];
   // ── tab bar ──
   let h="<h1 style='font-size:16px;letter-spacing:.14em;margin-bottom:10px'>◈ OPERATIVE</h1>";
   h+="<div style='display:flex;gap:3px;margin-bottom:14px;border-bottom:1px solid rgba(120,160,200,.18);padding-bottom:8px'>";
@@ -12499,7 +12531,8 @@ function showOpsScreen(){
   }
   h+="</div>";
   // ── active tab body ──
-  if(OPSTAB==="base")h+=hqPanelHTML();
+  if(OPSTAB==="stats")h+=opsStatsHTML();
+  else if(OPSTAB==="base")h+=hqPanelHTML();
   else if(OPSTAB==="equipment")h+=outfitterHTML();
   h+="<div style='margin-top:14px'><button class='tb' id='m-close' style='width:100%;padding:10px;font-size:11px;letter-spacing:.1em'>CLOSE</button></div>";
   showModal(h);
