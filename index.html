@@ -12505,6 +12505,106 @@ function opsThoughtsHTML(){
   }
   return h;
 }
+// ── RELATIONSHIPS TAB ─────────────────────────────────────────────────────────
+function opsRelationsHTML(){
+  const av=theAvatar();
+  if(!av)return "<div style='color:var(--dim);font-size:11px;padding:12px'>No operative found.</div>";
+  const rep=avatarRep(), tier=legendTier();
+  const doctrine=(ST.mov&&ST.mov.doctrine)||null;
+  const ALLY_TYPES=new Set(["partner","estranged partner","mentor","close friend","friend","warm"]);
+  const THREAT_TYPES=new Set(["enemy","rival","cold"]);
+  let h="";
+
+  // ── 1. STANDING header ──
+  const tierCol=tier==="feared"?"#ff5470":tier==="beloved"?"#5cff9e":"#7aa2ff";
+  const tierLabel=tier==="feared"?"◈ FEARED":tier==="beloved"?"◈ BELOVED":"◈ UNKNOWN";
+  h+="<div style='padding:10px 12px;background:rgba(34,221,255,.07);border:1px solid rgba(34,221,255,.18);border-radius:8px;margin-bottom:14px;display:flex;align-items:center;gap:12px'>";
+  h+="<div><div style='font-size:12px;font-weight:700;color:"+tierCol+";letter-spacing:.08em'>"+tierLabel+"</div>";
+  h+="<div style='font-size:10px;color:var(--dim);margin-top:2px'>district rep <span style='color:"+tierCol+";font-weight:600'>"+(rep>=0?"+":"")+Math.round(rep)+"</span></div></div>";
+  h+="<div style='margin-left:auto;text-align:right'><div style='font-size:9px;color:var(--dim);letter-spacing:.06em'>DOCTRINE</div>";
+  h+="<div style='font-size:11px;color:#c98bff;font-weight:600'>"+(doctrine||"—")+"</div></div>";
+  h+="</div>";
+
+  // ── 2. ALLIES ──
+  const allyMap=new Map();
+  for(const q of ST.pawns){
+    if(!q.hp||q.hp<=0||q.id===av.id||isChild(q))continue;
+    const rt=relType(av.id,q.id);
+    if(ALLY_TYPES.has(rt)&&!allyMap.has(q.id))allyMap.set(q.id,{pawn:q,rt,flags:[]});
+  }
+  for(const q of ST.pawns){
+    if(q.recruited&&!isChild(q)&&q.id!==av.id&&q.hp>0){
+      const en=allyMap.get(q.id);
+      if(en)en.flags.push("recruited");
+      else allyMap.set(q.id,{pawn:q,rt:relType(av.id,q.id)||"contact",flags:["recruited"]});
+    }
+  }
+  for(const q of ST.pawns){
+    if(q.bribed&&q.id!==av.id&&q.hp>0){
+      const en=allyMap.get(q.id);
+      if(en)en.flags.push("bribed");
+      else allyMap.set(q.id,{pawn:q,rt:relType(av.id,q.id)||"contact",flags:["bribed"]});
+    }
+  }
+  h+="<div style='font-size:10px;color:var(--dim);letter-spacing:.08em;margin-bottom:6px'>ALLIES <span style='font-size:9px'>("+allyMap.size+")</span></div>";
+  if(allyMap.size===0){
+    h+="<div style='font-size:11px;color:var(--dim);font-style:italic;margin-bottom:14px;padding:8px 10px;background:rgba(8,18,36,.4);border-radius:6px'>No known allies.</div>";
+  }else{
+    h+="<div style='display:flex;flex-direction:column;gap:3px;margin-bottom:14px'>";
+    for(const[,en]of allyMap){
+      const q=en.pawn;
+      const rtCol=en.rt==="partner"||en.rt==="close friend"?"#5cff9e":en.rt==="mentor"?"#c98bff":en.rt==="friend"?"#7aa2ff":"#8aa8c8";
+      h+="<div style='display:flex;align-items:center;gap:6px;padding:5px 8px;background:rgba(8,18,36,.4);border-left:2px solid "+rtCol+";border-radius:0 4px 4px 0'>";
+      h+="<div style='flex:1;min-width:0'><span style='font-size:11px;font-weight:600;color:var(--tx)'>"+q.name+"</span>";
+      if(q.role)h+=" <span style='font-size:9px;color:var(--dim)'>"+q.role+"</span>";
+      h+="</div>";
+      h+="<span style='font-size:9px;color:"+rtCol+";text-transform:uppercase;letter-spacing:.05em'>"+en.rt+"</span>";
+      for(const f of en.flags)h+="<span style='font-size:8px;background:rgba(92,255,158,.12);color:#5cff9e;padding:1px 4px;border-radius:3px;letter-spacing:.04em'>"+f+"</span>";
+      h+="</div>";
+    }
+    h+="</div>";
+  }
+
+  // ── 3. THREATS ──
+  const threatMap=new Map();
+  for(const q of ST.pawns){
+    if(!q.hp||q.hp<=0||q.id===av.id||isChild(q))continue;
+    const rt=relType(av.id,q.id);
+    if(THREAT_TYPES.has(rt)&&!threatMap.has(q.id))threatMap.set(q.id,{pawn:q,reasons:[rt]});
+  }
+  for(const q of ST.pawns){
+    if(q.informant&&q.id!==av.id&&q.hp>0){
+      const en=threatMap.get(q.id);
+      if(en)en.reasons.push("informant");
+      else threatMap.set(q.id,{pawn:q,reasons:["informant"]});
+    }
+  }
+  for(const q of ST.pawns){
+    if(q.grudgeTarget===av.id&&q.hp>0&&q.id!==av.id){
+      const en=threatMap.get(q.id);
+      if(en)en.reasons.push("hunting you");
+      else threatMap.set(q.id,{pawn:q,reasons:["hunting you"]});
+    }
+  }
+  h+="<div style='font-size:10px;color:var(--dim);letter-spacing:.08em;margin-bottom:6px'>THREATS <span style='font-size:9px'>("+threatMap.size+")</span></div>";
+  if(threatMap.size===0){
+    h+="<div style='font-size:11px;color:var(--dim);font-style:italic;padding:8px 10px;background:rgba(8,18,36,.4);border-radius:6px'>No active threats.</div>";
+  }else{
+    h+="<div style='display:flex;flex-direction:column;gap:3px'>";
+    for(const[,en]of threatMap){
+      const q=en.pawn;
+      const threatCol=en.reasons[0]==="hunting you"?"#ff5470":en.reasons[0]==="informant"?"#ff8da3":"#ffb454";
+      h+="<div style='display:flex;align-items:center;gap:6px;padding:5px 8px;background:rgba(8,18,36,.4);border-left:2px solid "+threatCol+";border-radius:0 4px 4px 0'>";
+      h+="<div style='flex:1;min-width:0'><span style='font-size:11px;font-weight:600;color:var(--tx)'>"+q.name+"</span>";
+      if(q.role)h+=" <span style='font-size:9px;color:var(--dim)'>"+q.role+"</span>";
+      h+="</div>";
+      for(const r of en.reasons)h+="<span style='font-size:9px;color:"+threatCol+";text-transform:uppercase;letter-spacing:.05em'>"+r+"</span>";
+      h+="</div>";
+    }
+    h+="</div>";
+  }
+  return h;
+}
 // ── BASE OF OPERATIONS PANEL ──────────────────────────────────────────────────
 // Renders into the shared modal. Re-calls itself after claim/build so state
 // updates live without a separate refresh mechanism.
@@ -12616,7 +12716,7 @@ function showOutfitter(){showModal("<h1 style='font-size:18px;letter-spacing:.14
 // ── OPERATIVE SCREEN (tabbed host) ───────────────────────────────────────────
 let OPSTAB="stats";
 function showOpsScreen(){
-  const TABS=[{k:"stats",label:"Stats"},{k:"thoughts",label:"Thoughts"},{k:"base",label:"Base"},{k:"equipment",label:"Equipment"}];
+  const TABS=[{k:"stats",label:"Stats"},{k:"thoughts",label:"Thoughts"},{k:"relations",label:"Relations"},{k:"base",label:"Base"},{k:"equipment",label:"Equipment"}];
   // ── tab bar ──
   let h="<h1 style='font-size:16px;letter-spacing:.14em;margin-bottom:10px'>◈ OPERATIVE</h1>";
   h+="<div style='display:flex;gap:3px;margin-bottom:14px;border-bottom:1px solid rgba(120,160,200,.18);padding-bottom:8px'>";
@@ -12628,6 +12728,7 @@ function showOpsScreen(){
   // ── active tab body ──
   if(OPSTAB==="stats")h+=opsStatsHTML();
   else if(OPSTAB==="thoughts")h+=opsThoughtsHTML();
+  else if(OPSTAB==="relations")h+=opsRelationsHTML();
   else if(OPSTAB==="base")h+=hqPanelHTML();
   else if(OPSTAB==="equipment")h+=outfitterHTML();
   h+="<div style='margin-top:14px'><button class='tb' id='m-close' style='width:100%;padding:10px;font-size:11px;letter-spacing:.1em'>CLOSE</button></div>";
