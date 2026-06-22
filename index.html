@@ -1616,9 +1616,18 @@ function insurrectionTick(){
   if(recruited.length)m.exposure=clamp((m.exposure||0)+recruited.length*0.04*leakRate*tcShield*doctrineMod("stealth"),0,100);
   // natural cooldown if you lie low
   // lying low reduces exposure — but a hostile Enforcer's surveillance blunts how fast you can fade.
+  // Safe Room station: being at HQ accelerates the fade (2.5×) — the shielded space does its job.
   if(ST.tick%50===0&&m.stance==="hidden"){
     const enf=ST.pawns.find(p=>p.role==="enforcer"&&p.hp>0&&(p.allegiance||0)<-10);
-    const fade=enf?0.7:1.5;   // enforcer presence halves your fade rate
+    let fade=enf?0.7:1.5;
+    if(hasStation("saferoom")){
+      const rm=ST.hq&&ST.hq.room;
+      const av=theAvatar();
+      if(rm&&av&&av.hp>0){
+        const cx=rm.x0+rm.w/2, cy=rm.y0+rm.h/2;
+        if(DIST(av.px,av.py,cx,cy)<8)fade*=2.5;
+      }
+    }
     m.exposure=Math.max(0,m.exposure-fade);
   }
   // REGIME awareness tracks exposure; high awareness → investigative sweeps.
