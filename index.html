@@ -1890,6 +1890,13 @@ const AVATAR_OPS={
     desc:"Use a secret you've uncovered to coerce a wisp — turn an informant, force compliance. Requires known dirt."},
   assassinate:{name:"Assassinate", stat:"nerve", diff:16, cost:20, target:"regime", range:1.6, duration:75, anim:"strike", sightRange:8, witnessK:1.4,
     desc:"Eliminate a regime figure outright. The ultimate strike — and the regime WILL hunt whoever did it. Last resort."},
+  // hack pillar — remote ops (gate: hqUnlocks("hack") + hasHackReach(target))
+  hackGrid:      {name:"Hack the Grid",     stat:"tradecraft", diff:16, cost:14, target:"utility", range:0, duration:120, anim:"plant", sightRange:0, witnessK:0,
+    desc:"Remotely sabotage a power or water building via a placed Grid Tap — blackout from the shadows, no physical approach. Requires Server Room at HQ + a Grid Tap in reach."},
+  dataHeist:     {name:"Data Heist",        stat:"tradecraft", diff:17, cost:18, target:null,      range:0, duration:140, anim:"tail",  sightRange:0, witnessK:0,
+    desc:"Breach regime records via the Grid Tap network — a large intel payout without entering the building. Requires Server Room + a Grid Tap in reach of a regime building."},
+  corruptRecords:{name:"Corrupt Records",   stat:"guile",      diff:15, cost:16, target:"regime",  range:0, duration:110, anim:"plant", sightRange:0, witnessK:0,
+    desc:"Overwrite regime files to discredit a loyalist — a single-step digital frame. No planting, no return visit. Requires Server Room + a Grid Tap near the target."},
 };
 // reputation: -100 (feared/ruthless) .. +100 (beloved/respected). Built by op outcomes + their nature.
 function avatarRep(){const a=theAvatar();return a?(a.rep&&a.rep.district||0):0;}
@@ -2010,8 +2017,9 @@ const OP_CATEGORY={
   intel:"INTELLIGENCE", surveil:"INTELLIGENCE",
   dissent:"INFLUENCE", bribe:"INFLUENCE", blackmail:"INFLUENCE", frame:"INFLUENCE",
   sabotage:"DIRECT ACTION", steal:"DIRECT ACTION", assassinate:"DIRECT ACTION",
+  hackGrid:"REMOTE OPS", dataHeist:"REMOTE OPS", corruptRecords:"REMOTE OPS",
 };
-const OP_CAT_ORDER=["INTELLIGENCE","INFLUENCE","DIRECT ACTION"];
+const OP_CAT_ORDER=["INTELLIGENCE","INFLUENCE","DIRECT ACTION","REMOTE OPS"];
 function opState(opKey){
   const op=AVATAR_OPS[opKey];const m=M();const a=theAvatar();
   if(!op||!a)return {ok:false,reason:"unavailable",label:""};
@@ -2021,6 +2029,12 @@ function opState(opKey){
   // whether the op REQUIRES targeting so the UI can prompt the positioning step.
   const needsDirt=op.needsSecret&&!ST.pawns.some(q=>!q.isAvatar&&!isChild(q)&&knownSecret(q));
   if(needsDirt)return {ok:false,reason:"secret",label:"Surveil someone first"};
+  // HACK PILLAR GATES — remote ops require Server Room + at least one placed Grid Tap
+  if(opKey==="hackGrid"||opKey==="dataHeist"||opKey==="corruptRecords"){
+    if(!hqUnlocks("hack"))return {ok:false,reason:"infrastructure",label:"Need a Server Room at HQ"};
+    const anyTap=[...ST.structs.values()].some(s=>!s.bp&&!s.isBroken&&s.espionage&&s.pillar==="hack"&&s.type==="gridtap");
+    if(!anyTap)return {ok:false,reason:"infrastructure",label:"No Grid Tap placed"};
+  }
   // GEAR + VULN — preview-knowable modifiers; mirror the resolve chokepoint signs exactly
   // resolve: op.diff + expPenalty + wit.pen + fearPen - vulnPen + gearMod (wit/fear unknowable at preview)
   const expPenalty=Math.floor((m.exposure||0)/25);
@@ -2578,7 +2592,10 @@ const OP_TERM_SCRIPT={
   bribe:   {boot:"OPENING CHANNEL",    work:["TRANSFERRING FUNDS","TESTING LOYALTY","SEALING DEAL"]},
   frame:   {boot:"FORGING EVIDENCE",   work:["PLANTING DATA","ALTERING LOGS","CLOSING LOOP"]},
   blackmail:{boot:"LOADING LEVERAGE",  work:["PRESENTING PROOF","APPLYING PRESSURE","AWAITING REPLY"]},
-  assassinate:{boot:"MARKING TARGET",  work:["CLOSING DISTANCE","LINING THE SHOT","COMMITTING"]}
+  assassinate:   {boot:"MARKING TARGET",    work:["CLOSING DISTANCE","LINING THE SHOT","COMMITTING"]},
+  hackGrid:      {boot:"SPLICING GRID NODE",work:["MAPPING POWER BUS","INJECTING FAULT","OVERLOADING RELAY"]},
+  dataHeist:     {boot:"BREACHING NETWORK", work:["BYPASSING ICE","EXTRACTING RECORDS","WIPING TRACE"]},
+  corruptRecords:{boot:"ACCESSING DOSSIER", work:["FORGING ENTRIES","OVERWRITING LOGS","CLOSING LOOP"]},
 };
 const OP_TERM_DEFAULT={boot:"RUNNING OPERATION",work:["PROCESSING","EXECUTING","FINALIZING"]};
 function opReadoutStart(opKey,op){
@@ -2656,7 +2673,23 @@ function runAvatarOp(opKey,target){
     // sabotaging a building requires you've gathered intel on the district first (know the grid)
     if((m.intel||0)<14){flashMsg&&flashMsg("You need more intel on the grid before sabotage — gather intel first");return false;}
   }
-  if(!inOpRange(a,op,target)){flashMsg&&flashMsg("Move closer to begin this operation");return false;}
+  // HACK OPS — bypass avatar-adjacency; use Grid Tap reach instead
+  if(opKey==="hackGrid"||opKey==="dataHeist"||opKey==="corruptRecords"){
+    if(!hqUnlocks("hack")){flashMsg&&flashMsg("Need a Server Room at HQ for remote ops");return false;}
+    if(opKey==="hackGrid"&&target&&target.kind==="s"){
+      if(target.guardedUntil&&ST.tick<target.guardedUntil){flashMsg&&flashMsg("This building's grid is locked down — try another target");return false;}
+      if(!hasHackReach(target)){flashMsg&&flashMsg("No Grid Tap in reach of this target");return false;}
+    }
+    if(opKey==="corruptRecords"&&target){
+      if(!hasHackReach(target)){flashMsg&&flashMsg("No Grid Tap in reach of this target");return false;}
+    }
+    if(opKey==="dataHeist"){
+      const anyReachable=[...ST.structs.values()].some(s=>!s.bp&&DEF[s.type]&&(DEF[s.type].roleHome==="enforcer"||DEF[s.type].roleHome==="mayor")&&hasHackReach(s));
+      if(!anyReachable){flashMsg&&flashMsg("No Grid Tap in reach of a regime building");return false;}
+    }
+  } else {
+    if(!inOpRange(a,op,target)){flashMsg&&flashMsg("Move closer to begin this operation");return false;}
+  }
   // build a serialization-safe target descriptor
   let desc=null;
   if(op.target==="utility"&&target)desc={kind:"s",key:K(target.x,target.y)};
@@ -2973,6 +3006,50 @@ function opSuccess(opKey,target,check,crit){
         }
       }
       break;}
+    case "hackGrid":{
+      if(target&&target.kind==="s"){
+        target.sabotaged=ST.tick+Math.floor(TPD*R(0.8,1.2))*(crit?2:1);
+        const util=DEF[target.type]&&DEF[target.type].utility;
+        if(util==="power"){ST.blackoutUntil=ST.tick+Math.floor(TPD*R(0.3,0.55));}
+        ST.heat=Math.min(100,(ST.heat||0)+5);                              // less heat — no scene, no witnesses
+        m.exposure=Math.max(0,(m.exposure||0)-3);                          // remote: offset resolveAvatarOp's +4 → net +1 per success band
+        m.support=clamp((m.support||0)+(crit?8:5),0,100);
+        REG().grip=Math.max(0,(REG().grip||60)-(crit?7:4)*doctrineMod("strike"));
+        registerSabotage(target,theAvatar(),crit);                         // witnesses array is empty — remote
+        target.guardedUntil=ST.tick+Math.floor(TPD*R(2.0,3.5));
+        log("⌕ You hacked the "+DEF[target.type].name+" remotely — "+(util==="power"?"the grid's dark.":"the block runs dry.")+(crit?" Flawless breach.":"")+" No trace at the scene.","good");
+        banner(crit?"CLEAN GRID HACK":"GRID HACKED","good");if(SFX&&SFX.alert)SFX.alert();
+        chronicle("Remote hack — you killed the "+DEF[target.type].name+" from the shadows.","⌕");
+        adjAvatarRep(-4);
+        if(crit)m.intel=(m.intel||0)+RI(4,8);
+      }
+      break;}
+    case "dataHeist":{
+      const regimeBld=[...ST.structs.values()].find(s=>!s.bp&&DEF[s.type]&&(DEF[s.type].roleHome==="enforcer"||DEF[s.type].roleHome==="mayor")&&hasHackReach(s));
+      const gain=RI(14,22)+Math.floor(check.margin/2)+(crit?12:0);
+      m.intel=(m.intel||0)+gain;
+      REG().awareness=clamp((REG().awareness||0)+(crit?5:10),0,100);      // crit: cleaner breach, less trace
+      const bldName=regimeBld?(DEF[regimeBld.type].name||"regime building"):"regime network";
+      log("⌔ You breached the "+bldName+" remotely — +"+gain+" intel."+(crit?" No trace.":""),"good");
+      banner(crit?"CLEAN DATA HEIST":"DATA HEIST","good");if(SFX&&SFX.alert)SFX.alert();
+      chronicle("Data heist: cracked the "+bldName+" for "+gain+" intel.","⌔");
+      adjAvatarRep(2);
+      break;}
+    case "corruptRecords":{
+      if(target&&target.kind==="pawn"){
+        // SINGLE-STEP digital frame — no planting, no return visit; immediate discredit
+        target.framed=true;
+        target.allegiance=clamp((target.allegiance||0)+25,-100,100);
+        REG().grip=Math.max(0,(REG().grip||60)-(crit?10:6));
+        m.support=clamp((m.support||0)+(crit?6:4),0,100);
+        for(const q of ST.pawns){if(q.id===target.id||isChild(q))continue;if(Math.random()<(crit?0.5:0.3))relAdj(q.id,target.id,-12);}
+        log("⌘ You overwrote "+target.name+"'s records — the regime's own data discredits them."+(crit?" Airtight falsification.":""),"good");
+        banner(crit?"CLEAN CORRUPT":"RECORDS CORRUPTED","good");if(SFX&&SFX.alert)SFX.alert();
+        chronicle("Remote corruption — "+target.name+"'s records falsified.","⌘");
+        adjAvatarRep(-3);
+        if(crit&&target.role){log(target.name+" is disgraced out of their role by falsified records.","good");}
+      }
+      break;}
     case "surveil":{
       // dig up the target's secret specifically (vs intel-crit which finds a random nearby one)
       if(target&&target.kind==="pawn"){
@@ -3207,6 +3284,28 @@ function opPartial(opKey,target,check){
         banner("HIT BOTCHED","bad");if(SFX&&SFX.alert)SFX.alert();
       }
       break;}
+    case "hackGrid":{
+      if(target&&target.kind==="s"){
+        target.sabotaged=ST.tick+Math.floor(TPD*R(0.3,0.6));
+        const util=DEF[target.type]&&DEF[target.type].utility;
+        if(util==="power")ST.blackoutUntil=ST.tick+Math.floor(TPD*R(0.15,0.25));
+        ST.heat=Math.min(100,(ST.heat||0)+4);
+        REG().awareness=clamp((REG().awareness||0)+6,0,100);
+        log("⌕ Partial breach on the "+DEF[target.type].name+" — brief outage, but the regime is scanning the network.","warn");
+      }
+      break;}
+    case "dataHeist":{
+      const gain=RI(5,9);m.intel=(m.intel||0)+gain;
+      REG().awareness=clamp((REG().awareness||0)+14,0,100);
+      log("⌔ You grabbed some data (+"+gain+" intel) before the alarm tripped — the regime is hunting the source.","warn");
+      break;}
+    case "corruptRecords":{
+      if(target&&target.kind==="pawn"){
+        for(const q of ST.pawns){if(q.id===target.id||isChild(q))continue;if(Math.random()<0.18)relAdj(q.id,target.id,-7);}
+        REG().awareness=clamp((REG().awareness||0)+10,0,100);
+        log("⌘ Partial corruption of "+target.name+"'s records — doubt sown, but the regime is scanning for the intrusion.","warn");
+      }
+      break;}
   }
 }
 function opFailure(opKey,target,check,botched){
@@ -3220,7 +3319,7 @@ function opFailure(opKey,target,check,botched){
   // ARREST — getting caught on a serious crime can land your operative in the Holding Cells. The severity
   // scales with the op: theft/sabotage = serious (jail), a botched assassination = capital (execution risk).
   const av=theAvatar();
-  const JAILABLE={steal:2,sabotage:2,assassinate:3};   // op -> crime severity if caught
+  const JAILABLE={steal:2,sabotage:2,assassinate:3,hackGrid:2,dataHeist:2,corruptRecords:2};   // op -> crime severity if caught
   let arrested=false;
   if(av&&JAILABLE[opKey]){
     // you're caught if it was botched, OR (on a plain fail) the regime is already aware / an enforcer saw you
@@ -5373,11 +5472,14 @@ function underSecurity(x,y){
   for(const z of ST._secZones)if(DIST(x,y,z.x,z.y)<=z.r)return true;
   return false;
 }
-// does the avatar have hack reach to a target struct via a placed Grid Tap?
+// does the avatar have hack reach to a target via a placed Grid Tap?
 // hack ops use this instead of inOpRange — avatar position is irrelevant for remote ops.
+// handles both struct targets ({x,y} tile coords) and pawn targets ({px,py} float coords).
 function hasHackReach(target){
   if(!target)return false;
-  const tx=target.x+0.5, ty=target.y+0.5;
+  // structs have .x/.y (tile origin) but no .px/.py; pawns have both — prefer .px/.py for live position
+  const tx=(target.px!=null)?target.px:target.x+0.5;
+  const ty=(target.py!=null)?target.py:target.y+0.5;
   for(const s of ST.structs.values()){
     if(s.bp||s.isBroken||!s.espionage||s.pillar!=="hack"||s.type!=="gridtap")continue;
     if(DIST(s.x+0.5,s.y+0.5,tx,ty)<=(DEF.gridtap.infraRadius))return true;
@@ -11230,7 +11332,7 @@ function renderOpsGrid(opts){
     h+="<div class='sub' style='font-size:9px;opacity:.7'>Move your operative to abandon.</div>";
     return h;
   }
-  const OP_LBL={intel:"GATHER INTEL",surveil:"SURVEIL",dissent:"SPREAD DISSENT",sabotage:"SABOTAGE",steal:"STEAL FUNDS",bribe:"BRIBE",frame:"FRAME ASSET",blackmail:"BLACKMAIL",assassinate:"ASSASSINATE"};
+  const OP_LBL={intel:"GATHER INTEL",surveil:"SURVEIL",dissent:"SPREAD DISSENT",sabotage:"SABOTAGE",steal:"STEAL FUNDS",bribe:"BRIBE",frame:"FRAME ASSET",blackmail:"BLACKMAIL",assassinate:"ASSASSINATE",hackGrid:"HACK GRID",dataHeist:"DATA HEIST",corruptRecords:"CORRUPT RECORDS"};
   const RISK_COL={low:"",raised:"#ffd24a",high:"#ff9a52",extreme:"#ff5470"};
   const RISK_DOT={low:"",raised:"\u25c8",high:"\u25c8\u25c8",extreme:"\u26a0"};
   for(const cat of OP_CAT_ORDER){
