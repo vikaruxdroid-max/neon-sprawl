@@ -35,7 +35,65 @@ done yet.
 **IMMEDIATE city-first work queue:** ~~character-CREATION SCREEN~~ (DONE) → stat-gated DIALOGUE
 (opsCheck/ops built to feed it) → job/farming VISUALS + litter → deep testing/tuning.
 
-## ⚡ LATEST STATE — OPS SCREEN (5 tabs) + GEAR + PREVIEW-CONSISTENCY (commits b2d56f0 / cbdd434 / 9f8ea52 / 86f5f87, current) ⚡
+## ⚡ LATEST STATE — ESPIONAGE INFRA + HACK PILLAR (commits 45c2857 / 130031a / b5b2681 / 75c26a9 / 99b63da, current) ⚡
+
+Five commits since the last doc-sync. The full espionage economy infrastructure layer is now live across all four pillars. Every station cap that previously had no consumer now has one.
+
+### SAFE ROOM — exposure recovery at HQ (`45c2857`)
+`hasStation("saferoom")` now has a real consumer in `insurrectionTick`. When laying low while at HQ (within 8 tiles of the claimed room), exposure fades **2.5×** faster. The Safehouse field item gives **2×** anywhere in the district (gate: saferoom station required). Both multipliers confirmed in `insurrectionTick` at the `if(hasStation("saferoom"))` block.
+
+### ESPIONAGE INFRA — passive placed items (`130031a`, `b5b2681`)
+**`infraTick()`** (wired in `tick()` after `sabotageTick`) is the central driver for all placed espionage items — mirrors `securityTick`'s pattern.
+
+**`espionage:true` struct flag** — set on every espionage item when `finishBuild` fires. `placeBp` checks the pillar gate before placing (survhub/saferoom/serverroom required per pillar). Build-menu categories gate on the same check.
+
+**Four placed-item DEF entries, all shipped:**
+- `camera` (pillar:"monitor", infraRadius:6) — drips 0.08 intel/tick to `m.intel` in infraTick
+- `wiretap` (pillar:"monitor", infraRadius:4) — intel drip only when within `infraRadius` of a regime building (copstation/mayorhouse); richer yield than camera but conditional
+- `deadDrop` (pillar:"monitor", infraRadius:3) — intel scaled by recruited network size
+- `safehouse` (pillar:"safe", infraRadius:7) — field exposure-recovery node (2× fade when operative is within its radius)
+
+**Espionage build category** — `{name:"Espionage", items:["camera","wiretap","deadDrop"], gate:()=>hqUnlocks("monitor")}` — appears in the BUILD menu when Surveillance Hub is built.
+**Safe Houses build category** — `{name:"Safe Houses", items:["safehouse"], gate:()=>hqUnlocks("safe")}` — appears when Safe Room is built.
+
+### HACK PILLAR — Grid Tap, Signal Relay, hasHackReach (`75c26a9` — Step A)
+- `gridtap` DEF (pillar:"hack", espionage:true, infraRadius:5, cost:120) — covert splice near power/water infra. In `infraTick`, each active gridtap drips 0.05 intel/tick (cap 4 taps = 0.20 max).
+- `relay` DEF (pillar:"hack", espionage:true, infraRadius:6, cost:90) — repeater node. DEF description says it reduces hack diff; **the diff-reduction hook is NOT yet wired** (relay is placed, drip works, but the −2 difficulty effect for nearby ops is deferred — see open list below).
+- **`hasHackReach(target)`** — returns true if any non-broken gridtap is within `DEF.gridtap.infraRadius` (5 tiles) of the target. Uses `target.px/py` for live pawn position vs `target.x/y` for struct position (bug-fixed in Step B to use `target.px!=null` check).
+- **Cyberwar build category** — `{name:"Cyberwar", items:["gridtap","relay"], gate:()=>hqUnlocks("hack")}`.
+
+### THREE REMOTE OPS — hackGrid, dataHeist, corruptRecords (`99b63da` — Step B)
+All in `AVATAR_OPS`, all `sightRange:0, witnessK:0` (no witness penalty — remote ops are invisible to bystanders).
+
+**`hackGrid`** (stat:tradecraft, diff:16, cost:14, target:"utility") — remotely sabotages a power/water building via a Grid Tap. Sets `target.sabotaged`, triggers `blackoutUntil` for power targets, calls `registerSabotage`. On success: exposure **−3** inside opSuccess (net effect with resolveAvatarOp's critwin +1 = net −2 for crit, net +1 for regular success vs sabotage's +4 — remote is measurably cleaner). `target.guardedUntil` set after.
+
+**`dataHeist`** (stat:tradecraft, diff:17, cost:18, target:null) — breaches a regime building in tap reach for a large intel payout (RI(14,22)+margin/2, crit+12). Requires at least one regime building (copstation/mayorhouse) reachable by a gridtap.
+
+**`corruptRecords`** (stat:guile, diff:15, cost:16, target:"regime") — digital frame: sets `target.framed=true`, shifts allegiance +25, damages their reputation across nearby pawns. No multi-step required (digital forgery, unlike the physical frame op).
+
+**Surgical `inOpRange` bypass** — `runAvatarOp` branches: if `hackGrid/dataHeist/corruptRecords`, skip the `inOpRange(avatar, op, target)` check entirely and use `hasHackReach` instead. Physical ops (`sabotage`, `bribe`, etc.) still require avatar adjacency — verified that a tap's presence does NOT weaken the physical ops' range check.
+
+**`opState` gates** — both gates checked at preview time: `hqUnlocks("hack")` + at least one non-broken gridtap in `ST.structs`. Returns `{ok:false, reason:"infrastructure"}` for either failure.
+
+**REMOTE OPS** — new fourth category in `OP_CATEGORY` / `OP_CAT_ORDER`. All three hack ops appear here; `JAILABLE` entries added (hackGrid:2, dataHeist:2, corruptRecords:2). Terminal scripts in `OP_TERM_SCRIPT`.
+
+### ALL FOUR STATION CAPS — NOW FULLY WIRED
+| Station | Pillar | Cap | Consumer |
+|---|---|---|---|
+| Workbench | spy | GEAR catalog | `buyGear/equipGear`, `gearMod` at resolve chokepoint |
+| Surveillance Hub | monitor | Espionage build category + infraTick monitor drip | camera/wiretap/deadDrop placed items |
+| Server Room | hack | Cyberwar build category + hackGrid/dataHeist/corruptRecords ops | gridtap/relay + three remote ops |
+| Safe Room | safe | Safe Houses build category + 2.5× exposure fade | safehouse field item + HQ proximity fade |
+
+### WHAT REMAINS OPEN (genuine gaps — all confirmed absent by grep)
+1. **Relay difficulty hook** — `relay` DEF describes −2 hack diff when a relay is near a gridtap, but no code reads `relay` for this effect. Deferred.
+2. **Regime counterplay on infra** — regime sweeps do NOT discover or destroy placed cameras/taps/safehouses. No `sweepInfra`, `destroyInfra`, or `infraDetect` found. Deferred.
+3. **Overdose event** — a narrative trigger distinct from the band dispatch (noted in espionage economy spec). No `overdoseEvent` or `overdose` in index.html. Deferred.
+4. **Economy rebalance** — income still buys city-builder items (housing/hospitals/furniture) alongside espionage gear. The spec's vision of refocusing income onto espionage is directionally correct but the city-builder side hasn't been pruned. Design-level gap.
+
+---
+
+## ⚡ LATEST STATE — OPS SCREEN (5 tabs) + GEAR + PREVIEW-CONSISTENCY (commits b2d56f0 / cbdd434 / 9f8ea52 / 86f5f87) ⚡
 
 Four commits this session, on top of the homeVulnerability + char-creation fix. The HQ and gear engine (previously built but UI-less) are now fully accessible through a consolidated OPS modal. The retired `b-hq` and `b-gear` HUD buttons are gone; the single **OPS** button (`b-ops`) replaces them.
 
@@ -58,8 +116,8 @@ Four commits this session, on top of the homeVulnerability + char-creation fix. 
 - Returns `diff: previewDiff, gear` alongside existing fields. `renderOpsGrid` tooltip shows `"· diff N (−N gear)"` on hover.
 - **UI-only**: no AI, no gating, no eligibility logic reads `opState` (confirmed by grep — one call site only, in `renderOpsGrid`).
 
-### WHAT IS NOT YET BUILT (spec vs code gap)
-Gear covers `field:"diff"` effects only. The espionage economy spec's INFRASTRUCTURE layer (cameras, taps, safehouses — placed items) is **not built**. The HACK pillar's remote ops are **not built**. The Safe Room exposure-recovery mechanic is **not built**. HQ station gates exist but only gear + the UI currently use them.
+### ✅ ALL STATION CAPS NOW WIRED (updated in subsequent sessions)
+Gear covers `field:"diff"` effects only — unchanged. The espionage economy infrastructure layer (cameras/wiretap/deadDrop/safehouse + infraTick), the HACK pillar remote ops (hackGrid/dataHeist/corruptRecords), and the Safe Room exposure-recovery mechanic are **all shipped** as of commits `130031a`/`b5b2681`/`75c26a9`/`99b63da`. See the LATEST STATE section above for the full picture. What remains genuinely open: relay diff hook, regime infra counterplay, overdose event, economy rebalance.
 
 ---
 
@@ -95,8 +153,8 @@ Build `3e7c898b`. The load-bearing data+logic layer (NO UI yet — deliberately)
 - **`claimHQ()`** — converts the borrowed room to YOURS, raises avatar `attach` 2→8 (it's home now), one-time. **`buildStation(kind)`** — pays income via afford()/pay(), marks built, can't double-build/build-broke/build-before-claim. **`hasStation(kind)` + `hqUnlocks(cap)`** — THE OWNERSHIP GATE the espionage economy reads (gear locked until Workbench, hack until Server Room). **`hqStationCount()`**.
 - `ST.hq` SERIALIZED (added to serializeState + applyState, re-links room to live fixerHome ref). VERIFIED: claim/build/gate/cost all work, survives save/load, 300 ticks stable claimed+unclaimed.
 
-### ✅ NOW PLAYABLE — UI shipped in subsequent session
-`hqPanelHTML()` (Base tab of the OPS screen) lets the player call `claimHQ()` and `buildStation(kind)` in-game. The gear framework (`GEAR` catalog, `buyGear/equipGear/unequipGear`, `outfitterHTML` Equipment tab) is also shipped. The station-ownership gates (`hasStation`, `hqUnlocks`) are live and the gear system reads them. See LATEST STATE above for the full picture. What remains unbuilt: INFRASTRUCTURE layer (cameras/taps/safehouses), HACK pillar remote ops, Safe Room exposure recovery.
+### ✅ NOW FULLY WIRED — UI + all infra + hack ops shipped in subsequent sessions
+`hqPanelHTML()` (Base tab of the OPS screen) lets the player call `claimHQ()` and `buildStation(kind)` in-game. The gear framework (`GEAR` catalog, `buyGear/equipGear/unequipGear`, `outfitterHTML` Equipment tab) is also shipped. The station-ownership gates (`hasStation`, `hqUnlocks`) are live and the gear system reads them. All four station caps now have real consumers: workbench→gear, survhub→monitor infra (camera/wiretap/deadDrop), serverroom→hack ops (hackGrid/dataHeist/corruptRecords), saferoom→exposure recovery. See the LATEST STATE section at top for the complete picture.
 
 ### STANDING ITEMS
 - House/room interior backgrounds — still PARKED (Carlo: "do later").
