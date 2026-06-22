@@ -3,3 +3,8 @@ node_modules/
 Thumbs.db
 .DS_Store
 .claude/
+
+# Local backups & build artifacts
+indexbk*.html
+*.bak
+*.zip
