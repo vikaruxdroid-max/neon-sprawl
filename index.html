@@ -378,11 +378,9 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 .mbox .big{display:block;width:100%;box-sizing:border-box;padding:12px 24px;font-size:13px;letter-spacing:.2em;
   border-color:var(--cy);color:var(--cy);margin-top:12px}
 .mbox .stat{color:#e8f6ff}
-/* character-creation wizard: stat blocks reveal their effect line on hover (desktop) — tap toggles it (mobile) */
-.cc-attr-block .cc-effect{display:none}
-.cc-attr-block:hover .cc-effect{display:block}
-.cc-attr-block.revealed .cc-effect{display:block}
+/* character-creation wizard: tap/hover a stat row highlights it; description shows in the fixed slot above, not inline */
 .cc-attr-block:hover{background:rgba(34,221,255,.07)!important;border-color:rgba(34,221,255,.25)!important}
+.cc-attr-block.revealed{background:rgba(34,221,255,.10)!important;border-color:rgba(34,221,255,.35)!important}
 .cc-bg:hover{border-color:rgba(34,221,255,.5)!important}
 
 /* ── MISC ── */
@@ -1995,6 +1993,31 @@ function opState(opKey){
   const riskTier=risk>=4?"extreme":risk>=2?"high":risk>=1?"raised":"low";
   return {ok:true, reason:"ready", risk:riskTier, targeted:!!op.target, range:op.range};
 }
+// HOME VULNERABILITY — how easy is this target to socially work right now?
+// Returns 0..4 subtracted from difficulty for bribe/blackmail/steal.
+// Two drivers: (1) need desperation — unmet needs make people pliable; (2) wealth signal — a
+// visibly affluent home makes the target worth robbing and suggests they have something to lose.
+// Numbers are first-draft; tune from play.
+function homeVulnerability(p){
+  if(!p||isChild(p))return 0;
+  let v=0;
+  // PRIMARY: need desperation. Each need 0..100; below 30 is acutely unmet.
+  // Weight food/rest most heavily (survival pressure), hyg/fun/socN lightly.
+  const needs=p.needs||{};
+  const foodShort =Math.max(0,30-(needs.food !=null?needs.food :100));  // 0..30
+  const restShort =Math.max(0,30-(needs.rest !=null?needs.rest :100));  // 0..30
+  const hygShort  =Math.max(0,20-(needs.hyg  !=null?needs.hyg  :100));  // 0..20
+  const funShort  =Math.max(0,20-(needs.fun  !=null?needs.fun  :100));  // 0..20
+  // map combined shortfall to 0..3 (a fully desperate target contributes ~3)
+  v += clamp((foodShort*0.06+restShort*0.04+hygShort*0.02+funShort*0.01),0,3);
+  // homeless flag: living rough = maximally pliable (no security to protect)
+  if(p.homeless)v=Math.max(v,2.0);
+  // SECONDARY: wealth signal from home quality (affluent home = worth robbing / has leverage).
+  // Contributes up to +1 on top of need score.
+  const hr=homeRoom(p);
+  if(hr){const q=roomQuality(hr);v+=clamp((q-60)*0.025,0,1);}  // 0 below q60, up to +1 at q100
+  return clamp(v,0,4);
+}
 // bribe receptivity: a feared operative buys silence more easily; a beloved one meets resistance to
 // outright corruption (people don't expect it of them). Reputation now shapes a real outcome.
 function bribeReceptivity(target){
@@ -2662,7 +2685,12 @@ function resolveAvatarOp(p){
     const fear=witnessFear(target);
     if(fear>0)fearPen=Math.min(8,Math.round(fear*4));   // up to +8 difficulty for a fresh kill-witness
   }
-  const check=opsCheck(op.stat,op.diff+expPenalty+wit.pen+fearPen);
+  // HOME VULNERABILITY: desperate/exposed targets are easier to bribe, coerce, or rob.
+  // Only applies to the three social/physical ops that target a pawn directly.
+  const VULN_OPS=new Set(["bribe","blackmail","steal"]);
+  const vulnPen=(VULN_OPS.has(ao.opKey)&&target&&target.kind==="pawn")
+    ?homeVulnerability(target):0;
+  const check=opsCheck(op.stat,op.diff+expPenalty+wit.pen+fearPen-vulnPen);
   ao._witCount=wit.count;ao._witPen=wit.pen;           // remembered for the post-act fallout
   m.intel-=op.cost;
   trainOpStat(op.stat);                                // practice regardless of outcome
@@ -12306,6 +12334,12 @@ function showCharCreate(){
     h+="<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px'>";
     h+="<span style='font-size:11px;color:var(--dim)'>Tap a stat to see what it does.</span>";
     h+="<span style='font-size:12px;font-weight:700;color:"+(rem>0?"#ffd84a":"#5cff9e")+"'>"+rem+" pts left</span></div>";
+    // FIXED DESCRIPTION SLOT — description swaps here when a stat is tapped; min-height keeps rows from shifting.
+    const effectText=CC.detail?(ATTR_EFFECT[CC.detail]||""):"";
+    const effectLabel=CC.detail?(OPS_ATTRS.find(a=>a.k===CC.detail)||{name:""}).name:"";
+    h+="<div style='min-height:40px;margin-bottom:6px;padding:6px 9px;border-radius:6px;box-sizing:border-box;background:"+(CC.detail?"rgba(34,221,255,.07)":"transparent")+";border:1px solid "+(CC.detail?"rgba(34,221,255,.2)":"transparent")+"'>";
+    if(CC.detail)h+="<span style='font-size:9px;letter-spacing:.1em;color:var(--cy);font-weight:700'>"+effectLabel.toUpperCase()+" — </span><span style='font-size:10px;color:#9fc0e8;line-height:1.5'>"+effectText+"</span>";
+    h+="</div>";
     h+="<div style='display:flex;flex-direction:column;gap:4px'>";
     for(const a of OPS_ATTRS){const v=stats[a.k],spent=CC.spent[a.k]||0;
       const col=v>=8?"#5cff9e":v>=5?"#7aa2ff":"#8aa8c8";
@@ -12318,8 +12352,6 @@ function showCharCreate(){
       h+="<button class='tb cc-inc' data-ccinc='"+a.k+"' style='flex:0 0 auto;padding:2px 9px;font-size:13px;"+((rem<=0||v>=10)?"opacity:.3":"")+"'>+</button>";
       h+="<div style='flex:1 1 auto;min-width:24px;height:6px;background:rgba(120,160,200,.15);border-radius:3px;overflow:hidden'><div style='width:"+(v*10)+"%;height:100%;background:"+col+";transition:width .2s'></div></div>";
       h+="</div>";
-      // consequence line — always in the DOM as .cc-effect; CSS reveals it on hover (desktop) or when .revealed (tap/mobile)
-      h+="<div class='cc-effect' style='font-size:10px;line-height:1.5;color:#9fc0e8;margin:5px 0 1px 84px;white-space:normal;overflow-wrap:break-word'>"+(ATTR_EFFECT[a.k]||a.blurb)+"</div>";
       h+="</div>";}
     h+="</div>";
     // nav
