@@ -2693,7 +2693,7 @@ function resolveAvatarOp(p){
   const VULN_OPS=new Set(["bribe","blackmail","steal"]);
   const vulnPen=(VULN_OPS.has(ao.opKey)&&target&&target.kind==="pawn")
     ?homeVulnerability(target,ao.opKey):0;
-  const check=opsCheck(op.stat,op.diff+expPenalty+wit.pen+fearPen-vulnPen);
+  const check=opsCheck(op.stat,op.diff+expPenalty+wit.pen+fearPen-vulnPen+gearMod(ao.opKey,"diff"));
   ao._witCount=wit.count;ao._witPen=wit.pen;           // remembered for the post-act fallout
   m.intel-=op.cost;
   trainOpStat(op.stat);                                // practice regardless of outcome
@@ -3850,6 +3850,7 @@ function mkAvatar(x,y,spec){
   p.allegiance=100;p.recruited=true;p.cellRole="leader";
   p.accent="#22ddff";          // distinct cyan — you on the map
   p.mem=[{d:0,h:6,t:"this is where it begins — one block, one cell, the whole city to win"}];
+  p.gearOwned=[];p.equipped=[];  // gear loadout (populated via buyGear/equipGear)
   return p;
 }
 // attribute accessor with a safe default for non-avatars (so checks never crash)
@@ -4490,6 +4491,81 @@ function buildStation(kind){
 }
 // count built stations (for progress display)
 function hqStationCount(){return ST.hq&&ST.hq.stations?Object.keys(ST.hq.stations).length:0;}
+
+/* ═══════════════════════════════════════════════════════════════════
+   GEAR FRAMEWORK — step 1 of the espionage economy.
+   Catalog + loadout + gearMod helper + diff hook at resolve chokepoint.
+   UI (purchase screen, loadout panel) is a later step — this is data+logic only.
+   ═══════════════════════════════════════════════════════════════════ */
+const GEAR_SLOTS=3;   // max simultaneously equipped items — tunable
+
+// Starter gear catalog. Each item modifies a single op-field (diff here; range/witnessK/etc. in later steps).
+// cost.income is district income; costs are first-draft, tune from play.
+const GEAR={
+  surveil_rig:{name:"Surveillance Rig",  pillar:"spy",     cost:80,
+    effect:{ops:["surveil"],          field:"diff", amount:-2},
+    desc:"Directional mic + lens array. Makes tailing cleaner."},
+  spoofer:    {name:"ID Spoofer",        pillar:"spy",     cost:90,
+    effect:{ops:["frame","blackmail"], field:"diff", amount:-2},
+    desc:"Generates convincing false identities and planted records."},
+  breach_kit: {name:"Breach Kit",        pillar:"general", cost:100,
+    effect:{ops:["steal","sabotage"],  field:"diff", amount:-2},
+    desc:"Lock picks, bypass tools, and a compact cutting torch."},
+  burner_creds:{name:"Burner Credits",   pillar:"general", cost:70,
+    effect:{ops:["bribe"],             field:"diff", amount:-2},
+    desc:"Untraceable currency loaded onto throwaway chips."},
+};
+
+// Ensure the avatar has gear arrays (called in newGame and as a backfill in applyState).
+function initAvatarGear(av){
+  if(!av)return;
+  if(!Array.isArray(av.gearOwned))av.gearOwned=[];
+  if(!Array.isArray(av.equipped)) av.equipped=[];
+}
+
+// Buy a gear item. Gates: HQ Workbench must be built; item must exist; not already owned; can afford.
+function buyGear(id){
+  const av=theAvatar();if(!av)return false;
+  const g=GEAR[id];if(!g){if(typeof flashMsg==="function")flashMsg("Unknown gear: "+id);return false;}
+  if(!hqUnlocks("gear")){if(typeof flashMsg==="function")flashMsg("Need a Workbench at HQ to craft gear");return false;}
+  if((av.gearOwned||[]).includes(id)){if(typeof flashMsg==="function")flashMsg(g.name+" already owned");return false;}
+  if(!afford({income:g.cost}))return false;
+  pay({income:g.cost});
+  initAvatarGear(av);
+  av.gearOwned.push(id);
+  if(typeof log==="function")log("Acquired: "+g.name,"good");
+  return true;
+}
+
+// Equip an owned item. Gates: must own it; not already equipped; slot cap not exceeded.
+function equipGear(id){
+  const av=theAvatar();if(!av)return false;
+  initAvatarGear(av);
+  if(!av.gearOwned.includes(id)){if(typeof flashMsg==="function")flashMsg("You don't own that gear");return false;}
+  if(av.equipped.includes(id)){if(typeof flashMsg==="function")flashMsg("Already equipped");return false;}
+  if(av.equipped.length>=GEAR_SLOTS){if(typeof flashMsg==="function")flashMsg("Gear slots full ("+GEAR_SLOTS+")");return false;}
+  av.equipped.push(id);
+  return true;
+}
+
+// Unequip an item (keeps it in gearOwned).
+function unequipGear(id){
+  const av=theAvatar();if(!av)return false;
+  initAvatarGear(av);
+  const i=av.equipped.indexOf(id);if(i<0)return false;
+  av.equipped.splice(i,1);
+  return true;
+}
+
+// Sum the effect.amount for all equipped gear that targets opKey on the given field.
+// Returns a number (negative for diff-reducing gear). Zero if nothing applies.
+function gearMod(opKey,field){
+  const av=theAvatar();if(!av||!Array.isArray(av.equipped)||!av.equipped.length)return 0;
+  let total=0;
+  for(const id of av.equipped){const g=GEAR[id];
+    if(g&&g.effect&&g.effect.field===field&&g.effect.ops.includes(opKey))total+=g.effect.amount;}
+  return total;
+}
 
 function loseProperty(p,reason,culpritId){
   const att=p.attach||0;
@@ -12469,6 +12545,8 @@ function applyState(d){
     if(p.cellRole===undefined)p.cellRole=null;
   }
   for(const p of ST.pawns)if(!p.career)p.career=initCareer(p.sk||{},p.pers||{}); // backfill for pre-career saves
+  // backfill gear arrays for pre-gear saves (avatar only; non-avatars never have gear)
+  for(const p of ST.pawns){if(p.isAvatar){if(!Array.isArray(p.gearOwned))p.gearOwned=[];if(!Array.isArray(p.equipped))p.equipped=[];}}
   for(const p of ST.pawns){ // backfill dynasty fields for pre-dynasty saves
     if(p.age===undefined)p.age=RI(19,46);
     if(p.birthDay===undefined)p.birthDay=null;
