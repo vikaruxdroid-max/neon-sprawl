@@ -448,7 +448,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
     <button class="tb" id="b-crew" title="Crew"><span class="hud-icon">👥</span></button>
     <button class="tb" id="b-tasks" title="Tasks" style="position:relative"><span class="hud-icon">📋</span><span class="task-badge" id="task-badge" style="display:none">0</span></button>
     <button class="tb" id="b-stats" title="District"><span class="hud-icon">📊</span></button>
-    <button class="tb" id="b-hq" title="Base of Operations" style="font-size:10px;letter-spacing:.06em;padding:3px 7px">BASE</button>
+    <button class="tb" id="b-ops" title="Operative screen — base, gear &amp; more" style="font-size:10px;letter-spacing:.06em;padding:3px 7px">OPS</button>
     <span style="width:1px;background:var(--bd);height:20px;margin:0 4px"></span>
     <button class="tb" id="b-fs" title="Fullscreen">⛶</button>
     <button class="tb" id="b-menu" title="Menu (Esc)"><span class="hud-icon">☰</span></button>
@@ -11079,11 +11079,21 @@ $("modal").addEventListener("click",e=>{const id=e.target.id;
     newGame();}
   else if(id==="m-continue"){SFX.wake();SFX.ambientStart();SFX.ui();hideModal();openLoadSlots()}
   else if(id==="m-close"){SFX.ui();hideModal()}
-  // ---- HQ panel ----
-  else if(id==="hq-claim"){SFX&&SFX.ui&&SFX.ui();claimHQ();showHQPanel();}
+  // ---- Operative screen tab switch ----
+  else if(e.target.closest("[data-opstab]")){SFX&&SFX.ui&&SFX.ui();
+    OPSTAB=e.target.closest("[data-opstab]").dataset.opstab;showOpsScreen();}
+  // ---- HQ panel actions (stay on Base tab) ----
+  else if(id==="hq-claim"){SFX&&SFX.ui&&SFX.ui();claimHQ();OPSTAB="base";showOpsScreen();}
   else if(e.target.closest("[data-hqbuild]")){SFX&&SFX.ui&&SFX.ui();
     const kind=e.target.closest("[data-hqbuild]").dataset.hqbuild;
-    buildStation(kind);showHQPanel();}});
+    buildStation(kind);OPSTAB="base";showOpsScreen();}
+  // ---- Outfitter panel actions (stay on Equipment tab) ----
+  else if(e.target.closest("[data-gearbuy]")){SFX&&SFX.ui&&SFX.ui();
+    buyGear(e.target.closest("[data-gearbuy]").dataset.gearbuy);OPSTAB="equipment";showOpsScreen();}
+  else if(e.target.closest("[data-gearequip]")){SFX&&SFX.ui&&SFX.ui();
+    equipGear(e.target.closest("[data-gearequip]").dataset.gearequip);OPSTAB="equipment";showOpsScreen();}
+  else if(e.target.closest("[data-gearunequip]")){SFX&&SFX.ui&&SFX.ui();
+    unequipGear(e.target.closest("[data-gearunequip]").dataset.gearunequip);OPSTAB="equipment";showOpsScreen();}});
 
 let OP_DOCK_OPEN=false;
 // collapse the operative command dock (used when targeting starts, so the menu gets out of the way and the
@@ -12213,7 +12223,7 @@ $("b-diary").onclick=()=>{SFX.ui();openOverlay("diary")};
 $("b-crew").onclick=()=>{SFX.ui();openOverlay("crew")};
 $("b-tasks").onclick=()=>{SFX.ui();openOverlay("tasks")};
 $("b-stats").onclick=()=>{SFX.ui();openOverlay("district")};
-const bHq=$("b-hq");if(bHq)bHq.onclick=()=>{if(ST.phase!=="run")return;SFX.ui();showHQPanel();};
+const bOps=$("b-ops");if(bOps)bOps.onclick=()=>{if(ST.phase!=="run")return;SFX.ui();OPSTAB="base";showOpsScreen();};
 function districtStatsHTML(){
   const pawns=ST.pawns;
   let h="";
@@ -12371,13 +12381,12 @@ const ATTR_EFFECT={
 // ── BASE OF OPERATIONS PANEL ──────────────────────────────────────────────────
 // Renders into the shared modal. Re-calls itself after claim/build so state
 // updates live without a separate refresh mechanism.
-function showHQPanel(){
+function hqPanelHTML(){
   const hq=ST.hq||{claimed:false,stations:{},room:null};
   const income=ST.income||0;
   const PILLAR_COL={core:"#7aa2ff",spy:"#22ddff",monitor:"#ffd84a",hack:"#ff5470",defend:"#5cff9e",general:"#c0c8d8"};
 
-  let h="<h1 style='font-size:18px;letter-spacing:.14em;margin-bottom:2px'>▤ BASE OF OPERATIONS</h1>";
-  h+="<div class='mh-sub' style='margin-bottom:14px'>the fixer's back room — your permanent base</div>";
+  let h="<div style='font-size:11px;color:var(--dim);margin-bottom:10px'>the fixer's back room — your permanent base</div>";
 
   // ── income readout ──
   h+="<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding:6px 10px;background:rgba(8,18,36,.5);border:1px solid rgba(120,160,200,.15);border-radius:7px'>";
@@ -12386,13 +12395,11 @@ function showHQPanel(){
   h+="</div>";
 
   if(!hq.claimed){
-    // ── UNCLAIMED STATE ──
     h+="<div style='text-align:left;padding:12px;background:rgba(34,221,255,.05);border:1px solid rgba(34,221,255,.15);border-radius:8px;margin-bottom:14px'>";
     h+="<div style='font-size:11px;color:var(--tx);line-height:1.6;margin-bottom:10px'>You've been working out of the fixer's back room since you arrived — borrowed space, not yours. Claiming it makes it your permanent base. Build stations here to unlock the espionage infrastructure you'll need.</div>";
     h+="<button class='tb' id='hq-claim' style='width:100%;padding:11px;font-size:12px;letter-spacing:.14em;border-color:var(--cy);color:var(--cy)'>CLAIM THIS ROOM AS YOUR BASE</button>";
     h+="</div>";
   } else {
-    // ── CLAIMED STATE — station list ──
     const built=hqStationCount();
     h+="<div style='font-size:10px;color:var(--dim);letter-spacing:.08em;margin-bottom:8px'>STATIONS — "+built+"/"+Object.keys(HQ_STATIONS).length+" built</div>";
     h+="<div style='display:flex;flex-direction:column;gap:6px'>";
@@ -12401,14 +12408,12 @@ function showHQPanel(){
       const canAfford=income>=def.cost;
       const pcol=PILLAR_COL[def.pillar]||"#8aa8c8";
       h+="<div style='display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:rgba(8,18,36,"+(isBuilt?"0.6":"0.4")+");border:1px solid "+(isBuilt?"rgba(92,255,158,.25)":"rgba(120,160,200,.12)")+"'>";
-      // icon + name block
       h+="<div style='flex:0 0 28px;text-align:center;font-size:18px;opacity:"+(isBuilt?"1":"0.6")+"'>"+def.icon+"</div>";
       h+="<div style='flex:1 1 auto;min-width:0'>";
       h+="<div style='font-size:12px;font-weight:700;color:"+(isBuilt?"var(--tx)":"var(--dim)")+"'>"+def.name+"</div>";
       h+="<div style='font-size:9px;color:"+pcol+";letter-spacing:.07em;margin-bottom:2px'>"+def.pillar.toUpperCase()+" · "+def.blurb+"</div>";
       if(!isBuilt)h+="<div style='font-size:9px;color:var(--dim)'>"+def.desc+"</div>";
       h+="</div>";
-      // right: state badge or build button
       if(isBuilt){
         h+="<div style='flex:0 0 auto;font-size:10px;color:#5cff9e;letter-spacing:.06em'>✓ BUILT</div>";
       } else {
@@ -12421,7 +12426,81 @@ function showHQPanel(){
     }
     h+="</div>";
   }
-
+  return h;
+}
+function showHQPanel(){showModal("<h1 style='font-size:18px;letter-spacing:.14em;margin-bottom:2px'>▤ BASE OF OPERATIONS</h1>"+hqPanelHTML()+"<div style='margin-top:14px'><button class='tb' id='m-close' style='width:100%;padding:10px;font-size:11px;letter-spacing:.1em'>CLOSE</button></div>");}
+// ──────────────────────────────────────────────────────────────────────────────
+// ── OUTFITTER PANEL ──────────────────────────────────────────────────────────
+function outfitterHTML(){
+  const unlocked=hqUnlocks("gear");
+  const av=theAvatar()||{gearOwned:[],equipped:[]};
+  const owned=Array.isArray(av.gearOwned)?av.gearOwned:[];
+  const equipped=Array.isArray(av.equipped)?av.equipped:[];
+  const income=ST.income||0;
+  const PILLAR_COL={spy:"#22ddff",general:"#c0c8d8",monitor:"#ffd84a",hack:"#ff5470",defend:"#5cff9e"};
+  let h="<div style='font-size:11px;color:var(--dim);margin-bottom:10px'>operative gear &amp; loadout</div>";
+  h+="<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding:6px 10px;background:rgba(8,18,36,.5);border:1px solid rgba(120,160,200,.15);border-radius:7px'>";
+  h+="<span style='font-size:10px;color:var(--dim);letter-spacing:.08em'>INCOME <span style='color:#ffd84a;font-weight:700'>"+income+"c</span></span>";
+  h+="<span style='font-size:10px;color:var(--dim);letter-spacing:.08em'>LOADOUT <span style='color:"+(equipped.length>=GEAR_SLOTS?"var(--rd)":"var(--cy)")+"'>"+equipped.length+"/"+GEAR_SLOTS+"</span></span>";
+  h+="</div>";
+  if(!unlocked){
+    h+="<div style='padding:16px;background:rgba(255,84,112,.05);border:1px solid rgba(255,84,112,.2);border-radius:8px;margin-bottom:14px;text-align:center'>";
+    h+="<div style='font-size:22px;margin-bottom:6px'>🔒</div>";
+    h+="<div style='font-size:11px;color:var(--tx);line-height:1.6;margin-bottom:4px'>Gear requires a <strong style='color:var(--cy)'>Workbench</strong> at your base.</div>";
+    h+="<div style='font-size:10px;color:var(--dim)'>Switch to the <strong>Base</strong> tab to claim your base and build one.</div>";
+    h+="</div>";
+  } else {
+    h+="<div style='display:flex;flex-direction:column;gap:6px'>";
+    for(const [id,g] of Object.entries(GEAR)){
+      const isOwned=owned.includes(id);
+      const isEquipped=equipped.includes(id);
+      const canAfford=income>=g.cost;
+      const slotsFull=equipped.length>=GEAR_SLOTS;
+      const pcol=PILLAR_COL[g.pillar]||"#8aa8c8";
+      const opsLabel=g.effect.ops.map(o=>o.charAt(0).toUpperCase()+o.slice(1)).join(", ");
+      const sign=g.effect.amount<0?"−":"+";
+      const effectLine=sign+Math.abs(g.effect.amount)+" "+g.effect.field+" on: "+opsLabel;
+      h+="<div style='display:flex;align-items:flex-start;gap:10px;padding:9px 10px;border-radius:8px;background:rgba(8,18,36,"+(isEquipped?"0.7":isOwned?"0.55":"0.4")+");border:1px solid "+(isEquipped?"rgba(34,221,255,.3)":isOwned?"rgba(92,255,158,.2)":"rgba(120,160,200,.12)")+"'>";
+      h+="<div style='flex:1 1 auto;min-width:0'>";
+      h+="<div style='font-size:12px;font-weight:700;color:var(--tx);margin-bottom:1px'>"+g.name+"</div>";
+      h+="<div style='font-size:9px;color:"+pcol+";letter-spacing:.07em;margin-bottom:3px'>"+g.pillar.toUpperCase()+" · "+effectLine+"</div>";
+      h+="<div style='font-size:9px;color:var(--dim);line-height:1.4'>"+g.desc+"</div>";
+      h+="</div>";
+      h+="<div style='flex:0 0 auto;text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px'>";
+      if(!isOwned){
+        h+="<div style='font-size:10px;color:"+(canAfford?"#ffd84a":"var(--rd)")+"'>"+g.cost+"c</div>";
+        h+="<button class='tb' data-gearbuy='"+id+"' style='padding:3px 10px;font-size:10px;letter-spacing:.08em;"+(canAfford?"border-color:var(--cy);color:var(--cy)":"opacity:.4;pointer-events:none")+"'>BUY</button>";
+      } else if(isEquipped){
+        h+="<div style='font-size:9px;color:var(--cy);letter-spacing:.06em;margin-bottom:2px'>✓ EQUIPPED</div>";
+        h+="<button class='tb' data-gearunequip='"+id+"' style='padding:3px 10px;font-size:10px;letter-spacing:.08em;border-color:var(--dim);color:var(--dim)'>UNEQUIP</button>";
+      } else {
+        h+="<div style='font-size:9px;color:#5cff9e;letter-spacing:.06em;margin-bottom:2px'>OWNED</div>";
+        h+="<button class='tb' data-gearequip='"+id+"' style='padding:3px 10px;font-size:10px;letter-spacing:.08em;"+(slotsFull?"opacity:.4;pointer-events:none":"border-color:var(--cy);color:var(--cy)")+"'>EQUIP"+(slotsFull?" (full)":"")+"</button>";
+      }
+      h+="</div>";
+      h+="</div>";
+    }
+    h+="</div>";
+  }
+  return h;
+}
+function showOutfitter(){showModal("<h1 style='font-size:18px;letter-spacing:.14em;margin-bottom:2px'>⚙ OUTFITTER</h1>"+outfitterHTML()+"<div style='margin-top:14px'><button class='tb' id='m-close' style='width:100%;padding:10px;font-size:11px;letter-spacing:.1em'>CLOSE</button></div>");}
+// ──────────────────────────────────────────────────────────────────────────────
+// ── OPERATIVE SCREEN (tabbed host) ───────────────────────────────────────────
+let OPSTAB="base";
+function showOpsScreen(){
+  const TABS=[{k:"base",label:"Base"},{k:"equipment",label:"Equipment"}];
+  // ── tab bar ──
+  let h="<h1 style='font-size:16px;letter-spacing:.14em;margin-bottom:10px'>◈ OPERATIVE</h1>";
+  h+="<div style='display:flex;gap:3px;margin-bottom:14px;border-bottom:1px solid rgba(120,160,200,.18);padding-bottom:8px'>";
+  for(const t of TABS){
+    const active=OPSTAB===t.k;
+    h+="<button data-opstab='"+t.k+"' style='flex:1;padding:5px 4px;font-size:10px;letter-spacing:.09em;font-family:var(--disp);background:transparent;border:1px solid "+(active?"var(--cy)":"rgba(120,160,200,.25)")+";border-radius:4px;color:"+(active?"var(--cy)":"var(--dim)")+";cursor:pointer;transition:color .15s,border-color .15s'>"+t.label+"</button>";
+  }
+  h+="</div>";
+  // ── active tab body ──
+  if(OPSTAB==="base")h+=hqPanelHTML();
+  else if(OPSTAB==="equipment")h+=outfitterHTML();
   h+="<div style='margin-top:14px'><button class='tb' id='m-close' style='width:100%;padding:10px;font-size:11px;letter-spacing:.1em'>CLOSE</button></div>";
   showModal(h);
 }
