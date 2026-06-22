@@ -12512,7 +12512,7 @@ function opsRelationsHTML(){
   const rep=avatarRep(), tier=legendTier();
   const doctrine=(ST.mov&&ST.mov.doctrine)||null;
   const ALLY_TYPES=new Set(["partner","estranged partner","mentor","close friend","friend","warm"]);
-  const THREAT_TYPES=new Set(["enemy","rival","cold"]);
+  const THREAT_TYPES=new Set(["enemy","rival"]);
   let h="";
 
   // ── 1. STANDING header ──
@@ -12600,6 +12600,39 @@ function opsRelationsHTML(){
       h+="</div>";
       for(const r of en.reasons)h+="<span style='font-size:9px;color:"+threatCol+";text-transform:uppercase;letter-spacing:.05em'>"+r+"</span>";
       h+="</div>";
+    }
+    h+="</div>";
+  }
+
+  // ── 4. MARKS ──
+  const dossierIds=new Set((av.dossier||[]).map(e=>e.id));
+  const marksMap=new Map();
+  for(const q of ST.pawns){
+    if(q.hp<=0||q.id===av.id||isChild(q))continue;
+    const isMark=routineStage(q)>0||intelProgress(q)>0||knownSecret(q)||q.extorted||dossierIds.has(q.id);
+    if(isMark&&!marksMap.has(q.id))marksMap.set(q.id,q);
+  }
+  h+="<div style='font-size:10px;color:var(--dim);letter-spacing:.08em;margin-top:14px;margin-bottom:6px'>MARKS <span style='font-size:9px'>("+marksMap.size+")</span></div>";
+  if(marksMap.size===0){
+    h+="<div style='font-size:11px;color:var(--dim);font-style:italic;padding:8px 10px;background:rgba(8,18,36,.4);border-radius:6px'>No marks under surveillance.</div>";
+  }else{
+    h+="<div style='display:flex;flex-direction:column;gap:3px'>";
+    for(const[,q]of marksMap){
+      h+="<div style='padding:5px 8px;background:rgba(8,18,36,.4);border-left:2px solid #ffd84a;border-radius:0 4px 4px 0'>";
+      h+="<div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap'>";
+      h+="<span style='font-size:11px;font-weight:600;color:var(--tx)'>"+q.name+"</span>";
+      if(q.role)h+="<span style='font-size:9px;color:var(--dim)'>"+q.role+"</span>";
+      const rs=routineStage(q);
+      if(rs>0)h+="<span style='font-size:9px;color:#ffd84a;letter-spacing:.04em'>surveil "+rs+"/4</span>";
+      const ip=intelProgress(q);
+      if(ip>0)h+="<span style='font-size:9px;color:#7aa2ff;letter-spacing:.04em'>intel "+Math.round(ip*100)+"%</span>";
+      const sec=knownSecret(q);
+      if(sec)h+="<span style='font-size:8px;background:rgba(201,139,255,.15);color:#c98bff;padding:1px 4px;border-radius:3px;letter-spacing:.04em'>secret: "+sec.kind+"</span>";
+      if(q.extorted){
+        const daysLeft=Math.max(0,Math.round((q.extorted.nextPay-ST.tick)/TPD));
+        h+="<span style='font-size:8px;background:rgba(255,84,112,.15);color:#ff5470;padding:1px 4px;border-radius:3px;letter-spacing:.04em'>extorted"+(daysLeft>0?" · pay day "+(dayN()+daysLeft):" · overdue")+"</span>";
+      }
+      h+="</div></div>";
     }
     h+="</div>";
   }
