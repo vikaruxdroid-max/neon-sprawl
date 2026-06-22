@@ -1984,15 +1984,25 @@ function opState(opKey){
   // whether the op REQUIRES targeting so the UI can prompt the positioning step.
   const needsDirt=op.needsSecret&&!ST.pawns.some(q=>!q.isAvatar&&!isChild(q)&&knownSecret(q));
   if(needsDirt)return {ok:false,reason:"secret",label:"Surveil someone first"};
-  // RISK (never a block — exposure/awareness raise a visible danger tier)
+  // GEAR + VULN — preview-knowable modifiers; mirror the resolve chokepoint signs exactly
+  // resolve: op.diff + expPenalty + wit.pen + fearPen - vulnPen + gearMod (wit/fear unknowable at preview)
+  const expPenalty=Math.floor((m.exposure||0)/25);
+  const gear=gearMod(opKey,"diff");                // typically ≤0; added at resolve
+  const VULN_OPS_P=new Set(["bribe","blackmail","steal"]);
+  const selPawn=ST.sel&&ST.sel[0]&&!ST.sel[0].isAvatar&&!isChild(ST.sel[0])&&ST.sel[0].hp>0?ST.sel[0]:null;
+  const vulnP=VULN_OPS_P.has(opKey)&&selPawn?homeVulnerability(selPawn,opKey):0;
+  const previewDiff=op.diff+expPenalty-vulnP+gear; // = resolve diff when wit.pen=fearPen=0
+  // RISK (never a block — exposure/awareness raise a visible danger tier; gear/vuln lower it)
   const exp=m.exposure||0, aware=(REG()&&REG().awareness)||0;
   let risk=0;
   if(exp>60)risk+=2; else if(exp>35)risk+=1;
   if(aware>60)risk+=2; else if(aware>35)risk+=1;
   // loud ops (assassinate/sabotage/frame) are extra risky when the heat is up
   if(risk>0&&(op.anim==="strike"||op.anim==="plant"))risk+=1;
+  // fold gear/vuln: each 2 points of difficulty reduction = 1 risk step down
+  risk=Math.max(0,risk+Math.round(gear/2)-Math.round(vulnP/2));
   const riskTier=risk>=4?"extreme":risk>=2?"high":risk>=1?"raised":"low";
-  return {ok:true, reason:"ready", risk:riskTier, targeted:!!op.target, range:op.range};
+  return {ok:true, reason:"ready", risk:riskTier, diff:previewDiff, gear, targeted:!!op.target, range:op.range};
 }
 // HOME VULNERABILITY — how easy is this target to socially work right now?
 // opKey scopes which drivers apply:
@@ -11141,6 +11151,7 @@ function renderOpsGrid(opts){
         tc=rc||"#bfe8ff";
         if(RISK_DOT[st.risk])suffix=" <span style='color:"+rc+"'>"+RISK_DOT[st.risk]+"</span>";
         if(st.targeted)tip=op.desc+" \u2014 [needs a target in range]";
+        tip+=" \u00b7 diff "+st.diff+(st.gear<0?" ("+st.gear+" gear)":"");
         if(st.risk!=="low")tip+=" \u26a0 "+st.risk+" risk at current heat";}
       if(armed){bc="#ffd24a";tc="#ffd24a";}
       h+="<button class='tb i-op"+(armed?" armed":"")+(st.ok?"":" opdis")+"' data-op='"+ok+"' title='"+tip.replace(/'/g,"&#39;")+"' style='font-size:8.5px;padding:5px 3px;letter-spacing:.02em;border-color:"+bc+";color:"+tc+"'>"+lbl+suffix+"</button>";
