@@ -35,7 +35,35 @@ done yet.
 **IMMEDIATE city-first work queue:** ~~character-CREATION SCREEN~~ (DONE) → stat-gated DIALOGUE
 (opsCheck/ops built to feed it) → job/farming VISUALS + litter → deep testing/tuning.
 
-## ⚡ LATEST STATE — homeVulnerability + char-creation UI fix (commits a84dc55, current) ⚡
+## ⚡ LATEST STATE — OPS SCREEN (5 tabs) + GEAR + PREVIEW-CONSISTENCY (commits b2d56f0 / cbdd434 / 9f8ea52 / 86f5f87, current) ⚡
+
+Four commits this session, on top of the homeVulnerability + char-creation fix. The HQ and gear engine (previously built but UI-less) are now fully accessible through a consolidated OPS modal. The retired `b-hq` and `b-gear` HUD buttons are gone; the single **OPS** button (`b-ops`) replaces them.
+
+### OPS SCREEN — showOpsScreen() / OPSTAB / b-ops
+`showOpsScreen()` is a tabbed modal (module-level `OPSTAB` string drives tab selection; any action sets it then re-renders). Five tabs, all pure string-builder functions:
+1. **Stats** (`opsStatsHTML`) — operative dossier: name/background, 6 attrs + bars, career stats, kill/op counts, exposure/heat.
+2. **Thoughts** (`opsThoughtsHTML`, commit `b2d56f0`) — read-only inner state: `wispThoughts(av)` quoted lines, 2-col STATE grid (mood/stress/HP/heat/addiction/posture/active op/flags), NEEDS strip (5 colored bars), RECENT last-4 memories.
+3. **Relations** (`opsRelationsHTML`, commits `cbdd434` + `9f8ea52`) — Standing header (legendTier/rep/doctrine) + ALLIES (partner/mentor/friend/warm + recruited/bribed pills) + THREATS (enemy/rival + informant/grudge) + MARKS (pawns under surveillance: surveil stage, intel %, known secret, extortion status).
+4. **Base** (`hqPanelHTML`) — HQ claim/build UI. Surfaces `ST.hq` state, lets the player call `claimHQ()` and `buildStation(kind)`, shows station statuses and what each pillar unlocks.
+5. **Equipment** (`outfitterHTML`) — gear catalog: owned vs available, equip/unequip buttons, slot counter (`GEAR_SLOTS=3`), per-item effect description.
+
+### GEAR SYSTEM — FULLY SHIPPED (engine + UI both live)
+`GEAR` catalog (4 items across spy/defend/monitor/hack pillars, all `field:"diff"` effects), `buyGear(id)` / `equipGear(id)` / `unequipGear(id)`, `gearMod(opKey,field)`, `av.gearOwned`, `av.equipped`, `GEAR_SLOTS=3`. Accessible via Equipment tab. `gearMod` returns the sum of `effect.amount` for matching equipped gear (amounts are negative = easier ops, e.g. −2).
+
+### PREVIEW-CONSISTENCY — opState() now mirrors resolve (commit `86f5f87`)
+`opState(opKey)` now computes the same modifiers the resolve chokepoint applies, for those knowable at preview time:
+- `previewDiff = op.diff + expPenalty - vulnP + gearMod(opKey,"diff")` — mirrors `resolveAvatarOp` exactly when witnesses/fearPen = 0
+- `vulnP = homeVulnerability(selPawn, opKey)` when `ST.sel[0]` is a live non-avatar pawn and op ∈ {bribe, blackmail, steal}
+- Risk tier folds gear/vuln: `risk = Math.max(0, risk + round(gear/2) − round(vulnP/2))` — each 2pt difficulty reduction = 1 risk step down
+- Returns `diff: previewDiff, gear` alongside existing fields. `renderOpsGrid` tooltip shows `"· diff N (−N gear)"` on hover.
+- **UI-only**: no AI, no gating, no eligibility logic reads `opState` (confirmed by grep — one call site only, in `renderOpsGrid`).
+
+### WHAT IS NOT YET BUILT (spec vs code gap)
+Gear covers `field:"diff"` effects only. The espionage economy spec's INFRASTRUCTURE layer (cameras, taps, safehouses — placed items) is **not built**. The HACK pillar's remote ops are **not built**. The Safe Room exposure-recovery mechanic is **not built**. HQ station gates exist but only gear + the UI currently use them.
+
+---
+
+## ⚡ LATEST STATE — homeVulnerability + char-creation UI fix (commits a84dc55) ⚡
 
 **Two small targeted builds on top of the HQ foundation commit (`f16cbf4`).**
 
@@ -43,7 +71,7 @@ done yet.
 
 2. **Char-creation +/− jump fix** (commit `a84dc55`) — removed the inline `.cc-effect` reveal-on-hover per-row; description now lives in a single `min-height:40px` fixed slot above the stat list. Rows are single fixed-height flex lines; no reflow on tap/hover.
 
-**NEXT in the intrigue-wiring queue:** the fail-forward / overdose system (or whichever item Carlo prioritizes next from the espionage economy spec).
+**Subsequent sessions built gear/HQ UI/OPS screen instead** (see LATEST STATE above). Fail-forward consequences are SHIPPED — `opSuccess`/`opPartial`/`opFailure` + `runWitnessCheck` handle all five bands at the resolve chokepoint. The OVERDOSE EVENT (a separate narrative trigger, distinct from the band dispatch) remains open from the espionage economy spec.
 
 ---
 
@@ -65,10 +93,10 @@ Build `3e7c898b`. The load-bearing data+logic layer (NO UI yet — deliberately)
 - **`ST.hq`** established at game start `{claimed:false, room:ST.fixerHome, stations:{}, foundedTick:0}` — seeded from the fixer room, starts UNCLAIMED.
 - **`HQ_STATIONS`** catalog (5): planning (Planning Table, ops hub, 90), workbench (gear, 120), survhub (monitor, 150), serverroom (hack, 180), saferoom (defend, 100). Each has cost(income)/pillar/`unlocks` capability string.
 - **`claimHQ()`** — converts the borrowed room to YOURS, raises avatar `attach` 2→8 (it's home now), one-time. **`buildStation(kind)`** — pays income via afford()/pay(), marks built, can't double-build/build-broke/build-before-claim. **`hasStation(kind)` + `hqUnlocks(cap)`** — THE OWNERSHIP GATE the espionage economy reads (gear locked until Workbench, hack until Server Room). **`hqStationCount()`**.
-- `ST.hq` SERIALIZED (added to serializeState ~12410 + applyState, re-links room to live fixerHome ref). VERIFIED: claim/build/gate/cost all work, survives save/load, 300 ticks stable claimed+unclaimed. The 4 HQ fns show as "dead" in the dead-code scan — EXPECTED, they're the API the not-yet-built UI will call.
+- `ST.hq` SERIALIZED (added to serializeState + applyState, re-links room to live fixerHome ref). VERIFIED: claim/build/gate/cost all work, survives save/load, 300 ticks stable claimed+unclaimed.
 
-### ⚠️ CRITICAL — THIS IS A FOUNDATION, NOT YET PLAYABLE/VISIBLE
-The HQ build is the ENGINE only. **NO UI** — nothing in-game calls claimHQ/buildStation yet, so loading the build looks IDENTICAL to before. **NO visual station placement.** **The espionage economy itself isn't built** — the gate is ready (gear locks behind Workbench) but the gear/cameras/hack ops don't exist yet (the gate guards a door with no room behind it). This is correct for a foundation step but means there's nothing new to SEE. **NEXT (when Carlo returns):** the HQ PANEL (so claim+build is real/visible in-game — fastest path to something touchable), THEN the gear framework (the first capability the Workbench unlocks). Multi-build arc.
+### ✅ NOW PLAYABLE — UI shipped in subsequent session
+`hqPanelHTML()` (Base tab of the OPS screen) lets the player call `claimHQ()` and `buildStation(kind)` in-game. The gear framework (`GEAR` catalog, `buyGear/equipGear/unequipGear`, `outfitterHTML` Equipment tab) is also shipped. The station-ownership gates (`hasStation`, `hqUnlocks`) are live and the gear system reads them. See LATEST STATE above for the full picture. What remains unbuilt: INFRASTRUCTURE layer (cameras/taps/safehouses), HACK pillar remote ops, Safe Room exposure recovery.
 
 ### STANDING ITEMS
 - House/room interior backgrounds — still PARKED (Carlo: "do later").

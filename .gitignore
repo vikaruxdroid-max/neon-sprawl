@@ -8,3 +8,5 @@ Thumbs.db
 indexbk*.html
 *.bak
 *.zip
+check_tmp.js
+tmp_*.js
