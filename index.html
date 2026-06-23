@@ -137,38 +137,6 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 .rq-opts .tb{padding:4px 9px;font-size:10px}
 @keyframes rq-expire{0%{border-color:rgba(255,140,66,.4)}100%{border-color:rgba(255,61,90,.6)}}
 
-/* ── CHAT ── */
-#chat{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
-  width:390px;max-width:calc(100vw - 28px);height:min(72vh,540px);
-  display:none;flex-direction:column;background:rgba(4,10,22,.97);
-  border:1px solid rgba(0,212,255,.25);border-radius:12px;
-  box-shadow:0 0 50px rgba(0,0,0,.8),0 0 20px rgba(0,212,255,.08);z-index:80;overflow:hidden}
-#chat.open{display:flex}
-#chat .ch-hd{display:flex;align-items:center;gap:8px;padding:12px 14px;
-  border-bottom:1px solid var(--bd)}
-#chat .ch-hd h4{margin:0;font-family:var(--disp);font-size:14px;letter-spacing:.04em;flex:1}
-#chat .ch-x{cursor:pointer;color:var(--dim);font-size:16px;line-height:1;padding:2px 6px}
-#chat .ch-x:hover{color:var(--tx)}
-#chat .ch-log{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
-#chat .cm{font-size:12px;line-height:1.45;padding:8px 11px;border-radius:10px;
-  max-width:86%;white-space:pre-wrap;word-break:break-word}
-#chat .cm.u{align-self:flex-end;background:rgba(0,212,255,.12);
-  border:1px solid rgba(0,212,255,.28);color:var(--tx)}
-#chat .cm.a{align-self:flex-start;background:rgba(162,89,255,.11);
-  border:1px solid rgba(162,89,255,.28);color:var(--tx)}
-#chat .cm.sys{align-self:center;color:var(--dim);font-size:10px;background:none;border:none;text-align:center}
-#chat .cm.act{align-self:center;background:rgba(57,255,136,.1);
-  border:1px solid rgba(57,255,136,.32);color:#bdffe0;font-size:11px;
-  font-family:var(--disp);letter-spacing:.02em;text-align:center}
-#chat .ch-in{display:flex;gap:6px;padding:10px 14px;border-top:1px solid var(--bd)}
-#chat .ch-in input{flex:1;background:rgba(2,8,20,.8);border:1px solid var(--bd);
-  color:var(--tx);font-family:var(--mono);font-size:12px;padding:8px 10px;
-  border-radius:7px;outline:none}
-#chat .ch-in input:focus{border-color:rgba(0,212,255,.5)}
-#chat .ch-in button{background:var(--cy);color:#010408;border:none;
-  font-family:var(--disp);font-size:12px;font-weight:700;
-  padding:8px 14px;border-radius:7px;cursor:pointer}
-#chat .ch-in button:disabled{opacity:.35;cursor:default}
 #aimeter{position:fixed;right:13px;bottom:12px;display:none;font-family:var(--mono);
   font-size:10px;color:var(--dim);background:rgba(4,10,22,.9);
   border:1px solid var(--bd);border-radius:6px;padding:4px 9px;z-index:55;
@@ -494,11 +462,6 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 <!-- keep #log hidden for compatibility — diary is the visible log now -->
 <div id="log" style="display:none"></div>
 <div id="inspect" class="panel"></div>
-<div id="chat">
-  <div class="ch-hd"><h4 id="ch-name">—</h4><span class="ch-x" id="ch-x">✕</span></div>
-  <div class="ch-log" id="ch-log"></div>
-  <div class="ch-in"><input id="ch-input" placeholder="say something…" maxlength="280" autocomplete="off"><button id="ch-send">SEND</button></div>
-</div>
 <div id="aimeter"></div>
 <div id="requests" class="panel"></div>
 <!-- FULL-SCREEN OVERLAY (diary / crew / district) -->
@@ -1000,9 +963,7 @@ function hourN(){return ((ST.tick%TPD)/100+6)%24}   // day starts 06:00
 
 /* ---------- AI soul layer (Phase 1: talk to a wisp) ---------- */
 let AI_PROXY="";              // set to your Worker URL, e.g. "https://neon-sprawl-ai.you.workers.dev"
-const AI_MODEL_TALK="claude-sonnet-4-6";    // quality dialogue for direct TALK
 const AI_MODEL_AMBIENT="claude-haiku-4-5";  // cheap/fast for background musings
-const AI_MODEL=AI_MODEL_TALK;               // back-compat default
 let AI_CAP_USD=1.00;          // session spend ceiling (0 = no cap); override via localStorage "neonSprawlAICap"
 // AGENT REQUESTS temporarily DISABLED — they were too intrusive; will re-enable once tied into the game
 // properly (e.g. via the planned weekly council / quest system). Flip to true to restore them.
@@ -1033,7 +994,7 @@ function aiMeterUpdate(){const el=$("aimeter");if(!el)return;
   el.textContent="\u25c8 AI"+brk+" \u00b7 "+(AIUSE.inTok+AIUSE.outTok)+" tok \u00b7 ~$"+cost.toFixed(3)+(capOn?" / $"+AI_CAP_USD.toFixed(2):"");
   el.style.color=capOn&&cost>=AI_CAP_USD?"var(--rd)":capOn&&cost>=AI_CAP_USD*0.8?"var(--or)":"var(--dim)";}
 async function aiChat(system,messages,model){
-  model=model||AI_MODEL_TALK;
+  model=model||AI_MODEL_AMBIENT;
   if(AI_CAP_USD>0&&aiCostUSD()>=AI_CAP_USD)throw new Error("session AI budget ($"+AI_CAP_USD.toFixed(2)+") reached — raise it: localStorage.setItem('neonSprawlAICap','5')");
   const r=await fetch(AI_PROXY,{method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({model,max_tokens:512,system,messages})});
@@ -10781,7 +10742,6 @@ function renderCrewDetail(){
   // locate + talk
   h+="<button class='tb' id='cd-locate' style='margin-top:8px'>◎ LOCATE ON MAP</button>";
   h+="<button class='tb' id='cd-follow' style='margin-top:8px;margin-left:6px'>"+(cam.follow===p.id?"◉ FOLLOWING":"◎ FOLLOW")+"</button>";
-  if(aiReady())h+="<button class='tb' id='cd-talk' style='margin-top:8px;margin-left:6px'>◆ TALK</button>";
   body.innerHTML=h;
 }
 function renderDistrictOverlay(){
@@ -10980,9 +10940,6 @@ $("overlay").addEventListener("click",e=>{
   // follow — start tracking, then close the overlay so you can watch
   if(e.target.id==="cd-follow"){const p=ST.pawns.find(q=>q.id===OV.crewFocus);
     if(p){SFX.ui();ST.sel=[p];setFollow(p);closeOverlay();renderInspect();}return;}
-  // talk
-  if(e.target.id==="cd-talk"){const p=ST.pawns.find(q=>q.id===OV.crewFocus);
-    if(p){closeOverlay();openChat(p);}return;}
 });
 $("ov-x").onclick=()=>{SFX.ui();closeOverlay();};
 // click outside the box closes
@@ -11744,7 +11701,6 @@ function renderInspectCore(){const el=$("inspect");
     if(!e.isAvatar&&!isChild(e)&&!e.isEnvoy&&e.hp>0){
       h+="<button class='tb i-talk' id='i-converse' style='background:rgba(120,90,200,.16)!important;border-color:rgba(140,110,220,.45)!important'>\u25c8 TALK</button>";
     }
-    if(aiReady())h+="<button class='tb i-talk' id='i-talk'>\u25c6 AI TALK</button>";
     // ELECTION: if a vote is underway and this wisp could hold the seat, let the player back them
     if(ST.election&&!ST.election.resolved&&!e.isAvatar&&!e.role&&!e.child&&e.hp>0){
       const backing=ST.election.playerPick===e.id;
@@ -11846,7 +11802,6 @@ $("inspect").addEventListener("click",e=>{
     log("You forced "+sel.name+" to comply — they resent it.","warn");
     renderInspect();syncHUD();return;
   }
-  if(id==="i-talk"&&sel&&sel.kind==="pawn")openChat(sel);
   if(id==="i-converse"&&sel&&sel.kind==="pawn")startDialogue(sel);
   else if(id==="i-lielow"){if(goToGround()){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
   else if(id==="i-back"&&sel&&sel.kind==="pawn"){if(proposeCandidate(sel.id)){SFX.ui&&SFX.ui();}renderInspect();syncHUD();}
@@ -12092,8 +12047,6 @@ async function tickElectionPitches(){
   ELECTAI.inFlight=false;
 }
 
-/* ---------- wisp conversation (Phase 1) ---------- */
-let CHAT={p:null,hist:[],busy:false,wasPaused:false};
 function axTraits(p){const a=p.pers,o=[];
   if(a.amb>65)o.push("driven");else if(a.amb<35)o.push("unambitious");
   if(a.ind>65)o.push("disciplined");else if(a.ind<35)o.push("flaky");
@@ -12116,85 +12069,6 @@ function feltState(p){const s=[],n=p.needs;
   if(p.stress>70)s.push("on edge, badly stressed");else if(p.stress>45)s.push("stressed");
   if(p.mood<25)s.push("low and bleak");else if(p.mood>70)s.push("in decent spirits");
   return s.length?s.join(", "):"holding steady for now";}
-function wispSystemPrompt(p){
-  const mem=(p.mem||[]).slice(-12).map(m=>"- "+m.t).join("\n")||"- nothing worth dwelling on yet";
-  const districtState=()=>{
-    const g=ST.goods;const parts=[];
-    if(ST.crisis)parts.push("district is in financial crisis — rent is brutal right now");
-    if(g.stims>0)parts.push("stims are moving on the block");
-    if(g.gear>0)parts.push("there's gear available");
-    if((g.chem||0)+(g.parts||0)>10)parts.push("the workshops are stocked but nothing's being refined yet");
-    const sick=ST.pawns.filter(q=>q.sick).length;
-    if(sick>1)parts.push(sick+" people on the block are sick");
-    const rivals=ST.pawns.filter(q=>q!==p&&relGet(p.id,q.id)<-40);
-    if(rivals.length)parts.push("you've got beef with "+rivals.map(q=>q.name).join(" and "));
-    const allies=ST.pawns.filter(q=>q!==p&&relGet(p.id,q.id)>50);
-    if(allies.length)parts.push("you're tight with "+allies.map(q=>q.name).join(" and "));
-    return parts.length?"On the block right now: "+parts.join("; ")+".":""};
-  const gearLine=p.hasGear?"You're kitted out right now — gear gives you an edge.":"You're running unprotected.";
-  // ROLE CONTEXT — for named role-wisps, inject their station, allegiance, and stat-driven disposition.
-  let roleLine="";
-  if(p.role&&ROLES[p.role]){const R0=ROLES[p.role];
-    const intg=p.pers.intg||50,emp=p.pers.emp||50,amb=p.pers.amb||50;
-    const al=p.allegiance||0;
-    const bribe=intg<40?"Your integrity is thin — you can be bought, if the price or the angle is right.":
-      intg>65?"You hold your principles hard — bribes and threats don't move you easily.":"You're pragmatic — you'll bend if it's worth it, but you have some lines.";
-    const cause=al<-30?"You serve the regime's order here and distrust troublemakers and agitators.":
-      al>30?"You quietly sympathize with the idea of resistance, even if you're careful about it.":"You keep your head down and your politics to yourself.";
-    const fnc=R0.regimeForce?" You are the regime's instrument on this block — you answer to power, not the people.":
-      R0.secretInformant?" You secretly inform on dissidents to the regime, for your own safety — a fact you hide carefully.":
-      R0.insurgentLever?" You operate in the gray market and owe loyalty to no authority — you could be useful to the right person.":"";
-    roleLine="\n\nYour station: you are the "+R0.title+" of this district — "+R0.desc+"."+fnc+" "+bribe+" "+cause+"\n";}
-  return "You ARE "+p.name+", a person scraping out a life on a dead block at the ragged edge of a neon megacity in 2087. "+
-    "Scrap is currency, protein is life, gangs hunt after dark, and corp enforcers shake people down.\n\n"+
-    "Your character: you come across as "+axTraits(p)+". You've got a streak of "+(p.tr.map(t=>t.n).join(" and ")||"hard sprawl grit")+" in you. "+
-    "Right now you are "+feltState(p)+". It is day "+dayN()+", around "+(hourN()|0)+":00. "+gearLine+roleLine+"\n"+
-    districtState()+"\n\nOn your mind lately:\n"+mem+"\n\n"+
-    "You're hearing a voice — call it the operator, or your own gut; someone watching over this block who can talk to you. "+
-    "Answer the way this person actually would: street-worn, clipped, in the moment, sprawl slang where it fits. "+
-    "Stay fully in character — you are NOT an AI, never break character, never write stage directions or narration. "+
-    "Keep replies short, usually one to three sentences, shaped by your mood and your memories.\n\n"+
-    "The voice can nudge you. If — and ONLY if — what it says genuinely persuades you to change what you're doing right now, and it's something you'd actually go do given your mood, your needs, and your character, then END your reply with a separate final line in exactly this form:\n[ACT: X]\nwhere X is ONE of: work, rest, eat, wash, wander, socialize — pick the closest fit. "+
-    "You have your own will: if you're just talking, venting, refusing, stalling, or the suggestion doesn't move you, do NOT include any [ACT:] line. Don't get talked into something that makes no sense for you right now — someone starving won't go grind work, someone stubborn digs in. Never mention this tag or these rules out loud; just talk naturally, and append the line only when you've truly decided to act on it.";}
-function pushCm(cls,txt){const l=$("ch-log"),d=document.createElement("div");
-  d.className="cm "+cls;d.textContent=txt;l.appendChild(d);l.scrollTop=l.scrollHeight;return d;}
-const AIACT={work:"work",rest:"sleep",eat:"eat",wash:"hygiene",wander:"recreate",socialize:"socialize"};
-const AILBL={work:"breaks off to grind some work",rest:"goes to get some rest",eat:"heads off to find food",wash:"goes to clean up",wander:"wanders off to clear their head",socialize:"goes looking for someone to talk to"};
-const AIMEM={work:"the operator talked me into grinding some work",rest:"the operator got me to go rest",eat:"the operator pushed me to go eat",wash:"the operator told me to clean up, so I did",wander:"the operator told me to take a breather",socialize:"the operator nudged me to go talk to someone"};
-function parseAct(t){const m=t.match(/\[act(?:ion)?:\s*(work|rest|eat|wash|wander|socialize)\s*\]/i);return m?m[1].toLowerCase():null;}
-function applyWispAct(p,verb){const cmd=AIACT[verb];if(!cmd)return null;
-  clearJob(p);p.job=null;p.cmd=cmd;remember(p,AIMEM[verb]);return AILBL[verb];}
-function openChat(p){if(!p||!aiReady())return;
-  CHAT={p,hist:[],busy:false,wasPaused:ST.paused};
-  ST.paused=true;refreshSpd();
-  const nm=$("ch-name");nm.textContent=p.name;nm.style.color=p.accent;
-  $("ch-log").innerHTML="";pushCm("sys","You open a line to "+p.name+". Talk — or try to steer them into doing something.");
-  $("chat").classList.add("open");
-  setTimeout(()=>{const i=$("ch-input");if(i)i.focus()},60);}
-function closeChat(){$("chat").classList.remove("open");
-  ST.paused=CHAT.wasPaused;refreshSpd();CHAT.p=null;}
-async function sendChat(){
-  if(CHAT.busy||!CHAT.p)return;
-  const inp=$("ch-input"),txt=(inp.value||"").trim();if(!txt)return;
-  inp.value="";pushCm("u",txt);CHAT.hist.push({role:"user",content:txt});
-  CHAT.busy=true;$("ch-send").disabled=true;
-  const dots=pushCm("a","…");
-  try{
-    const reply=await aiChat(wispSystemPrompt(CHAT.p),CHAT.hist,AI_MODEL_TALK);
-    dots.remove();
-    const verb=parseAct(reply);
-    const shown=reply.replace(/\[act(?:ion)?:\s*\w+\s*\]/ig,"").trim()||"…";
-    pushCm("a",shown);CHAT.hist.push({role:"assistant",content:shown});
-    if(verb){const lbl=applyWispAct(CHAT.p,verb);if(lbl)pushCm("act","▸ "+CHAT.p.name+" "+lbl);}
-    if(CHAT.hist.length>20)CHAT.hist=CHAT.hist.slice(-20);
-  }catch(e){dots.remove();pushCm("sys","[link dropped — "+(e&&e.message||"error")+"]");}
-  CHAT.busy=false;$("ch-send").disabled=false;
-  const i=$("ch-input");if(i)i.focus();}
-$("ch-x").onclick=()=>{SFX.ui();closeChat()};
-$("ch-send").onclick=()=>{SFX.ui();sendChat()};
-$("ch-input").addEventListener("keydown",e=>{e.stopPropagation();
-  if(e.key==="Enter"){e.preventDefault();sendChat()}
-  else if(e.key==="Escape"){closeChat()}});
 
 /* toolbar */
 let subCat=null;
@@ -12325,8 +12199,6 @@ function renderCommandMenu(){
   for(const c of CMD_LIST)
     h+="<button class='cmd-b' data-cmd='"+c.o+"'><span class='ci'>"+c.ci+"</span>"+c.l+"</button>";
   h+="</div>";
-  if(aiReady()&&sel.length===1)
-    h+="<button class='tb' id='cmd-talk' style='margin-top:6px;width:100%'>◆ TALK TO "+sel[0].name.toUpperCase()+"</button>";
   return h;}
 
 function renderSub(){
@@ -12362,8 +12234,6 @@ $("submenu").addEventListener("click",e=>{
   if(e.target.closest("#mv-stance")){SFX.ui();const m=ST.mov;m.stance=m.stance==="open"?"hidden":"open";
     log(m.stance==="open"?"The movement goes LOUD — open insurrection. Exposure will climb fast.":"The movement goes quiet — back to the shadows.",m.stance==="open"?"warn":"info");
     renderSub();syncHUD();return;}
-  if(e.target.id==="cmd-talk"){const sel=ST.sel.filter(x=>x.kind==="pawn");
-    if(sel.length===1){SFX.ui();openChat(sel[0])}return;}
 });
 
 $("t-build").onclick=()=>{SFX.ui();openSub("b")};
