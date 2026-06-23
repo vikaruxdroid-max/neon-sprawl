@@ -7713,9 +7713,10 @@ async function dlgChoose(idx){
   let next=c.goto;
   if(typeof next==="function")next=next(w);
   if(!next||next==="end"||!DLG_NODES[next]){
-    // ending the dialogue \u2014 fire authored reply and close
-    if(replyLine){const rl=dlgVal(replyLine,w);if(typeof sayLine==="function")sayLine(w,rl.replace(/^"|"$/g,""));}
-    endDialogue();return;
+    // ending the dialogue \u2014 show the parting line in the panel briefly, then close
+    if(replyLine){st._llmLine=dlgVal(replyLine,w).replace(/^"|"$/g,"");renderDialogue();setTimeout(()=>endDialogue(),1400);}
+    else{endDialogue();}
+    return;
   }
   st.node=next;st.history.push(idx);
   // clear LLM surface text from the previous exchange
@@ -7724,8 +7725,8 @@ async function dlgChoose(idx){
     // single round-trip: clears prior sayLine, shows thinking float, awaits LLM reply+labels
     await dlgLLMEnrich(w,c,band,replyLine,next);
   }else{
-    // pure authored path \u2014 show scripted reply immediately
-    if(replyLine){const rl=dlgVal(replyLine,w);if(typeof sayLine==="function")sayLine(w,rl.replace(/^"|"$/g,""));}
+    // pure authored path \u2014 show scripted reply in the panel
+    if(replyLine){st._llmLine=dlgVal(replyLine,w).replace(/^"|"$/g,"");}
   }
   renderDialogue();
 }
@@ -7774,10 +7775,11 @@ async function dlgLLMEnrich(w,choiceMade,band,replyLine,nextKey){
   try{
     const raw=await aiChat(sys,[{role:"user",content:"(reply)"}],AI_MODEL_AMBIENT,768);
     let parsed=null;try{parsed=JSON.parse(raw);}catch(_){}
-    // validate and apply NPC response
+    ST.floats=ST.floats.filter(f=>f.txt!=="…");  // clear the thinking float on any response
+    // validate and apply NPC response (panel only — no overhead bubble)
     const resp=parsed&&typeof parsed.response==="string"&&parsed.response.trim()||null;
-    if(resp){if(typeof sayLine==="function")sayLine(w,resp);st._llmLine=resp;}
-    else if(authoredReply){if(typeof sayLine==="function")sayLine(w,authoredReply);}
+    if(resp){st._llmLine=resp;}
+    else if(authoredReply){st._llmLine=authoredReply;}
     // validate labels — strict keyed, all-or-nothing, _gen_ next nodes only
     if(isGen&&slotIds.length>0&&parsed&&parsed.labels&&typeof parsed.labels==="object"){
       const keys=Object.keys(parsed.labels);
@@ -7786,8 +7788,9 @@ async function dlgLLMEnrich(w,choiceMade,band,replyLine,nextKey){
       if(ok){const bound={};for(const id of slotIds)bound[id]=parsed.labels[id].trim();st._llmLabels=bound;}
     }
   }catch(_){
-    // aiChat threw (proxy down, budget, network) — authored fallback
-    if(authoredReply){if(typeof sayLine==="function")sayLine(w,authoredReply);}
+    // aiChat threw (proxy down, budget, network) — authored fallback; clear the thinking float
+    ST.floats=ST.floats.filter(f=>f.txt!=="…");
+    if(authoredReply){st._llmLine=authoredReply;}
   }
 }
 
@@ -7796,8 +7799,8 @@ if(typeof document!=="undefined"&&document.addEventListener)document.addEventLis
   const rb=e.target.closest&&e.target.closest("[data-dlg-recruit]");
   if(rb){const st=DLG_STATE.active;if(st){const w=ST.pawns.find(p=>p.id===st.wispId);if(w){SFX&&SFX.ui&&SFX.ui();
     const ok=dlgRecruit(w);
-    if(ok){if(typeof sayLine==="function")sayLine(w,"I'm with you. Whatever it takes.");if(typeof banner==="function")banner("RECRUITED","good");endDialogue();}
-    else{if(typeof sayLine==="function")sayLine(w,"I... I can't. Not yet.");renderDialogue();}}}return;}
+    if(ok){st._llmLine="I'm with you. Whatever it takes.";renderDialogue();setTimeout(()=>{if(typeof banner==="function")banner("RECRUITED","good");endDialogue();},1400);}
+    else{st._llmLine="I... I can't. Not yet.";renderDialogue();}}}return;}
   const b=e.target.closest&&e.target.closest("[data-dlg-choice]");
   if(b){dlgChoose(+b.dataset.dlgChoice);}
 });
