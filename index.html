@@ -993,11 +993,11 @@ function aiMeterUpdate(){const el=$("aimeter");if(!el)return;
   const brk=parts.length?" ("+parts.join(" ")+")":"";
   el.textContent="\u25c8 AI"+brk+" \u00b7 "+(AIUSE.inTok+AIUSE.outTok)+" tok \u00b7 ~$"+cost.toFixed(3)+(capOn?" / $"+AI_CAP_USD.toFixed(2):"");
   el.style.color=capOn&&cost>=AI_CAP_USD?"var(--rd)":capOn&&cost>=AI_CAP_USD*0.8?"var(--or)":"var(--dim)";}
-async function aiChat(system,messages,model){
+async function aiChat(system,messages,model,maxTokens){
   model=model||AI_MODEL_AMBIENT;
   if(AI_CAP_USD>0&&aiCostUSD()>=AI_CAP_USD)throw new Error("session AI budget ($"+AI_CAP_USD.toFixed(2)+") reached — raise it: localStorage.setItem('neonSprawlAICap','5')");
   const r=await fetch(AI_PROXY,{method:"POST",headers:{"content-type":"application/json"},
-    body:JSON.stringify({model,max_tokens:512,system,messages})});
+    body:JSON.stringify({model,max_tokens:maxTokens||512,system,messages})});
   if(!r.ok)throw new Error("proxy returned "+r.status);
   const d=await r.json();
   if(d&&d.error)throw new Error((d.error&&d.error.message)||String(d.error));
@@ -7366,15 +7366,15 @@ function genDialogueSlots(w,av){
     const ac=arcCt[s.archetype]||0;if(ac>=2)continue;
     picked.push(s);arcCt[s.archetype]=(ac+1);
   }
-  const choices=picked.map(s=>{
-    const c={kind:s.kind,text:s.text,effect:s.effect,goto:s.goto};
+  const choices=picked.map((s,i)=>{
+    const c={kind:s.kind,text:s.text,effect:s.effect,goto:s.goto,id:s.archetype+"_"+i};
     if(s.gate)c.gate=s.gate;
     if(s.risk)c.risk=s.risk;
     if(s.need)c.need=s.need;
     if(s.reply!==undefined)c.reply=s.reply;
     return c;
   });
-  choices.push({kind:"free",text:"[Leave]",goto:"end"});
+  choices.push({kind:"free",text:"[Leave]",goto:"end",id:"exit"});
   return choices;
 }
 
@@ -7647,7 +7647,7 @@ function renderDialogue(){
   h+="<div style='font-family:var(--disp);font-weight:700;font-size:13px;color:#c9b3ff'>"+nm+"</div>";
   h+="<div style='font-size:9px;color:"+disp[1]+";letter-spacing:.05em'>"+disp[0].toUpperCase()+"</div></div>";
   // the wisp's line
-  h+="<div style='color:#dfe8ff;font-size:12px;line-height:1.5;margin-bottom:11px;font-style:italic'>"+dlgVal(node.line,w)+"</div>";
+  h+="<div style='color:#dfe8ff;font-size:12px;line-height:1.5;margin-bottom:11px;font-style:italic'>"+dlgVal(st&&st._llmLine||node.line,w)+"</div>";
   // the choices
   h+="<div style='display:flex;flex-direction:column;gap:5px'>";
   // DYNAMIC RECRUIT — when the talk-path has softened the wisp enough, surface the ask right here. This is
@@ -7664,9 +7664,9 @@ function renderDialogue(){
     const riskTag=c.risk?" <span style='font-size:8px;opacity:.6'>\u26a0 "+dlgAttrLabel(c.risk.attr)+" check</span>":"";
     const kindCol=c.kind==="push"?"#ff8da3":c.kind==="probe"?"#7aa2ff":"#c8d4e8";
     if(locked){
-      h+="<div style='padding:7px 10px;font-size:11px;border:1px solid rgba(120,130,160,.2);border-radius:7px;color:#5a6580;opacity:.55;cursor:not-allowed'><span style='color:#7a6aa0'>"+gateLabel+"</span>"+dlgVal(c.text,w)+riskTag+"</div>";
+      h+="<div style='padding:7px 10px;font-size:11px;border:1px solid rgba(120,130,160,.2);border-radius:7px;color:#5a6580;opacity:.55;cursor:not-allowed'><span style='color:#7a6aa0'>"+gateLabel+"</span>"+(st&&st._llmLabels&&c.id&&st._llmLabels[c.id]||dlgVal(c.text,w))+riskTag+"</div>";
     }else{
-      h+="<button class='tb dlg-choice' data-dlg-choice='"+idx+"' style='text-align:left;padding:7px 10px;font-size:11px;border-color:rgba(120,130,160,.35);color:"+kindCol+"'>"+(gateLabel?"<span style='color:#9a8ad0'>"+gateLabel+"</span>":"")+dlgVal(c.text,w)+riskTag+"</button>";
+      h+="<button class='tb dlg-choice' data-dlg-choice='"+idx+"' style='text-align:left;padding:7px 10px;font-size:11px;border-color:rgba(120,130,160,.35);color:"+kindCol+"'>"+(gateLabel?"<span style='color:#9a8ad0'>"+gateLabel+"</span>":"")+(st&&st._llmLabels&&c.id&&st._llmLabels[c.id]||dlgVal(c.text,w))+riskTag+"</button>";
     }
   });
   h+="</div>";
@@ -7677,7 +7677,7 @@ function renderDialogue(){
 }
 
 // the player picks a choice
-function dlgChoose(idx){
+async function dlgChoose(idx){
   const st=DLG_STATE.active;if(!st)return;
   const w=ST.pawns.find(p=>p.id===st.wispId);if(!w){endDialogue();return;}
   const node=DLG_NODES[st.node];if(!node)return;
@@ -7698,14 +7698,86 @@ function dlgChoose(idx){
   }
   // apply the effect
   if(c.effect){try{c.effect(w,band);}catch(e){}}
-  // show the wisp's reply briefly (as a say bubble) if present
-  if(replyLine){const rl=dlgVal(replyLine,w);if(typeof sayLine==="function")sayLine(w,rl.replace(/^"|"$/g,""));}
-  // advance
+  // advance to next node
   let next=c.goto;
   if(typeof next==="function")next=next(w);
-  if(!next||next==="end"||!DLG_NODES[next]){endDialogue();return;}
+  if(!next||next==="end"||!DLG_NODES[next]){
+    // ending the dialogue \u2014 fire authored reply and close
+    if(replyLine){const rl=dlgVal(replyLine,w);if(typeof sayLine==="function")sayLine(w,rl.replace(/^"|"$/g,""));}
+    endDialogue();return;
+  }
   st.node=next;st.history.push(idx);
+  // clear LLM surface text from the previous exchange
+  st._llmLine=null;st._llmLabels=null;
+  if(aiReady()){
+    // single round-trip: clears prior sayLine, shows thinking float, awaits LLM reply+labels
+    await dlgLLMEnrich(w,c,band,replyLine,next);
+  }else{
+    // pure authored path \u2014 show scripted reply immediately
+    if(replyLine){const rl=dlgVal(replyLine,w);if(typeof sayLine==="function")sayLine(w,rl.replace(/^"|"$/g,""));}
+  }
   renderDialogue();
+}
+
+// Step 3 LLM layer: one async call per exchange, strict keyed-id binding, silent authored fallback.
+// Sets st._llmLine (NPC reply shown in panel opener) and st._llmLabels ({id:text} for _gen_ slots).
+// Never mutates DLG_NODES — state lives on DLG_STATE.active, cleared at the top of each dlgChoose.
+async function dlgLLMEnrich(w,choiceMade,band,replyLine,nextKey){
+  const st=DLG_STATE.active;if(!st)return;
+  const nextNode=DLG_NODES[nextKey];if(!nextNode)return;
+  const isGen=nextKey.startsWith("_gen_");
+  const av=theAvatar();
+  // labellable slots: generated choices with a stable id, excluding the Exit
+  const genChoices=isGen?nextNode.choices.filter(c=>c.id&&c.id!=="exit"):[];
+  const slotIds=genChoices.map(c=>c.id);
+  // discovery-filtered trait string — only mention traits the player has actually revealed via intel
+  const a=w.pers||{},tb=[];
+  if(intelKnown(w,"amb")){if(a.amb>65)tb.push("driven");else if(a.amb<35)tb.push("unambitious");}
+  if(intelKnown(w,"imp")){if(a.imp>65)tb.push("impulsive");}
+  if(intelKnown(w,"cau")){if(a.cau>65)tb.push("cautious");}
+  if(intelKnown(w,"soc")){if(a.soc>65)tb.push("outgoing");else if(a.soc<35)tb.push("withdrawn");}
+  if(intelKnown(w,"emp")){if(a.emp>65)tb.push("warm");else if(a.emp<35)tb.push("cold");}
+  if(intelKnown(w,"intg")){if((a.intg??50)>65)tb.push("principled");else if((a.intg??50)<35)tb.push("plays loose with the rules");}
+  const traitStr=tb.join(", ")||"unknown";
+  const relVal=relGet(av.id,w.id);
+  const relTone=relVal>30?"wary trust":relVal>0?"cautious":relVal>-30?"suspicious":"hostile";
+  const memStr=(w.mem||[]).slice(-3).map(m=>m.t).join("; ")||"none";
+  const outcomeStr=band==="critwin"?"strong success":band==="success"?"success":band==="partial"?"partial success":band==="fail"?"failure":"critical failure";
+  const choiceText=dlgVal(choiceMade.text,w);
+  const authoredReply=replyLine?dlgVal(replyLine,w).replace(/^"|"$/g,""):"";
+  // slot block: the authored text for each labellable slot, keyed by id
+  const slotBlock=slotIds.map(id=>{const ch=genChoices.find(c=>c.id===id);
+    return`"${id}":"<rewrite of: ${dlgVal(ch.text,w)}>"`;}).join(",");
+  const sys=
+    `NPC dialogue writer for a neon-noir city sim. Return ONLY a JSON object — no explanation, no markdown.\n`+
+    `NPC: ${w.name}. Known traits: ${traitStr}. State: ${feltState(w)}. Stance: ${relTone}.\n`+
+    `Memory: ${memStr}.\n`+
+    `Player said: "${choiceText}" outcome: ${outcomeStr}.\n`+
+    (authoredReply?`Scripted reply context: ${authoredReply}\n`:``)+
+    `Return: {"response":"<NPC reply, max 18 words, no outer quotes>","labels":{${slotBlock}}}\n`+
+    `Rules: response=one spoken line. labels keys MUST be exactly [${slotIds.map(s=>`"${s}"`).join(",")}]. `+
+    `Each label 6-14 words, same player-option intent. No extra keys. No missing keys.`;
+  // clear prior sayLine for this wisp so the thinking float isn't suppressed
+  if(ST.says)ST.says=ST.says.filter(s=>s.id!==w.id);
+  if(typeof float==="function")float(w.px,w.py,"…","#8aa8c8");
+  try{
+    const raw=await aiChat(sys,[{role:"user",content:"(reply)"}],AI_MODEL_AMBIENT,768);
+    let parsed=null;try{parsed=JSON.parse(raw);}catch(_){}
+    // validate and apply NPC response
+    const resp=parsed&&typeof parsed.response==="string"&&parsed.response.trim()||null;
+    if(resp){if(typeof sayLine==="function")sayLine(w,resp);st._llmLine=resp;}
+    else if(authoredReply){if(typeof sayLine==="function")sayLine(w,authoredReply);}
+    // validate labels — strict keyed, all-or-nothing, _gen_ next nodes only
+    if(isGen&&slotIds.length>0&&parsed&&parsed.labels&&typeof parsed.labels==="object"){
+      const keys=Object.keys(parsed.labels);
+      const ok=slotIds.every(id=>keys.includes(id)&&typeof parsed.labels[id]==="string"&&parsed.labels[id].trim())
+               &&keys.every(id=>slotIds.includes(id));
+      if(ok){const bound={};for(const id of slotIds)bound[id]=parsed.labels[id].trim();st._llmLabels=bound;}
+    }
+  }catch(_){
+    // aiChat threw (proxy down, budget, network) — authored fallback
+    if(authoredReply){if(typeof sayLine==="function")sayLine(w,authoredReply);}
+  }
 }
 
 // delegated click handler for dialogue choices
