@@ -6029,6 +6029,11 @@ function pawnTick(p){
   // WALK-TO-TALK — resolve a pending approach-to-converse BEFORE the mode gates, so it works in both manual
   // and auto (the goto job we set would otherwise stop avatarBrainTick from ever checking arrival).
   if(p.isAvatar&&p._pendingTalk){if(resolvePendingTalk(p))return;}
+  // AVATAR DIALOGUE HOLD — mirrors the wisp lock at line 6069: while a conversation is active the avatar
+  // holds in place. Placed AFTER _pendingTalk (so the walk-to-talk approach phase completes normally) and
+  // AFTER the survival floor above (so a starving/exhausted avatar still eats/sleeps mid-dialogue).
+  // Release is implicit: endDialogue() sets DLG_STATE.active=null, guard stops matching on the next tick.
+  if(p.isAvatar&&DLG_STATE.active){p.job=null;return;}
   // MANUAL MODE: when the player has taken direct control, the avatar doesn't pick its own busywork —
   // it waits for orders. It STILL handles critical survival (eating when starving, sleeping when
   // exhausted) so neglect can't accidentally kill your operative; everything else is the player's call.
