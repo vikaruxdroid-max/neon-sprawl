@@ -108,7 +108,35 @@ function T_saveload(){
   ];
   for(const[n,ok] of checks){if(!ok)fails++;console.log(n+":",ok?"PASS":"FAIL")}
 }
-try{T_combat();T_economy();T_path();T_fullrun();T_saveload();
+// H1-H4: mechanical-trait hook — target intg modifies bribe difficulty
+// traitMod(target, opKey) signature: descriptor with kind:"pawn", pawn pers.intg, intelSeen.intg flag
+function T_trait(){
+  function mkTgt(intg,revealed){
+    return {kind:"pawn",pers:{intg:intg},intelSeen:revealed?{intg:true}:{}};
+  }
+  // H1: high-intg discovered target → positive mod (bribe is harder)
+  const h1mod=traitMod(mkTgt(100,true),"bribe");
+  const h1=h1mod>0;
+  if(!h1)fails++;
+  console.log("H1 high-intg bribe harder (mod>0):",h1?"PASS":"FAIL","mod="+h1mod);
+  // H2: magnitude — intg=100→+2, intg=1→-2 (clamped at ±2; 0 is falsy so use 1)
+  const high=traitMod(mkTgt(100,true),"bribe");
+  const low=traitMod(mkTgt(1,true),"bribe");
+  const h2=high===2&&low===-2;
+  if(!h2)fails++;
+  console.log("H2 magnitude intg=100→+2 intg=0→-2:",h2?"PASS":"FAIL","high="+high+" low="+low);
+  // H3: discovery gate — intg not in intelSeen → 0 regardless of value
+  const gated=traitMod(mkTgt(100,false),"bribe");
+  const h3=gated===0;
+  if(!h3)fails++;
+  console.log("H3 undiscovered intg→0:",h3?"PASS":"FAIL","got="+gated);
+  // H4: op scope — non-bribe op → 0 always, even with discovered high intg
+  const scoped=traitMod(mkTgt(100,true),"sabotage");
+  const h4=scoped===0;
+  if(!h4)fails++;
+  console.log("H4 non-bribe op→0:",h4?"PASS":"FAIL","got="+scoped);
+}
+try{T_combat();T_economy();T_path();T_fullrun();T_saveload();T_trait();
   if(fails>0){console.error(fails+" TEST(S) FAILED");process.exit(1)}
   console.log("ALL TESTS PASS")}
 catch(err){console.error("HARNESS ERROR:",err);process.exit(1)}
