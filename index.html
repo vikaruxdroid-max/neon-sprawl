@@ -963,7 +963,7 @@ function hourN(){return ((ST.tick%TPD)/100+6)%24}   // day starts 06:00
 
 /* ---------- AI soul layer (Phase 1: talk to a wisp) ---------- */
 let AI_PROXY="";              // set to your Worker URL, e.g. "https://neon-sprawl-ai.you.workers.dev"
-const AI_MODEL_AMBIENT="claude-haiku-4-5";  // cheap/fast for background musings
+const AI_MODEL_AMBIENT="claude-haiku-4-5-20251001";  // cheap/fast for background musings
 let AI_CAP_USD=1.00;          // session spend ceiling (0 = no cap); override via localStorage "neonSprawlAICap"
 // AGENT REQUESTS temporarily DISABLED — they were too intrusive; will re-enable once tied into the game
 // properly (e.g. via the planned weekly council / quest system). Flip to true to restore them.
