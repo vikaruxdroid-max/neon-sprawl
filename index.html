@@ -2093,7 +2093,7 @@ function traitMod(target,opKey){
   if(opKey!=="bribe")return 0;
   if(!target||target.kind!=="pawn")return 0;
   if(!intelKnown(target,"intg"))return 0;
-  return clamp(Math.round(((target.pers.intg||50)-50)/25),-2,2);
+  return clamp(Math.round(((target.pers.intg??50)-50)/25),-2,2);
 }
 
 

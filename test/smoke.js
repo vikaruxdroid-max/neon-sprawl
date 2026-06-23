@@ -119,9 +119,9 @@ function T_trait(){
   const h1=h1mod>0;
   if(!h1)fails++;
   console.log("H1 high-intg bribe harder (mod>0):",h1?"PASS":"FAIL","mod="+h1mod);
-  // H2: magnitude — intg=100→+2, intg=1→-2 (clamped at ±2; 0 is falsy so use 1)
+  // H2: magnitude — intg=100→+2, intg=0→-2 (clamped at ±2; 0 is the true low boundary)
   const high=traitMod(mkTgt(100,true),"bribe");
-  const low=traitMod(mkTgt(1,true),"bribe");
+  const low=traitMod(mkTgt(0,true),"bribe");
   const h2=high===2&&low===-2;
   if(!h2)fails++;
   console.log("H2 magnitude intg=100→+2 intg=0→-2:",h2?"PASS":"FAIL","high="+high+" low="+low);
