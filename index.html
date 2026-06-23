@@ -6068,6 +6068,24 @@ function pawnTick(p){
     if(!p.job||p.job.t!=="goto"){p.job={t:"goto",x:j.jx,y:j.jy,adj:1};}   // still being walked there
     return;
   }
+  // CONVERSATION LOCK — while this wisp is engaged in dialogue, freeze it in place and preserve its job.
+  // Placed AFTER jailed/flee (arrest and terror supersede talk) and BEFORE _repairing/_investigating
+  // (talk supersedes repair tasks — a regime worker can hold a conversation instead of fixing the grid).
+  // Release is implicit: when DLG_STATE.active.wispId no longer matches p.id (dialogue ended via any path),
+  // the guard stops firing and p._inDlgLock triggers a one-tick validity check on the preserved job.
+  if(DLG_STATE.active&&DLG_STATE.active.wispId===p.id){
+    if(p.path)p.path=null;   // clear stale A* route so gotoCell recomputes on resume
+    p._inDlgLock=true;
+    return;                   // hard-return: preserve p.job, wisp resumes its task on release
+  }
+  if(p._inDlgLock){          // first tick after release: validate the preserved job target
+    p._inDlgLock=false;
+    if(p.job){
+      const js=p.job.s||p.job.bp;                                               // struct-targeted jobs
+      if(js&&ST.structs.get(K(js.x,js.y))!==js)p.job=null;                     // struct removed/replaced
+      else if(p.job.oid&&!ST.pawns.find(q=>q.id===p.job.oid&&q.hp>0))p.job=null; // target pawn dead
+    }
+  }
   // POWER CASCADE — a wisp dispatched to restore the grid drives to the station and supersedes routine AI
   if(p._gridFix){if(gridFixTick(p))return;}
   // a wisp actively repairing sabotage stays on the job — don't let routine AI pull them away
@@ -13284,7 +13302,7 @@ function hasSave(){
     for(const n of SLOTS)if(localStorage.getItem(SLOT_KEY(n)))return true;
   }catch(e){}
   return false}
-function snapPawn(p){return Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,activeOp:null,gather:null,_pendingTalk:null,_pendingOp:null,unre:undefined,pi:0,pTx:-1,pTy:-1,claim:0,_gridFix:null})}
+function snapPawn(p){return Object.assign({},p,{job:null,path:null,carry:null,order:null,dz:null,activeOp:null,gather:null,_pendingTalk:null,_pendingOp:null,unre:undefined,pi:0,pTx:-1,pTy:-1,claim:0,_gridFix:null,_inDlgLock:null})}
 function snapStruct(s){return Object.assign({},s,{res:0})}
 function serializeState(){
   return{v:2,tick:ST.tick,grp:ST.grp,rel:ST.rel,relMeta:ST.relMeta||{},cliques:ST.cliques||[],nextEv:ST.nextEv,lastCrackdown:ST.lastCrackdown,
