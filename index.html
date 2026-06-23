@@ -703,14 +703,7 @@ const SFX=(()=>{let ac=null,mut=false;
 const MUSIC=(()=>{
   // candidate filenames — the player uses whichever actually load (so exact naming is forgiving).
   // Put your trimmed loop files alongside index.html under any of these names.
-  const TRACKS=[
-    "slow-ambient-cyberpunk-soundtrack-70_062026.mp3",
-    "slow-ambient-cyberpunk-soundtrack-70_062026__1_.mp3",
-    "soft-ambient-video-game-soundtrack-steady_062026.mp3",
-    "soft-ambient-video-game-soundtrack-very_062026.mp3",
-    // generic fallbacks if you rename them simply:
-    "ambient1.mp3","ambient2.mp3","ambient3.mp3"
-  ];
+  const TRACKS=["ambient1.mp3","ambient2.mp3","ambient3.mp3"];
   let VOL=0.34;            // target music volume (gentle bed, sits under the SFX)
   const FADE_MS=4000;        // fade-in / crossfade duration
   let muted=false, started=false, order=[], idx=0, cur=null, nxt=null, available=null, checking=false;
@@ -13266,7 +13259,6 @@ function showCharCreate(){
   showModal(h);
 }
 function showStart(){showModal(
-  "<div id='hero-art' style='display:none;width:100%;max-width:420px;margin:0 auto 10px;border-radius:8px;overflow:hidden;border:1px solid rgba(168,89,255,.3)'></div>"+
   "<h1>NEON SPRAWL</h1><div class='mh-sub'>COLONY PROTOCOL</div>"+
   "<p>2087. Two citizens — Vex and Static — just squatted a dead block on the edge of the megacity. The concrete is cracked, mushrooms glow through the fissures, and the corp enforcers haven't noticed you yet.</p>"+
   "<p>Build a district. Grow a community. Keep the lights on and the rent paid. Watch your citizens live, fight, steal, fall sick, and form bonds — or not.</p>"+
@@ -13274,12 +13266,6 @@ function showStart(){showModal(
   (hasSave()?"<button class='tb big' id='m-continue'>CONTINUE</button>":"")+
   "<button class='tb big' id='m-start'>NEW DISTRICT</button>"+
   "<p style='color:var(--dim);font-size:10px;margin-top:14px'>Press ? for the operator manual · v0.2</p>");
-  // optional painted hero image — shows only if sprites/title.png exists (no broken-img if absent)
-  const heroSlot=$("hero-art");
-  if(heroSlot&&typeof Image!=="undefined"){const hi=new Image();
-    hi.onload=()=>{heroSlot.innerHTML="";heroSlot.appendChild(hi);hi.style.width="100%";hi.style.display="block";heroSlot.style.display="block";};
-    hi.onerror=()=>{};   // absent → title stays text-only, no broken image
-    hi.src="sprites/title.png";}
 }
 
 /* ---------- save / load ---------- */
