@@ -11,3 +11,5 @@ check_tmp.js
 tmp_*.js
 test/.build*
 test/probe_*
+test/.probe_*
+test/.dbg*
