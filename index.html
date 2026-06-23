@@ -7210,16 +7210,191 @@ function endDialogue(){DLG_STATE.active=null;const el=document.getElementById("d
 
 // pick the entry node based on the wisp's ROLE first (special figures get bespoke trees), then their state.
 function dlgEntryNode(w){
-  // special figures — bespoke conversations
+  // special figures — bespoke conversations (MUST remain first, untouched)
   if(w.role==="mayor")return "mayor_root";
   if(w.role==="enforcer"||w.regimeForce)return "enforcer_root";
   if(w.informant)return "informant_root";
-  // regular wisps — disposition-based
-  if(w.recruited)return "recruited_root";
+  // generic wisps — synthesize an entry node, inject into DLG_NODES (transient, not serialized)
+  const key="_gen_"+w.id;
+  DLG_NODES[key]=buildGenericDialogueNode(w);
+  return key;
+}
+
+// ── SLOT GENERATOR ──────────────────────────────────────────────────────────────────────────────
+// Deterministic, LLM-free generator for the generic-wisp entry layer. Special-role trees
+// (mayor/enforcer/informant) bypass this entirely — dlgEntryNode routes them first, same as before.
+// Each slot carries when(w,av)->bool (selection gate), weight(w,av)->number (scoring), plus
+// standard DLG_NODES choice fields lifted verbatim from the authored generic choices.
+// Diversity cap: max 2 per archetype. N=4 actionable slots + 1 fixed Exit always appended.
+const SLOT_LIBRARY=[
+  // ── Rapport ────────────────────────────────────────────────────────────────────────────────────
+  {archetype:"Rapport",kind:"free",
+   text:"Easy. I'm not here to cause trouble.",
+   effect:(w)=>{w.allegiance=clamp((w.allegiance||0)+2,-100,100);},
+   reply:"\"...Fine. Talk, then. Quickly.\"",goto:"wary_root",
+   when:(w)=>(w.allegiance||0)<-5&&!w.recruited,
+   weight:()=>1.0},
+
+  {archetype:"Rapport",kind:"free",
+   text:"Stay safe out there.",
+   effect:(w)=>{w.allegiance=clamp((w.allegiance||0)+1,-100,100);},
+   reply:"\"You too. Watch the patrols.\"",goto:"end",
+   when:(w)=>!w.recruited&&(w.allegiance||0)>=-20&&(w.allegiance||0)<35,
+   weight:()=>0.7},
+
+  {archetype:"Rapport",kind:"free",
+   text:"Just checking in. Stay strong.",
+   effect:(w)=>{w.allegiance=clamp((w.allegiance||0)+2,-100,100);},
+   reply:"\"Always. We're going to win this.\"",goto:"end",
+   when:(w)=>!w.recruited&&(w.allegiance||0)>=20,
+   weight:()=>0.7},
+
+  {archetype:"Rapport",kind:"free",
+   text:"Keep your head down. We need you.",
+   effect:(w)=>{w.allegiance=clamp((w.allegiance||0)+1,-100,100);},
+   reply:"\"Understood. I'm not going anywhere.\"",goto:"end",
+   when:(w)=>!!w.recruited,
+   weight:()=>0.9},
+
+  // ── Info-probe ─────────────────────────────────────────────────────────────────────────────────
+  {archetype:"Info-probe",kind:"probe",
+   text:"The regime's been bleeding this block dry. You feel it too.",
+   gate:{attr:"insight",min:6},
+   effect:(w)=>{w.allegiance=clamp((w.allegiance||0)+4,-100,100);M().intel=(M().intel||0)+1;},
+   reply:"\"...Maybe I do. Doesn't mean I trust you.\"",goto:"wary_root",
+   when:(w)=>(w.allegiance||0)<15&&!w.recruited,
+   weight:(w,av)=>ops(av,"insight")>=6?1.2:0.5},
+
+  {archetype:"Info-probe",kind:"probe",
+   text:"Tell me how things really are on the block.",
+   effect:(w)=>{w.allegiance=clamp((w.allegiance||0)+2,-100,100);M().intel=(M().intel||0)+2;
+     flashMsg&&flashMsg("You learn a little about "+w.name.split(" ")[0]+"'s situation (+2 intel)");},
+   reply:w=>"\""+(w.homeless?"Lost my place to a regime 'audit.' Sleeping rough now.":"Work's thin, rent's up, patrols everywhere. Same as everyone.")+"\"",
+   goto:"wary_topics",
+   when:(w)=>(w.allegiance||0)<35&&!w.recruited,
+   weight:()=>1.0},
+
+  {archetype:"Info-probe",kind:"probe",
+   text:"What are people on the block saying?",
+   effect:(w)=>{M().intel=(M().intel||0)+3;flashMsg&&flashMsg("Word from the block (+3 intel)");},
+   reply:"\"Folks are angrier than they let on. The regime's pushing too hard.\"",goto:"warm_root",
+   when:(w)=>(w.allegiance||0)>=35&&!w.recruited,
+   weight:()=>1.2},
+
+  // ── Debrief ────────────────────────────────────────────────────────────────────────────────────
+  {archetype:"Debrief",kind:"probe",
+   text:"Anything to report?",
+   effect:(w)=>{M().intel=(M().intel||0)+2;},
+   reply:w=>"\""+(REG().awareness>60?"Patrols are heavy. Be careful out there.":"Quiet for now. The block's holding.")+"\"",
+   goto:"end",
+   when:(w)=>!!w.recruited,
+   weight:()=>1.3},
+
+  // ── Insight-read ───────────────────────────────────────────────────────────────────────────────
+  {archetype:"Insight-read",kind:"probe",
+   text:"I can see something's eating at you.",
+   gate:{attr:"insight",min:6},
+   effect:(w)=>{w.allegiance=clamp((w.allegiance||0)+3,-100,100);if(typeof wispSecret==="function"&&wispSecret(w)){w.secretKnown=true;if(!w.secret)w.secret=wispSecret(w);}M().intel=(M().intel||0)+3;},
+   reply:"\"...You're sharp. Most people don't notice.\"",goto:"wary_topics",
+   when:(w)=>!w.recruited&&!w.secretKnown&&(w.allegiance||0)<35,
+   weight:(w)=>(typeof wispSecret==="function"&&wispSecret(w)&&!w.secretKnown)?1.5:0.7},
+
+  // ── Solidarity ─────────────────────────────────────────────────────────────────────────────────
+  {archetype:"Solidarity",kind:"push",
+   text:"The regime did this to you. You don't have to just take it.",
+   gate:{attr:"presence",min:6},
+   risk:{attr:"presence",diff:10},
+   effect:(w,band)=>{if(band==="critwin"){w.allegiance=clamp((w.allegiance||0)+12,-100,100);w._planted=true;}
+     else if(band==="success"){w.allegiance=clamp((w.allegiance||0)+7,-100,100);w._planted=true;}
+     else if(band==="partial"){w.allegiance=clamp((w.allegiance||0)+2,-100,100);}
+     else{w.allegiance=clamp((w.allegiance||0)-4,-100,100);M().exposure=clamp((M().exposure||0)+2,0,100);}},
+   reply:{win:"\"...You're right. I'm tired of being afraid.\"",lose:"\"Careful. Talk like that gets people disappeared.\""},
+   goto:"wary_topics",
+   when:(w)=>(w.allegiance||0)>=-25&&(w.allegiance||0)<35&&!w.recruited&&!w._planted,
+   weight:(w,av)=>ops(av,"presence")>=6?1.0:0.5},
+
+  // ── Pressure ───────────────────────────────────────────────────────────────────────────────────
+  {archetype:"Pressure",kind:"push",
+   text:"You can drop the act. I know what you really think of them.",
+   gate:{attr:"guile",min:7},
+   risk:{attr:"guile",diff:11},
+   effect:(w,band)=>{if(band==="critwin"||band==="success"){w.allegiance=clamp((w.allegiance||0)+8,-100,100);}
+     else if(band==="partial"){w.allegiance=clamp((w.allegiance||0)+2,-100,100);}
+     else{w.allegiance=clamp((w.allegiance||0)-6,-100,100);if(typeof tryEmote==="function")tryEmote(w,"angry",90);M().exposure=clamp((M().exposure||0)+3,0,100);}},
+   reply:{win:"\"...How did you — who ARE you?\"",lose:"\"Get away from me before I call an enforcer!\""},
+   goto:(w)=>(w.allegiance>=-10?"wary_root":"end"),
+   when:(w)=>(w.allegiance||0)<20&&!w.recruited,
+   weight:(w,av)=>ops(av,"guile")>=7?1.0:0.4},
+
+  // ── Recruit ────────────────────────────────────────────────────────────────────────────────────
+  {archetype:"Recruit",kind:"push",
+   text:"Join us. Help take the block back.",
+   gate:{attr:"presence",min:7},
+   need:w=>(w.allegiance||0)>=15,
+   risk:{attr:"presence",diff:13},
+   effect:(w,band)=>{if(band==="critwin"||band==="success"){w.allegiance=clamp((w.allegiance||0)+10,-100,100);w._recruitReady=true;
+       flashMsg&&flashMsg(w.name.split(" ")[0]+" is ready — you can recruit them now");}
+     else if(band==="partial"){w.allegiance=clamp((w.allegiance||0)+3,-100,100);}
+     else{w.allegiance=clamp((w.allegiance||0)-8,-100,100);M().exposure=clamp((M().exposure||0)+5,0,100);if(typeof tryEmote==="function")tryEmote(w,"sweat",90);}},
+   reply:{win:"\"...Yeah. Yeah, I'm in. Tell me what you need.\"",lose:"\"You're asking me to risk everything. I can't — not yet.\""},
+   goto:"end",
+   when:(w)=>(w.allegiance||0)>=15&&(w.allegiance||0)<40&&!w.recruited,
+   weight:(w)=>{const al=w.allegiance||0;return(w._recruitReady?1.5:1.0)*(al>=25?1.3:0.9);}},
+
+  {archetype:"Recruit",kind:"push",
+   text:"I need you with us. Officially.",
+   need:w=>(w.allegiance||0)>=15&&!w.recruited,
+   risk:{attr:"presence",diff:11},
+   effect:(w,band)=>{if(band!=="fail"&&band!=="critfail"){w._recruitReady=true;w.allegiance=clamp((w.allegiance||0)+6,-100,100);
+       flashMsg&&flashMsg(w.name.split(" ")[0]+" is ready to be recruited");}
+     else{w.allegiance=clamp((w.allegiance||0)-3,-100,100);}},
+   reply:{win:"\"I thought you'd never ask. I'm with you.\"",lose:"\"I want to — but I'm scared. Give me time.\""},
+   goto:"end",
+   when:(w)=>(w.allegiance||0)>=30&&!w.recruited,
+   weight:(w)=>{const al=w.allegiance||0;return(w._recruitReady?1.4:1.0)*(al>=35?1.4:0.8);}},
+];
+
+// Filter SLOT_LIBRARY to the best N contextual slots for this wisp+avatar, with archetype diversity.
+// Always appends one Exit slot. Returns a choices[] array in the DLG_NODES choice shape.
+function genDialogueSlots(w,av){
+  const N=4;
+  const eligible=SLOT_LIBRARY.filter(s=>s.when(w,av));
+  const scored=eligible.map(s=>({s,sc:s.weight(w,av)||0})).sort((a,b)=>b.sc-a.sc);
+  const picked=[];const arcCt={};
+  for(const{s}of scored){
+    if(picked.length>=N)break;
+    const ac=arcCt[s.archetype]||0;if(ac>=2)continue;
+    picked.push(s);arcCt[s.archetype]=(ac+1);
+  }
+  const choices=picked.map(s=>{
+    const c={kind:s.kind,text:s.text,effect:s.effect,goto:s.goto};
+    if(s.gate)c.gate=s.gate;
+    if(s.risk)c.risk=s.risk;
+    if(s.need)c.need=s.need;
+    if(s.reply!==undefined)c.reply=s.reply;
+    return c;
+  });
+  choices.push({kind:"free",text:"[Leave]",goto:"end"});
+  return choices;
+}
+
+// Synthesize the entry node for a generic wisp. Line mirrors the disposition opener from the
+// authored roots; choices are generated from SLOT_LIBRARY. Written to DLG_NODES["_gen_<id>"]
+// by dlgEntryNode — transient, never serialized.
+function buildGenericDialogueNode(w){
+  const av=theAvatar();
   const al=w.allegiance||0;
-  if(al<=-20)return "hostile_root";
-  if(al>=35)return "warm_root";
-  return "wary_root";
+  let line;
+  if(w.recruited){
+    line="\"Orders? Or just checking in?\"";
+  }else if(al<=-20){
+    line=q=>"\""+(q.allegiance<-45?"I've got nothing to say to you. Move along.":"What do you want? I know your type.")+"\"";
+  }else if(al>=35){
+    line="\"Good to see a friendly face. What do you need?\"";
+  }else{
+    line=q=>"\""+(q.mood<35?"It's been a rough stretch. What is it?":"I'm listening. What's on your mind?")+"\"";
+  }
+  return{line:line,choices:genDialogueSlots(w,av)};
 }
 
 // ── THE CONTENT LIBRARY — authored nodes. Short conversations for the common case; the engine supports
