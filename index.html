@@ -369,6 +369,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 </head>
 <body>
 <canvas id="c"></canvas>
+<canvas id="gl" style="position:fixed;inset:0;pointer-events:none;mix-blend-mode:screen"></canvas>
 
 <!-- UNIFIED HUD -->
 <div id="hud">
@@ -8458,6 +8459,7 @@ const cv=$("c"),ctx=cv.getContext("2d");
 const oc=document.createElement("canvas"),octx=oc.getContext("2d");
 const tc=document.createElement("canvas");tc.width=MW*T;tc.height=MH*T;
 const tctx=tc.getContext("2d");
+const glcv=$("gl");
 
 // ── GLOW SPRITE CACHE ──
 // Pre-render soft radial glows once; stamp them with drawImage (cheap) instead of
@@ -8537,10 +8539,61 @@ function resize(){dpr=window.devicePixelRatio||1;
   VW=window.innerWidth;VH=window.innerHeight;
   cv.width=Math.floor(VW*dpr);cv.height=Math.floor(VH*dpr);
   cv.style.width=VW+"px";cv.style.height=VH+"px";
-  oc.width=cv.width;oc.height=cv.height;clampCam()}
+  oc.width=cv.width;oc.height=cv.height;
+  glcv.width=cv.width;glcv.height=cv.height;
+  glcv.style.width=VW+"px";glcv.style.height=VH+"px";
+  clampCam()}
 function clampCam(){const vw=VW/cam.z,vh=VH/cam.z;
   cam.x=clamp(cam.x,-60,Math.max(-60,MW*T-vw+60));
   cam.y=clamp(cam.y,-60,Math.max(-60,MH*T-vh+60))}
+
+// ── WebGL OVERLAY — transparent canvas composited over Canvas2D via mix-blend-mode:screen ──
+// Phase 1: one centered radial glow (screen-fixed, no world transform) proves stacking + blend.
+// Phase 2 adds the world→clip transform to track world positions.
+let _gl=null,_glProg=null,_glBuf=null;
+function initGL(){
+  try{
+    const g=glcv.getContext("webgl",{alpha:true,premultipliedAlpha:false})||
+             glcv.getContext("experimental-webgl",{alpha:true,premultipliedAlpha:false});
+    if(!g||typeof g.COMPILE_STATUS!=="number")return;
+    _gl=g;
+    const vSrc="attribute vec2 a;varying vec2 v;void main(){v=a;gl_Position=vec4(a,0.,1.);}";
+    const fSrc="precision mediump float;varying vec2 v;"
+              +"void main(){float d=length(v)/0.35;float a=max(0.,1.-d);a*=a;"
+              +"gl_FragColor=vec4(.133,.867,1.,a);}";
+    function mkShader(type,src){
+      const s=g.createShader(type);g.shaderSource(s,src);g.compileShader(s);
+      if(!g.getShaderParameter(s,g.COMPILE_STATUS))
+        console.error("GL shader error:",g.getShaderInfoLog(s));
+      return s;}
+    const prog=g.createProgram();
+    g.attachShader(prog,mkShader(g.VERTEX_SHADER,vSrc));
+    g.attachShader(prog,mkShader(g.FRAGMENT_SHADER,fSrc));
+    g.linkProgram(prog);
+    if(!g.getProgramParameter(prog,g.LINK_STATUS))
+      console.error("GL link error:",g.getProgramInfoLog(prog));
+    _glProg=prog;
+    // quad at ±0.35 clip space — centered on screen, no world transform
+    const verts=new Float32Array([-0.35,-0.35, 0.35,-0.35, -0.35,0.35, 0.35,0.35]);
+    _glBuf=g.createBuffer();
+    g.bindBuffer(g.ARRAY_BUFFER,_glBuf);
+    g.bufferData(g.ARRAY_BUFFER,verts,g.STATIC_DRAW);
+    g.enable(g.BLEND);g.blendFunc(g.SRC_ALPHA,g.ONE_MINUS_SRC_ALPHA);
+  }catch(e){console.warn("GL init failed:",e);_gl=null;}
+}
+function renderGL(){
+  if(!_gl)return;
+  const g=_gl;
+  g.viewport(0,0,glcv.width,glcv.height);
+  g.clearColor(0,0,0,0);g.clear(g.COLOR_BUFFER_BIT);
+  if(ST.phase!=="run")return;  // only show during gameplay, not on menu/title
+  g.useProgram(_glProg);
+  g.bindBuffer(g.ARRAY_BUFFER,_glBuf);
+  const loc=g.getAttribLocation(_glProg,"a");
+  g.enableVertexAttribArray(loc);
+  g.vertexAttribPointer(loc,2,g.FLOAT,false,0,0);
+  g.drawArrays(g.TRIANGLE_STRIP,0,4);
+}
 function lightLevel(h){
   if(h>=6.5&&h<18.5)return 0;
   if(h>=18.5&&h<21)return (h-18.5)/2.5*.78;
@@ -13558,6 +13611,7 @@ function loop(ts){requestAnimationFrame(loop);
   if(ST.phase==="run"&&!ST.paused){const av=theAvatar();if(av&&(av.activeOp||(av.job&&av.job.t==="goto"))&&ST.tick%3===0)updateOpDockLive();}
   const _r0=PERF_HUD?PERF.now():0;
   render();
+  renderGL();
   if(PERF_HUD){const _rd=PERF.now()-_r0;_renderMs+=_rd;if(_rd>_renderPeak)_renderPeak=_rd;}
   // ── PERF HUD readout — refresh once per ~500ms window with averaged tick/render cost ──
   if(PERF_HUD){_fpsN++;_fpsT+=dt;if(_fpsT>=500){_fps=Math.round(_fpsN*1000/_fpsT);
@@ -13574,7 +13628,7 @@ function loop(ts){requestAnimationFrame(loop);
 }
 
 window.addEventListener("resize",resize);
-resize();showStart();
+resize();initGL();showStart();
 requestAnimationFrame(loop);
 </script>
 </body>
