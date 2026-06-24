@@ -8553,10 +8553,13 @@ function clampCam(){const vw=VW/cam.z,vh=VH/cam.z;
 let _gl=null,_glProg=null,_glBuf=null,_glAttrA=-1,_glUCenter=null,_glURadius=null,_glUColor=null,_glUIntensity=null;
 let _glProgExtract=null,_glAttrExtA=-1,_glUExtCenter=null,_glUExtRadius=null,_glUExtColor=null,_glUExtIntensity=null,_glUExtThreshold=null;
 let _glProgBlit=null,_glAttrBlitA=-1,_glFboB=null,_glTexB=null,_glUBlitTex=null,_glUBlitIntensity=null;
+let _glProgKaw=null,_glAttrKawA=-1,_glUKawTex=null,_glUKawOffset=null,_glUKawTexSize=null;
+let _glFboC=null,_glTexC=null;
 var LIGHT_INTENSITY=2.0; // window.LIGHT_INTENSITY from console; renderGL reads live every frame (0=off-switch)
 var NIGHT_BOOST_AMT=0.6; // window.NIGHT_BOOST_AMT from console; night multiplier = 1 + NIGHT_BOOST_AMT*nightness
 var BLOOM_THRESHOLD=0.18; // alpha cutoff: only bright glow cores exceed this and bloom; window-exposed for console tuning
 var BLOOM_INTENSITY=0.50; // additive weight of the bloom halo; 0=off (lights-without-bloom baseline); window-exposed
+var BLOOM_RADIUS=1.5;     // kawase blur offset scale: larger = wider flare; window-exposed for console tuning
 // Per-type config for weak-glow structs: RGB 0..1, tile radius, base intensity (×LIGHT_INTENSITY at draw).
 // tv: no existing stampGlow (nightPass only) → net-new additive. bar: misidentified as tv in prior recon.
 // Animated types (dealer/arcade/hospital) use base as the amplitude; animation applied at draw-time.
@@ -8657,13 +8660,13 @@ function initGL(){
     _glAttrBlitA=g.getAttribLocation(progBlit,"a");
     _glUBlitTex=g.getUniformLocation(progBlit,"uTex");
     _glUBlitIntensity=g.getUniformLocation(progBlit,"uBloomIntensity");
-    // ── BLOOM: half-res RGBA FBO_B — bloom source; reallocated on window resize via _bloomResizeFBO ──
+    // ── BLOOM: half-res RGBA FBO_B — bloom source; LINEAR for smooth kawase sampling and final upscale ──
     _glTexB=g.createTexture();
     g.bindTexture(g.TEXTURE_2D,_glTexB);
     const _bw=Math.floor(glcv.width/2)||1,_bh=Math.floor(glcv.height/2)||1;
     g.texImage2D(g.TEXTURE_2D,0,g.RGBA,_bw,_bh,0,g.RGBA,g.UNSIGNED_BYTE,null);
-    g.texParameteri(g.TEXTURE_2D,g.TEXTURE_MIN_FILTER,g.NEAREST);
-    g.texParameteri(g.TEXTURE_2D,g.TEXTURE_MAG_FILTER,g.NEAREST);
+    g.texParameteri(g.TEXTURE_2D,g.TEXTURE_MIN_FILTER,g.LINEAR);
+    g.texParameteri(g.TEXTURE_2D,g.TEXTURE_MAG_FILTER,g.LINEAR);
     g.texParameteri(g.TEXTURE_2D,g.TEXTURE_WRAP_S,g.CLAMP_TO_EDGE);
     g.texParameteri(g.TEXTURE_2D,g.TEXTURE_WRAP_T,g.CLAMP_TO_EDGE);
     _glFboB=g.createFramebuffer();
@@ -8671,6 +8674,41 @@ function initGL(){
     g.framebufferTexture2D(g.FRAMEBUFFER,g.COLOR_ATTACHMENT0,g.TEXTURE_2D,_glTexB,0);
     if(g.checkFramebufferStatus(g.FRAMEBUFFER)!==g.FRAMEBUFFER_COMPLETE)
       console.warn("GL bloom FBO_B incomplete — bloom disabled");
+    g.bindFramebuffer(g.FRAMEBUFFER,null);
+    g.bindTexture(g.TEXTURE_2D,null);
+    // ── BLOOM: kawase-blur program — 4 diagonal samples averaged; ping-pongs with FBO_C ──
+    const vKawSrc="attribute vec2 a;varying vec2 uv;void main(){uv=a*0.5+0.5;gl_Position=vec4(a,0.,1.);}";
+    const fKawSrc="precision mediump float;varying vec2 uv;uniform sampler2D uTex;"
+                +"uniform float uOffset;uniform vec2 uTexSize;"
+                +"void main(){vec2 off=vec2(uOffset)/uTexSize;"
+                +"vec4 s =texture2D(uTex,uv+vec2(-off.x,-off.y));"
+                +"    s+=texture2D(uTex,uv+vec2( off.x,-off.y));"
+                +"    s+=texture2D(uTex,uv+vec2(-off.x, off.y));"
+                +"    s+=texture2D(uTex,uv+vec2( off.x, off.y));"
+                +"gl_FragColor=s*0.25;}";
+    const progKaw=g.createProgram();
+    g.attachShader(progKaw,mkShader(g.VERTEX_SHADER,vKawSrc));
+    g.attachShader(progKaw,mkShader(g.FRAGMENT_SHADER,fKawSrc));
+    g.linkProgram(progKaw);
+    if(!g.getProgramParameter(progKaw,g.LINK_STATUS))console.error("GL kawase link error:",g.getProgramInfoLog(progKaw));
+    _glProgKaw=progKaw;
+    _glAttrKawA=g.getAttribLocation(progKaw,"a");
+    _glUKawTex=g.getUniformLocation(progKaw,"uTex");
+    _glUKawOffset=g.getUniformLocation(progKaw,"uOffset");
+    _glUKawTexSize=g.getUniformLocation(progKaw,"uTexSize");
+    // ── BLOOM: FBO_C — ping-pong target for kawase passes; same half-res as FBO_B ──
+    _glTexC=g.createTexture();
+    g.bindTexture(g.TEXTURE_2D,_glTexC);
+    g.texImage2D(g.TEXTURE_2D,0,g.RGBA,_bw,_bh,0,g.RGBA,g.UNSIGNED_BYTE,null);
+    g.texParameteri(g.TEXTURE_2D,g.TEXTURE_MIN_FILTER,g.LINEAR);
+    g.texParameteri(g.TEXTURE_2D,g.TEXTURE_MAG_FILTER,g.LINEAR);
+    g.texParameteri(g.TEXTURE_2D,g.TEXTURE_WRAP_S,g.CLAMP_TO_EDGE);
+    g.texParameteri(g.TEXTURE_2D,g.TEXTURE_WRAP_T,g.CLAMP_TO_EDGE);
+    _glFboC=g.createFramebuffer();
+    g.bindFramebuffer(g.FRAMEBUFFER,_glFboC);
+    g.framebufferTexture2D(g.FRAMEBUFFER,g.COLOR_ATTACHMENT0,g.TEXTURE_2D,_glTexC,0);
+    if(g.checkFramebufferStatus(g.FRAMEBUFFER)!==g.FRAMEBUFFER_COMPLETE)
+      console.warn("GL bloom FBO_C incomplete — blur disabled");
     g.bindFramebuffer(g.FRAMEBUFFER,null);
     g.bindTexture(g.TEXTURE_2D,null);
   }catch(e){console.warn("GL init failed:",e);_gl=null;}
@@ -8681,6 +8719,9 @@ function _bloomResizeFBO(){
   const bw=Math.floor(glcv.width/2)||1,bh=Math.floor(glcv.height/2)||1;
   g.bindTexture(g.TEXTURE_2D,_glTexB);
   g.texImage2D(g.TEXTURE_2D,0,g.RGBA,bw,bh,0,g.RGBA,g.UNSIGNED_BYTE,null);
+  if(_glTexC){
+    g.bindTexture(g.TEXTURE_2D,_glTexC);
+    g.texImage2D(g.TEXTURE_2D,0,g.RGBA,bw,bh,0,g.RGBA,g.UNSIGNED_BYTE,null);}
   g.bindTexture(g.TEXTURE_2D,null);
 }
 function renderGL(){
@@ -8742,9 +8783,8 @@ function renderGL(){
     else if(d.anim==="pulse")bi*=(0.6+0.4*Math.sin(t*d.sp+(d.ph||0)));
     else if(d.anim==="cycle"){const[cr,cg,cb]=hsl1(((t*d.rt)%1)*360);r=cr;gn=cg;b=cb;}
     glLight(d.px,d.py,d.radius,r,gn,b,bi);}
-  // ── BLOOM step 1: re-render lights into half-res FBO_B with threshold → composite additively ──
-  // No blur yet — proves FBO→texture→composite plumbing. Step 2 adds kawase blur.
-  // BLOOM_INTENSITY=0 skips; BLOOM_INTENSITY/BLOOM_THRESHOLD window-exposed for console tuning.
+  // ── BLOOM step 2: threshold-render → kawase blur (ping-pong FBO_B↔FBO_C) → additive composite ──
+  // BLOOM_INTENSITY=0 skips all; BLOOM_THRESHOLD/BLOOM_INTENSITY/BLOOM_RADIUS window-exposed for live tuning.
   if(BLOOM_INTENSITY>0&&_glProgExtract&&_glFboB){
     const bw=Math.floor(glcv.width/2)||1,bh=Math.floor(glcv.height/2)||1;
     // (a) render bright cores into FBO_B at half-res using threshold-extract program
@@ -8793,7 +8833,31 @@ function renderGL(){
       else if(d.anim==="pulse")bi*=(0.6+0.4*Math.sin(t*d.sp+(d.ph||0)));
       else if(d.anim==="cycle"){const[cr,cg,cb]=hsl1(((t*d.rt)%1)*360);r=cr;gn=cg;b=cb;}
       glLightB(d.px,d.py,d.radius,r,gn,b,bi);}
-    // (b) composite FBO_B additively onto screen
+    // (b) kawase blur: FBO_B→FBO_C (pass 0, offset 0.5×R) then FBO_C→FBO_B (pass 1, offset 1.5×R)
+    // blend disabled — passes overwrite target cleanly (cleared FBO + SRC_ALPHA blend would square alpha)
+    if(_glProgKaw&&_glFboC){
+      g.disable(g.BLEND);
+      g.useProgram(_glProgKaw);
+      g.bindBuffer(g.ARRAY_BUFFER,_glBuf);
+      g.enableVertexAttribArray(_glAttrKawA);
+      g.vertexAttribPointer(_glAttrKawA,2,g.FLOAT,false,0,0);
+      g.activeTexture(g.TEXTURE0);g.uniform1i(_glUKawTex,0);
+      g.uniform2f(_glUKawTexSize,bw,bh);
+      // pass 0: FBO_B → FBO_C
+      g.uniform1f(_glUKawOffset,0.5*BLOOM_RADIUS);
+      g.bindFramebuffer(g.FRAMEBUFFER,_glFboC);
+      g.viewport(0,0,bw,bh);g.clearColor(0,0,0,0);g.clear(g.COLOR_BUFFER_BIT);
+      g.bindTexture(g.TEXTURE_2D,_glTexB);
+      g.drawArrays(g.TRIANGLE_STRIP,0,4);
+      // pass 1: FBO_C → FBO_B (leaves blurred result in FBO_B for composite)
+      g.uniform1f(_glUKawOffset,1.5*BLOOM_RADIUS);
+      g.bindFramebuffer(g.FRAMEBUFFER,_glFboB);
+      g.viewport(0,0,bw,bh);g.clearColor(0,0,0,0);g.clear(g.COLOR_BUFFER_BIT);
+      g.bindTexture(g.TEXTURE_2D,_glTexC);
+      g.drawArrays(g.TRIANGLE_STRIP,0,4);
+      g.bindTexture(g.TEXTURE_2D,null);
+      g.enable(g.BLEND);}
+    // (c) composite blurred FBO_B additively onto screen
     g.bindFramebuffer(g.FRAMEBUFFER,null);
     g.viewport(0,0,glcv.width,glcv.height);
     g.blendFunc(g.SRC_ALPHA,g.ONE);
@@ -8807,7 +8871,7 @@ function renderGL(){
     g.uniform1f(_glUBlitIntensity,BLOOM_INTENSITY);
     g.drawArrays(g.TRIANGLE_STRIP,0,4);
     g.bindTexture(g.TEXTURE_2D,null);
-    // (c) restore normal blend for subsequent frames
+    // (d) restore normal blend for subsequent frames
     g.blendFunc(g.SRC_ALPHA,g.ONE_MINUS_SRC_ALPHA);}
 }
 function lightLevel(h){
