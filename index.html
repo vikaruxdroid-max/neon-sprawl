@@ -8548,9 +8548,9 @@ function clampCam(){const vw=VW/cam.z,vh=VH/cam.z;
   cam.y=clamp(cam.y,-60,Math.max(-60,MH*T-vh+60))}
 
 // ── WebGL OVERLAY — transparent canvas composited over Canvas2D via mix-blend-mode:screen ──
-// Phase 2: world→clip transform — avatar-tracked glow. Unit quad (-1..1) positioned by uCenter/uRadius
-// uniforms. Separate x/y clip radii maintain a circular glow on non-square viewports.
-let _gl=null,_glProg=null,_glBuf=null,_glAttrA=-1,_glUCenter=null,_glURadius=null;
+// Phase 3: 9 neon signs as colored radial glows + avatar glow. uColor uniform per light; Chrome Bar
+// animated per-frame. Signs have no existing stampGlow → purely additive, zero double-bright risk.
+let _gl=null,_glProg=null,_glBuf=null,_glAttrA=-1,_glUCenter=null,_glURadius=null,_glUColor=null;
 function initGL(){
   try{
     const g=glcv.getContext("webgl",{alpha:true,premultipliedAlpha:false})||
@@ -8561,10 +8561,10 @@ function initGL(){
     // v passed to fragment as local coord for circular distance.
     const vSrc="attribute vec2 a;uniform vec2 uCenter,uRadius;varying vec2 v;"
               +"void main(){v=a;gl_Position=vec4(uCenter+a*uRadius,0.,1.);}";
-    // fragment: length(v) is physically circular because uRadius encodes separate x/y pixel→clip scales.
-    const fSrc="precision mediump float;varying vec2 v;"
-              +"void main(){float d=length(v);float a=max(0.,1.-d);a*=a;"
-              +"gl_FragColor=vec4(.133,.867,1.,a);}";
+    // fragment: uColor per-light; peak alpha 0.28 (conservative — signs add haze, not blowout).
+    const fSrc="precision mediump float;varying vec2 v;uniform vec3 uColor;"
+              +"void main(){float d=length(v);float a=max(0.,1.-d);a=a*a*0.28;"
+              +"gl_FragColor=vec4(uColor,a);}";
     function mkShader(type,src){
       const s=g.createShader(type);g.shaderSource(s,src);g.compileShader(s);
       if(!g.getShaderParameter(s,g.COMPILE_STATUS))
@@ -8586,6 +8586,7 @@ function initGL(){
     _glAttrA=g.getAttribLocation(prog,"a");
     _glUCenter=g.getUniformLocation(prog,"uCenter");
     _glURadius=g.getUniformLocation(prog,"uRadius");
+    _glUColor=g.getUniformLocation(prog,"uColor");
     g.enable(g.BLEND);g.blendFunc(g.SRC_ALPHA,g.ONE_MINUS_SRC_ALPHA);
   }catch(e){console.warn("GL init failed:",e);_gl=null;}
 }
@@ -8595,22 +8596,38 @@ function renderGL(){
   g.viewport(0,0,glcv.width,glcv.height);
   g.clearColor(0,0,0,0);g.clear(g.COLOR_BUFFER_BIT);
   if(ST.phase!=="run")return;
-  const av=theAvatar();if(!av)return;
-  // world→screen: p.px is TILE units — multiply by T, same formula as nightPass light()
   const z=cam.z;
-  const sx=(av.px*T-cam.x)*z*dpr, sy=(av.py*T-cam.y)*z*dpr;
-  // screen→clip (WebGL y-up: clip_y=1 at top, -1 at bottom)
-  const cx=sx/glcv.width*2-1, cy=1-sy/glcv.height*2;
-  // 3-tile radius → physical pixels → clip space (separate axes for correct circle on landscape)
-  const rpx=3*T*z*dpr;
-  const rx=rpx*2/glcv.width, ry=rpx*2/glcv.height;
   g.useProgram(_glProg);
   g.bindBuffer(g.ARRAY_BUFFER,_glBuf);
   g.enableVertexAttribArray(_glAttrA);
   g.vertexAttribPointer(_glAttrA,2,g.FLOAT,false,0,0);
-  g.uniform2f(_glUCenter,cx,cy);
-  g.uniform2f(_glURadius,rx,ry);
-  g.drawArrays(g.TRIANGLE_STRIP,0,4);
+  // draw one radial glow: world-tile (wx,wy), radius in tiles, RGB in 0..1
+  function glLight(wx,wy,rTiles,r,gn,b){
+    const sx=(wx*T-cam.x)*z*dpr, sy=(wy*T-cam.y)*z*dpr;
+    const cx=sx/glcv.width*2-1, cy=1-sy/glcv.height*2;
+    const rpx=rTiles*T*z*dpr;
+    g.uniform2f(_glUCenter,cx,cy);
+    g.uniform2f(_glURadius,rpx*2/glcv.width,rpx*2/glcv.height);
+    g.uniform3f(_glUColor,r,gn,b);
+    g.drawArrays(g.TRIANGLE_STRIP,0,4);}
+  // Chrome Bar: same animated hsl as Canvas2D — hsl(t*.4%1*360, 100%, 65%)
+  const t=performance.now()*0.001;
+  function hsl1(h){const a=0.35,f=n=>{const k=(n+h/30)%12;return 0.65-a*Math.max(-1,Math.min(k-3,9-k,1));};return[f(0),f(8),f(4)];}
+  const[br,bgn,bb]=hsl1(((t*.4)%1)*360);
+  // 9 neon signs — radius 4 tiles, peak alpha 0.28 (conservative: haze not blowout)
+  // hex→RGB 0..1 matches drawStreetLayer colors exactly
+  glLight(31,49,4, 0,     0.831,1    );  // NEXUS CORP   #00d4ff
+  glLight(44,49,4, 1,     0.788,0.278);  // BODEGA       #ffc947
+  glLight(74,25,4, br,    bgn,  bb   );  // CHROME BAR   animated hsl
+  glLight(86,25,4, 0.224, 1,    0.533);  // MEDCENTER    #39ff88
+  glLight(40,67,4, 0.635, 0.349,1    );  // THE DEN      #a259ff
+  glLight(57,48,4, 0.224, 1,    0.533);  // HYDRO FARM   #39ff88
+  glLight(50,66,4, 1,     0.549,0.259);  // FIXER ROW    #ff8c42
+  glLight(76,48,4, 0.478, 0.969,1    );  // CITY HALL    #7af7ff
+  glLight(73,36,4, 0.278, 0.784,1    );  // PRECINCT     #47c8ff
+  // avatar glow — 3-tile radius, accent cyan (Phase 2)
+  const av=theAvatar();
+  if(av)glLight(av.px,av.py,3, 0.133,0.867,1);
 }
 function lightLevel(h){
   if(h>=6.5&&h<18.5)return 0;
