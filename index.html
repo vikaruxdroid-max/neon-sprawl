@@ -8199,6 +8199,7 @@ function tick(){ST.tick++;
   if(ST.says)for(let i=ST.says.length-1;i>=0;i--)if(--ST.says[i].ttl<=0)ST.says.splice(i,1);
   tickEmotes();
   opReadoutTick(theAvatar());
+  animateDoorsTick();
   tickTombstones();
   if(ST.tick>=ST.nextEv)fireEvent();
   if(ST.tick%30===0){disasterTick();maybeStoryEvent();}
@@ -8927,9 +8928,7 @@ function drawStruct(s){const X=s.x*T,Y=s.y*T;
       // futuristic sliding blast door — parts from the centre when a citizen nears, glowing portal behind
       const cx=X+T/2, innerX=X+2, innerY=Y+3, innerW=T-4, innerH=T-6, half=innerW/2;
       const near=ST.pawns.some(p=>DIST(p.px,p.py,s.x+.5,s.y+.5)<2.4);
-      const tgt=near?1:0;
-      s._do=(s._do==null)?tgt:s._do+(tgt-s._do)*0.16;       // smooth open/close each frame
-      const o=clamp(s._do,0,1), ease=o*o*(3-2*o);            // smoothstep panel travel
+      const o=clamp(s._do??0,0,1), ease=o*o*(3-2*o);         // s._do lerped in animateDoorsTick; ??0 guards first frame
       const aCol=near?"#00e5ff":"#0c3a5a";
       rr(X,Y,T,T,"#0a1322");                                  // housing
       // glowing portal core revealed as the panels part
@@ -9619,6 +9618,14 @@ function drawTombstones(x0,y0,x1,y1){
     // soft mound
     ctx.fillStyle="rgba(40,50,30,.5)";ctx.fillRect(X+3,Y+12,10,2);
     ctx.globalAlpha=1;
+  }
+}
+function animateDoorsTick(){
+  for(const s of ST.structs.values()){
+    if(s.type!=="door")continue;
+    const near=ST.pawns.some(p=>DIST(p.px,p.py,s.x+.5,s.y+.5)<2.4);
+    const tgt=near?1:0;
+    s._do=(s._do==null)?tgt:s._do+(tgt-s._do)*0.16;
   }
 }
 function tickTombstones(){
