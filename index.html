@@ -8551,7 +8551,21 @@ function clampCam(){const vw=VW/cam.z,vh=VH/cam.z;
 // Phase 3: 9 neon signs as colored radial glows + avatar glow. uColor uniform per light; Chrome Bar
 // animated per-frame. Signs have no existing stampGlow → purely additive, zero double-bright risk.
 let _gl=null,_glProg=null,_glBuf=null,_glAttrA=-1,_glUCenter=null,_glURadius=null,_glUColor=null,_glUIntensity=null;
-var LIGHT_INTENSITY=1.0; // window.LIGHT_INTENSITY from console; renderGL reads live every frame (0=off-switch)
+var LIGHT_INTENSITY=2.0; // window.LIGHT_INTENSITY from console; renderGL reads live every frame (0=off-switch)
+var NIGHT_BOOST_AMT=0.6; // window.NIGHT_BOOST_AMT from console; night multiplier = 1 + NIGHT_BOOST_AMT*nightness
+// Per-type config for weak-glow structs: RGB 0..1, tile radius, base intensity (×LIGHT_INTENSITY at draw).
+// tv: no existing stampGlow (nightPass only) → net-new additive. bar: misidentified as tv in prior recon.
+// Animated types (dealer/arcade/hospital) use base as the amplitude; animation applied at draw-time.
+const STRUCT_LIGHTS={
+  workstation:{r:0,     gn:0.831,b:1,     radius:2.5,base:0.15}, // #00d4ff a0.22
+  tv:         {r:0,     gn:0.831,b:1,     radius:2.5,base:0.08}, // #00d4ff screen; no stampGlow → net-new
+  bar:        {r:0.878, gn:0.251,b:0.984, radius:2.5,base:0.13}, // #e040fb a0.20
+  medbed:     {r:0.224, gn:1,    b:0.533, radius:2.5,base:0.09}, // #39ff88 a0.14
+  dealer:     {r:0.878, gn:0.251,b:0.984, radius:2.5,base:0.09}, // #e040fb a0-0.22 animated
+  arcade:     {r:0.878, gn:0.251,b:0.984, radius:2.5,base:0.11}, // #e040fb/#00d4ff alternating animated
+  hospital:   {r:0.224, gn:1,    b:0.533, radius:2.5,base:0.12}, // #39ff88 a0.14-0.20 animated
+  park:       {r:0.224, gn:1,    b:0.533, radius:3,  base:0.12}, // #39ff88 a0.18 (wider — outdoor canopy)
+};
 function initGL(){
   try{
     const g=glcv.getContext("webgl",{alpha:true,premultipliedAlpha:false})||
@@ -8599,19 +8613,23 @@ function renderGL(){
   g.clearColor(0,0,0,0);g.clear(g.COLOR_BUFFER_BIT);
   if(ST.phase!=="run"||LIGHT_INTENSITY<=0)return;  // LIGHT_INTENSITY=0: canvas cleared, zero raster cost
   const z=cam.z;
+  // night mood: neon intensifies as darkness falls — same lightLevel normalization as driveAmbience audio
+  const nightness=lightLevel(hourN())/0.78;  // 0=full daylight, 1=full night; smooth over dusk/dawn ramps
+  const nightBoost=1+NIGHT_BOOST_AMT*nightness;  // 1.0 at day → 1+NIGHT_BOOST_AMT at full night
   g.useProgram(_glProg);
   g.bindBuffer(g.ARRAY_BUFFER,_glBuf);
   g.enableVertexAttribArray(_glAttrA);
   g.vertexAttribPointer(_glAttrA,2,g.FLOAT,false,0,0);
-  g.uniform1f(_glUIntensity,LIGHT_INTENSITY);  // set once — all lights inherit; reads live for console tuning
-  // draw one radial glow: world-tile (wx,wy), radius in tiles, RGB in 0..1
-  function glLight(wx,wy,rTiles,r,gn,b){
+  // draw one radial glow: world-tile (wx,wy), radius in tiles, RGB in 0..1, bi=per-light base (×LIGHT_INTENSITY)
+  // uIntensity set per-call so each light can carry its own base while the global dial scales all uniformly
+  function glLight(wx,wy,rTiles,r,gn,b,bi=1){
     const sx=(wx*T-cam.x)*z*dpr, sy=(wy*T-cam.y)*z*dpr;
     const cx=sx/glcv.width*2-1, cy=1-sy/glcv.height*2;
     const rpx=rTiles*T*z*dpr;
     g.uniform2f(_glUCenter,cx,cy);
     g.uniform2f(_glURadius,rpx*2/glcv.width,rpx*2/glcv.height);
     g.uniform3f(_glUColor,r,gn,b);
+    g.uniform1f(_glUIntensity,LIGHT_INTENSITY*bi*nightBoost);  // global × base × night; all three read live
     g.drawArrays(g.TRIANGLE_STRIP,0,4);}
   // Chrome Bar: same animated hsl as Canvas2D — hsl(t*.4%1*360, 100%, 65%)
   const t=performance.now()*0.001;
@@ -8631,6 +8649,15 @@ function renderGL(){
   // avatar glow — 3-tile radius, accent cyan (Phase 2)
   const av=theAvatar();
   if(av)glLight(av.px,av.py,3, 0.133,0.867,1);
+  // struct ambient lights — weaker-glow interior/civic types; animation re-uses same t as Chrome Bar
+  for(const s of ST.structs.values()){
+    const sl=STRUCT_LIGHTS[s.type];
+    if(!sl||s.isBroken||s.bp)continue;
+    let r=sl.r,gn=sl.gn,b=sl.b,bi=sl.base;
+    if(s.type==="arcade"){const ac=(t*40)%360<180;r=ac?0.878:0;gn=ac?0.251:0.831;b=ac?0.984:1;}
+    else if(s.type==="dealer")bi*=(0.5+0.5*Math.sin(t*2.5+s.x*0.7));
+    else if(s.type==="hospital")bi*=(0.7+0.3*Math.sin(t*1.8+s.x*0.5));
+    glLight(s.x+0.5,s.y+0.5,sl.radius,r,gn,b,bi);}
 }
 function lightLevel(h){
   if(h>=6.5&&h<18.5)return 0;
