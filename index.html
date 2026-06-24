@@ -8548,18 +8548,22 @@ function clampCam(){const vw=VW/cam.z,vh=VH/cam.z;
   cam.y=clamp(cam.y,-60,Math.max(-60,MH*T-vh+60))}
 
 // ── WebGL OVERLAY — transparent canvas composited over Canvas2D via mix-blend-mode:screen ──
-// Phase 1: one centered radial glow (screen-fixed, no world transform) proves stacking + blend.
-// Phase 2 adds the world→clip transform to track world positions.
-let _gl=null,_glProg=null,_glBuf=null;
+// Phase 2: world→clip transform — avatar-tracked glow. Unit quad (-1..1) positioned by uCenter/uRadius
+// uniforms. Separate x/y clip radii maintain a circular glow on non-square viewports.
+let _gl=null,_glProg=null,_glBuf=null,_glAttrA=-1,_glUCenter=null,_glURadius=null;
 function initGL(){
   try{
     const g=glcv.getContext("webgl",{alpha:true,premultipliedAlpha:false})||
              glcv.getContext("experimental-webgl",{alpha:true,premultipliedAlpha:false});
     if(!g||typeof g.COMPILE_STATUS!=="number")return;
     _gl=g;
-    const vSrc="attribute vec2 a;varying vec2 v;void main(){v=a;gl_Position=vec4(a,0.,1.);}";
+    // vertex: unit quad vertex a ∈ [-1,1]² offset + scaled by uCenter/uRadius to clip space.
+    // v passed to fragment as local coord for circular distance.
+    const vSrc="attribute vec2 a;uniform vec2 uCenter,uRadius;varying vec2 v;"
+              +"void main(){v=a;gl_Position=vec4(uCenter+a*uRadius,0.,1.);}";
+    // fragment: length(v) is physically circular because uRadius encodes separate x/y pixel→clip scales.
     const fSrc="precision mediump float;varying vec2 v;"
-              +"void main(){float d=length(v)/0.35;float a=max(0.,1.-d);a*=a;"
+              +"void main(){float d=length(v);float a=max(0.,1.-d);a*=a;"
               +"gl_FragColor=vec4(.133,.867,1.,a);}";
     function mkShader(type,src){
       const s=g.createShader(type);g.shaderSource(s,src);g.compileShader(s);
@@ -8573,11 +8577,15 @@ function initGL(){
     if(!g.getProgramParameter(prog,g.LINK_STATUS))
       console.error("GL link error:",g.getProgramInfoLog(prog));
     _glProg=prog;
-    // quad at ±0.35 clip space — centered on screen, no world transform
-    const verts=new Float32Array([-0.35,-0.35, 0.35,-0.35, -0.35,0.35, 0.35,0.35]);
+    // unit quad in local space; uCenter+a*uRadius maps to clip space in renderGL
+    const verts=new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
     _glBuf=g.createBuffer();
     g.bindBuffer(g.ARRAY_BUFFER,_glBuf);
     g.bufferData(g.ARRAY_BUFFER,verts,g.STATIC_DRAW);
+    // cache locations — looked up once at init, reused every frame
+    _glAttrA=g.getAttribLocation(prog,"a");
+    _glUCenter=g.getUniformLocation(prog,"uCenter");
+    _glURadius=g.getUniformLocation(prog,"uRadius");
     g.enable(g.BLEND);g.blendFunc(g.SRC_ALPHA,g.ONE_MINUS_SRC_ALPHA);
   }catch(e){console.warn("GL init failed:",e);_gl=null;}
 }
@@ -8586,12 +8594,22 @@ function renderGL(){
   const g=_gl;
   g.viewport(0,0,glcv.width,glcv.height);
   g.clearColor(0,0,0,0);g.clear(g.COLOR_BUFFER_BIT);
-  if(ST.phase!=="run")return;  // only show during gameplay, not on menu/title
+  if(ST.phase!=="run")return;
+  const av=theAvatar();if(!av)return;
+  // world→screen: p.px is TILE units — multiply by T, same formula as nightPass light()
+  const z=cam.z;
+  const sx=(av.px*T-cam.x)*z*dpr, sy=(av.py*T-cam.y)*z*dpr;
+  // screen→clip (WebGL y-up: clip_y=1 at top, -1 at bottom)
+  const cx=sx/glcv.width*2-1, cy=1-sy/glcv.height*2;
+  // 3-tile radius → physical pixels → clip space (separate axes for correct circle on landscape)
+  const rpx=3*T*z*dpr;
+  const rx=rpx*2/glcv.width, ry=rpx*2/glcv.height;
   g.useProgram(_glProg);
   g.bindBuffer(g.ARRAY_BUFFER,_glBuf);
-  const loc=g.getAttribLocation(_glProg,"a");
-  g.enableVertexAttribArray(loc);
-  g.vertexAttribPointer(loc,2,g.FLOAT,false,0,0);
+  g.enableVertexAttribArray(_glAttrA);
+  g.vertexAttribPointer(_glAttrA,2,g.FLOAT,false,0,0);
+  g.uniform2f(_glUCenter,cx,cy);
+  g.uniform2f(_glURadius,rx,ry);
   g.drawArrays(g.TRIANGLE_STRIP,0,4);
 }
 function lightLevel(h){
