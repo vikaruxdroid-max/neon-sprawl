@@ -8550,7 +8550,8 @@ function clampCam(){const vw=VW/cam.z,vh=VH/cam.z;
 // ── WebGL OVERLAY — transparent canvas composited over Canvas2D via mix-blend-mode:screen ──
 // Phase 3: 9 neon signs as colored radial glows + avatar glow. uColor uniform per light; Chrome Bar
 // animated per-frame. Signs have no existing stampGlow → purely additive, zero double-bright risk.
-let _gl=null,_glProg=null,_glBuf=null,_glAttrA=-1,_glUCenter=null,_glURadius=null,_glUColor=null;
+let _gl=null,_glProg=null,_glBuf=null,_glAttrA=-1,_glUCenter=null,_glURadius=null,_glUColor=null,_glUIntensity=null;
+var LIGHT_INTENSITY=1.0; // window.LIGHT_INTENSITY from console; renderGL reads live every frame (0=off-switch)
 function initGL(){
   try{
     const g=glcv.getContext("webgl",{alpha:true,premultipliedAlpha:false})||
@@ -8562,8 +8563,8 @@ function initGL(){
     const vSrc="attribute vec2 a;uniform vec2 uCenter,uRadius;varying vec2 v;"
               +"void main(){v=a;gl_Position=vec4(uCenter+a*uRadius,0.,1.);}";
     // fragment: uColor per-light; peak alpha 0.28 (conservative — signs add haze, not blowout).
-    const fSrc="precision mediump float;varying vec2 v;uniform vec3 uColor;"
-              +"void main(){float d=length(v);float a=max(0.,1.-d);a=a*a*0.28;"
+    const fSrc="precision mediump float;varying vec2 v;uniform vec3 uColor;uniform float uIntensity;"
+              +"void main(){float d=length(v);float a=max(0.,1.-d);a=a*a*0.28*uIntensity;"
               +"gl_FragColor=vec4(uColor,a);}";
     function mkShader(type,src){
       const s=g.createShader(type);g.shaderSource(s,src);g.compileShader(s);
@@ -8587,6 +8588,7 @@ function initGL(){
     _glUCenter=g.getUniformLocation(prog,"uCenter");
     _glURadius=g.getUniformLocation(prog,"uRadius");
     _glUColor=g.getUniformLocation(prog,"uColor");
+    _glUIntensity=g.getUniformLocation(prog,"uIntensity");
     g.enable(g.BLEND);g.blendFunc(g.SRC_ALPHA,g.ONE_MINUS_SRC_ALPHA);
   }catch(e){console.warn("GL init failed:",e);_gl=null;}
 }
@@ -8595,12 +8597,13 @@ function renderGL(){
   const g=_gl;
   g.viewport(0,0,glcv.width,glcv.height);
   g.clearColor(0,0,0,0);g.clear(g.COLOR_BUFFER_BIT);
-  if(ST.phase!=="run")return;
+  if(ST.phase!=="run"||LIGHT_INTENSITY<=0)return;  // LIGHT_INTENSITY=0: canvas cleared, zero raster cost
   const z=cam.z;
   g.useProgram(_glProg);
   g.bindBuffer(g.ARRAY_BUFFER,_glBuf);
   g.enableVertexAttribArray(_glAttrA);
   g.vertexAttribPointer(_glAttrA,2,g.FLOAT,false,0,0);
+  g.uniform1f(_glUIntensity,LIGHT_INTENSITY);  // set once — all lights inherit; reads live for console tuning
   // draw one radial glow: world-tile (wx,wy), radius in tiles, RGB in 0..1
   function glLight(wx,wy,rTiles,r,gn,b){
     const sx=(wx*T-cam.x)*z*dpr, sy=(wy*T-cam.y)*z*dpr;
