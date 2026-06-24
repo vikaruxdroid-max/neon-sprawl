@@ -8542,7 +8542,7 @@ function resize(){dpr=window.devicePixelRatio||1;
   oc.width=cv.width;oc.height=cv.height;
   glcv.width=cv.width;glcv.height=cv.height;
   glcv.style.width=VW+"px";glcv.style.height=VH+"px";
-  clampCam()}
+  _bloomResizeFBO();clampCam()}
 function clampCam(){const vw=VW/cam.z,vh=VH/cam.z;
   cam.x=clamp(cam.x,-60,Math.max(-60,MW*T-vw+60));
   cam.y=clamp(cam.y,-60,Math.max(-60,MH*T-vh+60))}
@@ -8551,8 +8551,12 @@ function clampCam(){const vw=VW/cam.z,vh=VH/cam.z;
 // Phase 3: 9 neon signs as colored radial glows + avatar glow. uColor uniform per light; Chrome Bar
 // animated per-frame. Signs have no existing stampGlow → purely additive, zero double-bright risk.
 let _gl=null,_glProg=null,_glBuf=null,_glAttrA=-1,_glUCenter=null,_glURadius=null,_glUColor=null,_glUIntensity=null;
+let _glProgExtract=null,_glAttrExtA=-1,_glUExtCenter=null,_glUExtRadius=null,_glUExtColor=null,_glUExtIntensity=null,_glUExtThreshold=null;
+let _glProgBlit=null,_glAttrBlitA=-1,_glFboB=null,_glTexB=null,_glUBlitTex=null,_glUBlitIntensity=null;
 var LIGHT_INTENSITY=2.0; // window.LIGHT_INTENSITY from console; renderGL reads live every frame (0=off-switch)
 var NIGHT_BOOST_AMT=0.6; // window.NIGHT_BOOST_AMT from console; night multiplier = 1 + NIGHT_BOOST_AMT*nightness
+var BLOOM_THRESHOLD=0.18; // alpha cutoff: only bright glow cores exceed this and bloom; window-exposed for console tuning
+var BLOOM_INTENSITY=0.50; // additive weight of the bloom halo; 0=off (lights-without-bloom baseline); window-exposed
 // Per-type config for weak-glow structs: RGB 0..1, tile radius, base intensity (×LIGHT_INTENSITY at draw).
 // tv: no existing stampGlow (nightPass only) → net-new additive. bar: misidentified as tv in prior recon.
 // Animated types (dealer/arcade/hospital) use base as the amplitude; animation applied at draw-time.
@@ -8624,7 +8628,60 @@ function initGL(){
     _glUColor=g.getUniformLocation(prog,"uColor");
     _glUIntensity=g.getUniformLocation(prog,"uIntensity");
     g.enable(g.BLEND);g.blendFunc(g.SRC_ALPHA,g.ONE_MINUS_SRC_ALPHA);
+    // ── BLOOM: threshold-extract program — same vertex shader; fragment suppresses pixels below uThreshold ──
+    const fExtSrc="precision mediump float;varying vec2 v;uniform vec3 uColor;uniform float uIntensity,uThreshold;"
+                +"void main(){float d=length(v);float a=max(0.,1.-d);a=a*a*0.28*uIntensity;"
+                +"if(a<uThreshold){gl_FragColor=vec4(0.);return;}gl_FragColor=vec4(uColor,a);}";
+    const progExt=g.createProgram();
+    g.attachShader(progExt,mkShader(g.VERTEX_SHADER,vSrc));
+    g.attachShader(progExt,mkShader(g.FRAGMENT_SHADER,fExtSrc));
+    g.linkProgram(progExt);
+    if(!g.getProgramParameter(progExt,g.LINK_STATUS))console.error("GL bloom-extract link error:",g.getProgramInfoLog(progExt));
+    _glProgExtract=progExt;
+    _glAttrExtA=g.getAttribLocation(progExt,"a");
+    _glUExtCenter=g.getUniformLocation(progExt,"uCenter");
+    _glUExtRadius=g.getUniformLocation(progExt,"uRadius");
+    _glUExtColor=g.getUniformLocation(progExt,"uColor");
+    _glUExtIntensity=g.getUniformLocation(progExt,"uIntensity");
+    _glUExtThreshold=g.getUniformLocation(progExt,"uThreshold");
+    // ── BLOOM: fullscreen blit program — UV-mapped quad, samples FBO_B texture, composites additively ──
+    const vBlitSrc="attribute vec2 a;varying vec2 uv;void main(){uv=a*0.5+0.5;gl_Position=vec4(a,0.,1.);}";
+    const fBlitSrc="precision mediump float;varying vec2 uv;uniform sampler2D uTex;uniform float uBloomIntensity;"
+                 +"void main(){gl_FragColor=texture2D(uTex,uv)*uBloomIntensity;}";
+    const progBlit=g.createProgram();
+    g.attachShader(progBlit,mkShader(g.VERTEX_SHADER,vBlitSrc));
+    g.attachShader(progBlit,mkShader(g.FRAGMENT_SHADER,fBlitSrc));
+    g.linkProgram(progBlit);
+    if(!g.getProgramParameter(progBlit,g.LINK_STATUS))console.error("GL bloom-blit link error:",g.getProgramInfoLog(progBlit));
+    _glProgBlit=progBlit;
+    _glAttrBlitA=g.getAttribLocation(progBlit,"a");
+    _glUBlitTex=g.getUniformLocation(progBlit,"uTex");
+    _glUBlitIntensity=g.getUniformLocation(progBlit,"uBloomIntensity");
+    // ── BLOOM: half-res RGBA FBO_B — bloom source; reallocated on window resize via _bloomResizeFBO ──
+    _glTexB=g.createTexture();
+    g.bindTexture(g.TEXTURE_2D,_glTexB);
+    const _bw=Math.floor(glcv.width/2)||1,_bh=Math.floor(glcv.height/2)||1;
+    g.texImage2D(g.TEXTURE_2D,0,g.RGBA,_bw,_bh,0,g.RGBA,g.UNSIGNED_BYTE,null);
+    g.texParameteri(g.TEXTURE_2D,g.TEXTURE_MIN_FILTER,g.NEAREST);
+    g.texParameteri(g.TEXTURE_2D,g.TEXTURE_MAG_FILTER,g.NEAREST);
+    g.texParameteri(g.TEXTURE_2D,g.TEXTURE_WRAP_S,g.CLAMP_TO_EDGE);
+    g.texParameteri(g.TEXTURE_2D,g.TEXTURE_WRAP_T,g.CLAMP_TO_EDGE);
+    _glFboB=g.createFramebuffer();
+    g.bindFramebuffer(g.FRAMEBUFFER,_glFboB);
+    g.framebufferTexture2D(g.FRAMEBUFFER,g.COLOR_ATTACHMENT0,g.TEXTURE_2D,_glTexB,0);
+    if(g.checkFramebufferStatus(g.FRAMEBUFFER)!==g.FRAMEBUFFER_COMPLETE)
+      console.warn("GL bloom FBO_B incomplete — bloom disabled");
+    g.bindFramebuffer(g.FRAMEBUFFER,null);
+    g.bindTexture(g.TEXTURE_2D,null);
   }catch(e){console.warn("GL init failed:",e);_gl=null;}
+}
+function _bloomResizeFBO(){
+  if(!_gl||!_glTexB||!_glFboB)return;
+  const g=_gl;
+  const bw=Math.floor(glcv.width/2)||1,bh=Math.floor(glcv.height/2)||1;
+  g.bindTexture(g.TEXTURE_2D,_glTexB);
+  g.texImage2D(g.TEXTURE_2D,0,g.RGBA,bw,bh,0,g.RGBA,g.UNSIGNED_BYTE,null);
+  g.bindTexture(g.TEXTURE_2D,null);
 }
 function renderGL(){
   if(!_gl)return;
@@ -8685,6 +8742,73 @@ function renderGL(){
     else if(d.anim==="pulse")bi*=(0.6+0.4*Math.sin(t*d.sp+(d.ph||0)));
     else if(d.anim==="cycle"){const[cr,cg,cb]=hsl1(((t*d.rt)%1)*360);r=cr;gn=cg;b=cb;}
     glLight(d.px,d.py,d.radius,r,gn,b,bi);}
+  // ── BLOOM step 1: re-render lights into half-res FBO_B with threshold → composite additively ──
+  // No blur yet — proves FBO→texture→composite plumbing. Step 2 adds kawase blur.
+  // BLOOM_INTENSITY=0 skips; BLOOM_INTENSITY/BLOOM_THRESHOLD window-exposed for console tuning.
+  if(BLOOM_INTENSITY>0&&_glProgExtract&&_glFboB){
+    const bw=Math.floor(glcv.width/2)||1,bh=Math.floor(glcv.height/2)||1;
+    // (a) render bright cores into FBO_B at half-res using threshold-extract program
+    g.bindFramebuffer(g.FRAMEBUFFER,_glFboB);
+    g.viewport(0,0,bw,bh);
+    g.clearColor(0,0,0,0);g.clear(g.COLOR_BUFFER_BIT);
+    g.useProgram(_glProgExtract);
+    g.bindBuffer(g.ARRAY_BUFFER,_glBuf);
+    g.enableVertexAttribArray(_glAttrExtA);
+    g.vertexAttribPointer(_glAttrExtA,2,g.FLOAT,false,0,0);
+    g.uniform1f(_glUExtThreshold,BLOOM_THRESHOLD);
+    // glLightB mirrors glLight but writes to the extract program's uniforms
+    const glLightB=(wx,wy,rTiles,r,gn,b,bi=1)=>{
+      const sx=(wx*T-cam.x)*z*dpr,sy=(wy*T-cam.y)*z*dpr;
+      const cx=sx/glcv.width*2-1,cy=1-sy/glcv.height*2;
+      const rpx=rTiles*T*z*dpr;
+      g.uniform2f(_glUExtCenter,cx,cy);
+      g.uniform2f(_glUExtRadius,rpx*2/glcv.width,rpx*2/glcv.height);
+      g.uniform3f(_glUExtColor,r,gn,b);
+      g.uniform1f(_glUExtIntensity,LIGHT_INTENSITY*bi*nightBoost);
+      g.drawArrays(g.TRIANGLE_STRIP,0,4);};
+    // signs
+    glLightB(31,49,4, 0,     0.831,1    );
+    glLightB(44,49,4, 1,     0.788,0.278);
+    glLightB(74,25,4, br,    bgn,  bb   );
+    glLightB(86,25,4, 0.224, 1,    0.533);
+    glLightB(40,67,4, 0.635, 0.349,1    );
+    glLightB(57,48,4, 0.224, 1,    0.533);
+    glLightB(50,66,4, 1,     0.549,0.259);
+    glLightB(76,48,4, 0.478, 0.969,1    );
+    glLightB(73,36,4, 0.278, 0.784,1    );
+    if(av)glLightB(av.px,av.py,3, 0.133,0.867,1);
+    // structs
+    for(const s of ST.structs.values()){
+      const sl=STRUCT_LIGHTS[s.type];
+      if(!sl||s.isBroken||s.bp)continue;
+      let r=sl.r,gn=sl.gn,b=sl.b,bi=sl.base;
+      if(s.type==="arcade"){const ac=(t*40)%360<180;r=ac?0.878:0;gn=ac?0.251:0.831;b=ac?0.984:1;}
+      else if(s.type==="dealer")bi*=(0.5+0.5*Math.sin(t*2.5+s.x*0.7));
+      else if(s.type==="hospital")bi*=(0.7+0.3*Math.sin(t*1.8+s.x*0.5));
+      glLightB(s.x+0.5,s.y+0.5,sl.radius,r,gn,b,bi);}
+    // details
+    for(const d of DETAIL_NEONS){
+      let r=d.r,gn=d.gn,b=d.b,bi=d.base*DETAIL_INTENSITY;
+      if(d.anim==="flicker")bi*=(Math.sin(t*d.k1+(d.ph||0))*Math.sin(t*d.k2)>0?1.0:0.12);
+      else if(d.anim==="pulse")bi*=(0.6+0.4*Math.sin(t*d.sp+(d.ph||0)));
+      else if(d.anim==="cycle"){const[cr,cg,cb]=hsl1(((t*d.rt)%1)*360);r=cr;gn=cg;b=cb;}
+      glLightB(d.px,d.py,d.radius,r,gn,b,bi);}
+    // (b) composite FBO_B additively onto screen
+    g.bindFramebuffer(g.FRAMEBUFFER,null);
+    g.viewport(0,0,glcv.width,glcv.height);
+    g.blendFunc(g.SRC_ALPHA,g.ONE);
+    g.useProgram(_glProgBlit);
+    g.bindBuffer(g.ARRAY_BUFFER,_glBuf);
+    g.enableVertexAttribArray(_glAttrBlitA);
+    g.vertexAttribPointer(_glAttrBlitA,2,g.FLOAT,false,0,0);
+    g.activeTexture(g.TEXTURE0);
+    g.bindTexture(g.TEXTURE_2D,_glTexB);
+    g.uniform1i(_glUBlitTex,0);
+    g.uniform1f(_glUBlitIntensity,BLOOM_INTENSITY);
+    g.drawArrays(g.TRIANGLE_STRIP,0,4);
+    g.bindTexture(g.TEXTURE_2D,null);
+    // (c) restore normal blend for subsequent frames
+    g.blendFunc(g.SRC_ALPHA,g.ONE_MINUS_SRC_ALPHA);}
 }
 function lightLevel(h){
   if(h>=6.5&&h<18.5)return 0;
