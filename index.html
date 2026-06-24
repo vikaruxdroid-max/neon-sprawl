@@ -8198,6 +8198,7 @@ function tick(){ST.tick++;
   for(let i=ST.floats.length-1;i>=0;i--)if(--ST.floats[i].ttl<=0)ST.floats.splice(i,1);
   if(ST.says)for(let i=ST.says.length-1;i>=0;i--)if(--ST.says[i].ttl<=0)ST.says.splice(i,1);
   tickEmotes();
+  opReadoutTick(theAvatar());
   tickTombstones();
   if(ST.tick>=ST.nextEv)fireEvent();
   if(ST.tick%30===0){disasterTick();maybeStoryEvent();}
@@ -10259,7 +10260,6 @@ function render(){
 // draw the streaming op terminal in screen space, anchored above the avatar's head
 function drawOpReadout(){
   const av=theAvatar();
-  opReadoutTick(av);
   if(!OPREADOUT)return;
   if(!av||(!av.activeOp&&OPREADOUT.phase==="run"))return;
   const z=cam.z;
