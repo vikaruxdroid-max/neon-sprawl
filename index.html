@@ -351,6 +351,11 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
 .cc-attr-block.revealed{background:rgba(34,221,255,.10)!important;border-color:rgba(34,221,255,.35)!important}
 .cc-bg:hover{border-color:rgba(34,221,255,.5)!important}
 
+/* ── TUNABLES ── */
+.tun-row{display:flex;align-items:center;gap:8px;padding:4px 0}
+.tun-row label{font-size:10px;color:var(--dim);min-width:112px;letter-spacing:.04em}
+.tun-row input[type=range]{flex:1;accent-color:var(--cy);cursor:pointer}
+.tun-row .tun-val{font-family:var(--disp);font-size:11px;color:var(--cy);min-width:36px;text-align:right;font-weight:600}
 /* ── MISC ── */
 #checklist{display:none}
 @media (max-width:700px){
@@ -419,6 +424,8 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
     <button class="tb" id="b-stats" title="District"><span class="hud-icon">📊</span></button>
     <button class="tb" id="b-ops" title="Operative screen — base, gear &amp; more" style="font-size:10px;letter-spacing:.06em;padding:3px 7px">OPS</button>
     <span style="width:1px;background:var(--bd);height:20px;margin:0 4px"></span>
+    <button class="tb" id="b-settings" title="Settings">⚙</button>
+    <button class="tb" id="b-lighting" title="Lighting tuner">✦</button>
     <button class="tb" id="b-fs" title="Fullscreen">⛶</button>
     <button class="tb" id="b-menu" title="Menu (Esc)"><span class="hud-icon">☰</span></button>
   </div>
@@ -456,9 +463,22 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
     <div style="font-family:var(--disp);font-size:9px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin:0 0 8px">Weather</div>
     <button class="set-opt" id="set-rain" style="display:flex;align-items:center;gap:9px;width:100%;background:rgba(8,18,36,.7);border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:11px;padding:8px 10px;border-radius:7px;cursor:pointer;margin-bottom:7px"><span class="hud-icon">☂</span> Rain &amp; Fog <span id="set-rain-state" style="margin-left:auto;font-size:9px;color:var(--dim)">off</span></button>
     <button class="set-opt" id="set-storm" style="display:flex;align-items:center;gap:9px;width:100%;background:rgba(8,18,36,.7);border:1px solid var(--bd);color:var(--tx);font-family:var(--mono);font-size:11px;padding:8px 10px;border-radius:7px;cursor:pointer"><span class="hud-icon">⚡</span> Lightning <span id="set-storm-state" style="margin-left:auto;font-size:9px;color:var(--dim)">off</span></button>
+    <div style="border-top:1px solid var(--bd);margin:14px 0 0"></div>
+    <button id="set-open-lighting" style="display:flex;align-items:center;gap:9px;width:100%;margin-top:10px;background:rgba(8,18,36,.7);border:1px solid var(--bd);color:var(--dim);font-family:var(--mono);font-size:10px;letter-spacing:.08em;padding:8px 10px;border-radius:7px;cursor:pointer">✦ Lighting Tuner<span style="margin-left:auto;font-size:9px">open ↗</span></button>
   </div>
 </div>
 
+<!-- LIGHTING PANEL — draggable floating tuner (separate from the settings overlay) -->
+<div id="lighting-panel" style="display:none;position:fixed;right:12px;top:54px;z-index:50;min-width:270px;max-width:310px;background:rgba(6,12,24,.96);border:1px solid var(--bd);border-radius:10px;box-shadow:0 4px 24px rgba(0,0,0,.6);user-select:none">
+  <div id="lighting-drag" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--bd);cursor:grab;background:rgba(0,0,0,.18);border-radius:10px 10px 0 0">
+    <span style="font-family:var(--disp);font-size:10px;font-weight:700;letter-spacing:.22em;color:var(--cy)">✦ LIGHTING</span>
+    <span id="lighting-x" style="cursor:pointer;color:var(--dim);font-size:14px;line-height:1;padding:0 2px">✕</span>
+  </div>
+  <div style="padding:10px 12px 12px">
+    <div id="set-tunables"></div>
+    <button id="set-copy" style="display:block;width:100%;margin-top:10px;background:rgba(8,18,36,.7);border:1px solid var(--bd);color:var(--dim);font-family:var(--mono);font-size:10px;letter-spacing:.1em;padding:7px;border-radius:7px;cursor:pointer">⧉ COPY VALUES</button>
+  </div>
+</div>
 <div id="checklist" class="panel"><ul id="ck"></ul></div>
 <!-- keep #log hidden for compatibility — diary is the visible log now -->
 <div id="log" style="display:none"></div>
@@ -12919,6 +12939,77 @@ function syncSettings(){
   const rs=$("set-rain-state");if(rs){rs.textContent=ATMO.on?"on":"off";rs.style.color=ATMO.on?"#22ddff":"var(--dim)";}
   const ss=$("set-storm-state");if(ss){ss.textContent=STORM.on?"on":"off";ss.style.color=STORM.on?"#ffe066":"var(--dim)";}
 }
+// ── TUNABLES — data-driven lighting sliders ──
+const TUNABLES=[
+  {label:"Neon Intensity",  varName:"LIGHT_INTENSITY",  min:0,   max:3,   step:0.05,group:"Lighting"},
+  {label:"Night Boost",     varName:"NIGHT_BOOST_AMT",  min:0,   max:1.5, step:0.05,group:"Lighting"},
+  {label:"Detail Neons",    varName:"DETAIL_INTENSITY", min:0,   max:2,   step:0.05,group:"Lighting"},
+  {label:"Bloom Threshold", varName:"BLOOM_THRESHOLD",  min:0,   max:0.5, step:0.01,group:"Lighting"},
+  {label:"Bloom Intensity", varName:"BLOOM_INTENSITY",  min:0,   max:2,   step:0.05,group:"Lighting"},
+  {label:"Bloom Radius",    varName:"BLOOM_RADIUS",     min:0,   max:5,   step:0.1, group:"Lighting"},
+];
+function buildTunableSliders(){
+  const el=$("set-tunables");if(!el)return;
+  let html='',lastGroup='';
+  for(const t of TUNABLES){
+    if(t.group!==lastGroup){
+      if(lastGroup)html+='<div style="height:4px"></div>';
+      html+='<div style="font-family:var(--disp);font-size:9px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin:10px 0 6px">'+t.group+'</div>';
+      lastGroup=t.group;
+    }
+    const v=(typeof window!=='undefined'&&window[t.varName]!==undefined)?+window[t.varName]:0;
+    html+='<div class="tun-row"><label>'+t.label+'</label>'
+      +'<input type="range" class="tun-slider" data-var="'+t.varName
+      +'" min="'+t.min+'" max="'+t.max+'" step="'+t.step+'" value="'+v+'">'
+      +'<span class="tun-val" id="tun-val-'+t.varName+'">'+v.toFixed(2)+'</span></div>';
+  }
+  el.innerHTML=html;
+  if(typeof el.querySelectorAll==='function')el.querySelectorAll('.tun-slider').forEach(sl=>{
+    sl.oninput=function(){
+      const vn=this.dataset.var,val=parseFloat(this.value);
+      try{window[vn]=val;}catch(e){}
+      const ro=$('tun-val-'+vn);if(ro)ro.textContent=val.toFixed(2);
+    };
+  });
+}
+function copyTunableValues(){
+  const lines=TUNABLES.map(t=>{const v=(typeof window!=='undefined'&&window[t.varName]!==undefined)?+window[t.varName]:0;return t.varName+'='+v.toFixed(2);});
+  const txt=lines.join('; ');
+  console.log('[TUNABLES] '+txt);
+  if(typeof navigator!=='undefined'&&navigator.clipboard){
+    navigator.clipboard.writeText(txt).then(()=>{const btn=$('set-copy');if(btn){const prev=btn.textContent;btn.textContent='✓ COPIED';setTimeout(()=>{btn.textContent=prev;},1400);}}).catch(()=>{});
+  }
+}
+// ── LIGHTING PANEL — draggable floating tuner ──
+function openLightingPanel(){const p=$('lighting-panel');if(p){buildTunableSliders();p.style.display='block';}}
+function closeLightingPanel(){const p=$('lighting-panel');if(p)p.style.display='none';}
+function lightingPanelOpen(){const p=$('lighting-panel');return p&&p.style.display!=='none';}
+// draggable: only the title bar moves the window; sliders remain independent
+(function(){
+  const panel=$('lighting-panel'),handle=$('lighting-drag');
+  if(!panel||!handle)return;
+  handle.addEventListener('mousedown',function(e){
+    if(e.button!==0)return;
+    const r=panel.getBoundingClientRect();
+    panel.style.right='auto';
+    panel.style.left=r.left+'px';
+    panel.style.top=r.top+'px';
+    const ox=e.clientX-r.left,oy=e.clientY-r.top;
+    handle.style.cursor='grabbing';
+    function onMove(mv){
+      const mw=typeof window!=='undefined'?window.innerWidth:1280;
+      const mh=typeof window!=='undefined'?window.innerHeight:800;
+      const x=Math.max(0,Math.min(mv.clientX-ox,mw-(panel.offsetWidth||270)));
+      const y=Math.max(0,Math.min(mv.clientY-oy,mh-(panel.offsetHeight||200)));
+      panel.style.left=x+'px';
+      panel.style.top=y+'px';
+    }
+    function onUp(){handle.style.cursor='grab';document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);}
+    document.addEventListener('mousemove',onMove);
+    document.addEventListener('mouseup',onUp);
+    e.preventDefault();
+  });
+}());
 // HUD menu button + system-menu actions
 const bMenu=$("b-menu");if(bMenu)bMenu.onclick=()=>{SFX.ui();sysMenuOpen()?closeSysMenu():openSysMenu();};
 const sR=$("sys-resume");if(sR)sR.onclick=()=>{SFX.ui();closeSysMenu();};
@@ -12948,6 +13039,11 @@ const setVol=$("set-vol");if(setVol)setVol.oninput=function(){const v=(+this.val
 const setSkip=$("set-skip");if(setSkip)setSkip.onclick=()=>{SFX.ui();if(MUSIC&&MUSIC.skip)MUSIC.skip();};
 const setRain=$("set-rain");if(setRain)setRain.onclick=()=>{SFX.ui();ATMO.on=!ATMO.on;ATMO.fog=0;syncSettings();};
 const setStorm=$("set-storm");if(setStorm)setStorm.onclick=()=>{SFX.ui();STORM.on=!STORM.on;STORM.flash=0;STORM.nextAt=0;syncSettings();};
+const bSett=$("b-settings");if(bSett)bSett.onclick=()=>{SFX.ui();openSettings();};
+const bLighting=$("b-lighting");if(bLighting)bLighting.onclick=()=>{SFX.ui();lightingPanelOpen()?closeLightingPanel():openLightingPanel();};
+const lightX=$("lighting-x");if(lightX)lightX.onclick=()=>{closeLightingPanel();};
+const setOpenLighting=$("set-open-lighting");if(setOpenLighting)setOpenLighting.onclick=()=>{SFX.ui();closeSettings();openLightingPanel();};
+const setCopyBtn=$("set-copy");if(setCopyBtn)setCopyBtn.onclick=()=>{copyTunableValues();};
 // click outside closes the weather menu
 document.addEventListener("click",(e)=>{const mn=$("weather-menu");if(mn&&mn.style.display!=="none"&&!e.target.closest("#weather-menu")&&!e.target.closest("#b-weather"))mn.style.display="none";});
 $("b-diary").onclick=()=>{SFX.ui();openOverlay("diary")};
